@@ -1,0 +1,3 @@
+[submodule "modules/tip-benchmarks"]
+	path = modules/tip-benchmarks
+	url = https://github.com/tip-org/benchmarks.git
