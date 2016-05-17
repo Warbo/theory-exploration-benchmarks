@@ -53,3 +53,8 @@
 
 (define (benchmark-symbols x)
   (remove-duplicates (expression-symbols (read-benchmark x))))
+
+(define (format-symbols syms)
+  (if (null? syms)
+      ""
+      (format "~a\n~a" (car syms) (format-symbols (cdr syms)))))
