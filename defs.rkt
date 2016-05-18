@@ -17,8 +17,20 @@
   (if (symbol? exp)
       (list exp)
       (match exp
-             [(cons a b) (append (symbols-in a) (symbols-in b))]
-             [_          null])))
+             [(cons 'match (cons arg cases)) (append (symbols-in arg)
+                                                     (symbols-in (map case-symbols cases)))]
+             [(cons a b)                     (append (symbols-in a)
+                                                     (symbols-in b))]
+             [_                              null])))
+
+(define (case-symbols c)
+  (match c
+         ;; Remove the symbols occuring in pat from body. This will remove fresh
+         ;; variables, but may also remove constructors. That's fine though,
+         ;; since we extract constructors separately anyway.
+         [(list 'case pat body) (remove* (symbols-in pat) (symbols-in body))]
+         [(cons a b)            (append (symbols-in a) (symbols-in b))]
+         [_                     null]))
 
 (define (constructors-from-def given decs)
   (remove* given
@@ -47,7 +59,8 @@
          [_                                            null]))
 
 (define (expression-symbols exp)
-  (remove* (append (list 'match 'case) (expression-types exp))
+  ; (list 'match 'case)
+  (remove* (append null (expression-types exp))
            (append (expression-constructors exp)
                    (expression-funs         exp))))
 
