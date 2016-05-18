@@ -29,17 +29,21 @@
          ;; variables, but may also remove constructors. That's fine though,
          ;; since we extract constructors separately anyway.
          [(list 'case pat body) (remove* (symbols-in pat) (symbols-in body))]
-         [(cons a b)            (append (symbols-in a) (symbols-in b))]
-         [_                     null]))
+         [_                     (error "Unexpected case form")]))
 
 (define (constructors-from-def given decs)
   (remove* given
            (foldl (lambda (dec got)
                     (append got (match dec
-                                       [(cons type defs) (symbols-in defs)]
-                                       [_                null])))
+                                       [(cons type defs) (symbols-in (map constructor-symbols defs))]
+                                       [_                (error "Unexpected type definition")])))
                   null
                   decs)))
+
+(define (constructor-symbols c)
+  (match c
+         [(cons name vars) (list name)]
+         [_                (error "Unexpected constructor form")]))
 
 (define (expression-funs exp)
   (match exp
@@ -59,7 +63,6 @@
          [_                                            null]))
 
 (define (expression-symbols exp)
-  ; (list 'match 'case)
   (remove* (append null (expression-types exp))
            (append (expression-constructors exp)
                    (expression-funs         exp))))
