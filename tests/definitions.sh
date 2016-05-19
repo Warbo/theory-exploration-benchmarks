@@ -39,6 +39,17 @@ do
         QUAL=$(basename "${DST_NAME}.${MOD_NAME}" ".hs")
         grep "module $QUAL where" < "$DST_MOD" > /dev/null
         report "$?" "'$DST_MOD' has module name '$QUAL'"
+
+        grep "exposed-modules:" < benchmark_package/benchmark-package.cabal |
+             grep "$QUAL" > /dev/null
+        report "$?" "Module '$QUAL' is exposed"
+
+        SRC_BODY=$(grep -v "^module " < "$MOD")
+        DST_BODY=$(grep -v "^module " < "$DST_MOD")
+        [[ "x$SRC_BODY" = "x$DST_BODY" ]]
+        report "$?" "'$DST_MOD' content matches '$MOD'"
+
+
     done
 done
 
@@ -59,3 +70,5 @@ done
 # }
 
 # names
+
+exit "$ERR"
