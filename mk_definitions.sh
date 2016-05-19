@@ -8,6 +8,8 @@ SRC="modules/tip-benchmarks/original"
 
 DST="benchmark_package/src"
 
+MOD_LINE=""
+
 for DIR in "$SRC"/*
 do
     NAME=$(basename "$DIR")
@@ -30,5 +32,17 @@ do
 
         sed -e "s/^module \([^ ]*\) /module $DST_NAME.\1 /g" < "$MOD" \
                                                              > "$QUAL"/"$MOD_NAME"
+
+        HS_NAME=$(basename "$MOD" .hs)
+        HS_MOD="${DST_NAME}.${HS_NAME}"
+        MOD_LINE="$MOD_LINE, $HS_MOD"
     done
 done
+
+TRIM=$(echo "$MOD_LINE" | cut -d ',' -f 2-)
+CABAL="benchmark_package/benchmark-package.cabal"
+CABAL_DEFS=$(cat "$CABAL")
+
+SEARCH='^[ ]*exposed-modules:.*'
+REPLACE="  exposed-modules:$TRIM"
+echo "$CABAL_DEFS" | sed -e "s/$SEARCH/$REPLACE/g" > "$CABAL"
