@@ -12,6 +12,7 @@ MOD_LINE=""
 
 for DIR in "$SRC"/*
 do
+    # For each suite 'foo', make a module directory 'Foo'
     NAME=$(basename "$DIR")
     INIT=$(echo "$NAME" | cut -c 1 | tr '[:lower:]' '[:upper:]')
     REST=$(echo "$NAME" | cut -c 2-)
@@ -26,12 +27,26 @@ do
         mkdir -p "$QUAL"
     fi
 
+    # For each module 'Bar.hs', make a copy 'Foo/Bar.hs'
     for MOD in "$DIR"/*.hs
     do
         MOD_NAME=$(basename "$MOD")
 
-        sed -e "s/^module \([^ ]*\) /module $DST_NAME.\1 /g" < "$MOD" \
-                                                             > "$QUAL"/"$MOD_NAME"
+        # Prepend directory (e.g. 'Foo.') to module name
+        MOD_CONTENT=$(cat "$MOD")
+        MOD_QUAL=$(echo "$MOD_CONTENT" |
+                   sed -e "s/^module \([^ ]*\) /module $DST_NAME.\1 /g")
+
+        # Prepend directory (e.g. 'Foo.') to relevant imports
+        for MOD2 in "$DIR"/*.hs
+        do
+            MOD2_NAME=$(basename "$MOD2" .hs)
+            SEARCH="^import[ ]*${MOD2_NAME}\$"
+            REPLACE="import ${DST_NAME}.${MOD2_NAME}"
+            MOD_QUAL=$(echo "$MOD_QUAL" | sed -e "s/$SEARCH/$REPLACE/g")
+        done
+
+        echo "$MOD_QUAL" > "$QUAL"/"$MOD_NAME"
 
         HS_NAME=$(basename "$MOD" .hs)
         HS_MOD="${DST_NAME}.${HS_NAME}"

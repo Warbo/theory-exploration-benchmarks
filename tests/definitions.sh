@@ -44,8 +44,8 @@ do
              grep "$QUAL" > /dev/null
         report "$?" "Module '$QUAL' is exposed"
 
-        SRC_BODY=$(grep -v "^module " < "$MOD")
-        DST_BODY=$(grep -v "^module " < "$DST_MOD")
+        SRC_BODY=$(grep -v "^module " < "$MOD"     | grep -v "^import ")
+        DST_BODY=$(grep -v "^module " < "$DST_MOD" | grep -v "^import ")
         [[ "x$SRC_BODY" = "x$DST_BODY" ]]
         report "$?" "'$DST_MOD' content matches '$MOD'"
 
@@ -53,22 +53,9 @@ do
     done
 done
 
-# function defs {
-#     grep -r --no-filename "^[a-z][^=]*=" "$D" |
-#         grep -v "|="                          |
-#         grep -v "::.*=>"                      |
-#         grep -v "^type "                      |
-#         grep -v "^data "                      |
-#         grep -v "^import "                    |
-#         grep -v "^prop_"
-# }
-
-# function names {
-#     defs | sed -e 's/ = .*//g'          |
-#            sed -e 's/.*`\(.*\)`.*/\1/g' |  # x `infix` y
-#            sed -e 's/.* \([^a-z_A-Z ][^a-z_A-Z ]*\) .*/\1/g'
-# }
-
-# names
+pushd benchmark_package > /dev/null
+cabal build 1>&2
+report "$?" "Can build benchmark package"
+popd > /dev/null
 
 exit "$ERR"
