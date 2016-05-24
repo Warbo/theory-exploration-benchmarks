@@ -135,4 +135,3 @@ deeps (Star p)     = deeps p
 
 prop_Deeps p s =
   recognise (Star p) s === recognise (Star (deeps p)) s
-

@@ -2,7 +2,7 @@
 module Tip2015.Mod where
 
 import Tip.Prelude
-import Rotate
+import Tip2015.Rotate
 import qualified Prelude as P
 
 mod :: Nat -> Nat -> Nat
@@ -24,4 +24,3 @@ go (S n) Z (S m) = go n m (S m) -- S n % S m = (S n - S m) % S m = (n - m) % S m
 go (S n) (S k) m = go n k m
 
 prop_same m n = m `mod` n === m `mod_structural` n
-

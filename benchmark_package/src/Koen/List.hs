@@ -99,4 +99,3 @@ prop_z_deleteAll_count x xs = zdeleteAll x xs === zdelete x xs ==> zcount x xs <
 
 -- prop_z_elem x xs = x `zelem` xs ==> exists (\ i -> maybe False (x `zeq`) (index xs i))
 -- prop_z_elem_map y f xs = y `zelem` map f xs ==> exists (\ x -> f x === y .&. y `zelem` xs)
-

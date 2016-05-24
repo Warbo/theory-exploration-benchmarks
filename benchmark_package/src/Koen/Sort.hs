@@ -427,4 +427,3 @@ prop_NStoogeSort2Permutes (xs :: [OrdA]) = nstoogesort2 xs `zisPermutation` xs =
 prop_NStoogeSort2IsSort (xs :: [OrdA]) = nstoogesort2 xs === sort xs
 
 --------------------------------------------------------------------------------
-

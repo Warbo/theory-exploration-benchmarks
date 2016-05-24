@@ -2,7 +2,7 @@
 module Tip2015.SelfRotate where
 
 import Tip.Prelude
-import Rotate
+import Tip2015.Rotate
 import Prelude ()
 
 prop_self :: Nat -> [a] -> Equality [a]

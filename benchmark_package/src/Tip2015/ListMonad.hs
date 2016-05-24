@@ -34,4 +34,3 @@ prop_return_2 xs = xs >>= return === xs
 
 return :: a -> [a]
 return x = [x]
-

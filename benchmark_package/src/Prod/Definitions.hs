@@ -171,4 +171,3 @@ count n [] = Z
 sorted :: [Nat] -> Bool
 sorted (x:y:xs) = x <= y && sorted (y:xs)
 sorted _        = True
-

@@ -55,4 +55,3 @@ prop_SwapAB p a b =
   b `zelem` flatten0 p ==>
   a `zelem` flatten0 (swap a b p) .&&.
   b `zelem` flatten0 (swap a b p)
-

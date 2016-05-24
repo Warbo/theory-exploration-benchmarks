@@ -18,4 +18,3 @@ prop_snoc xs = rotate (length xs) xs === xs
 
 prop_snoc_self :: Nat -> [a] -> Equality [a]
 prop_snoc_self n xs = rotate n (xs ++ xs) === rotate n xs ++ rotate n xs
-

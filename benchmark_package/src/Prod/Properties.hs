@@ -6,7 +6,7 @@ module Prod.Properties where
 import Tip
 import Data.Typeable
 import Prelude(Bool(..))
-import Definitions
+import Prod.Definitions
 
 -- Theorems
 
@@ -166,4 +166,3 @@ prop_T49 x y = x `elem` isort y ==> x `elem` y
 -- This property is the same as isaplanner #53
 prop_T50 :: Nat -> [Nat] -> Equality Nat
 prop_T50 x y = count x (isort y) === count x y
-

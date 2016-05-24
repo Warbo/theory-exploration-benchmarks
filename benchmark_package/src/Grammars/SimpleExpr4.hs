@@ -19,4 +19,3 @@ linTerm EX          = [X]
 linTerm EY          = [Y]
 
 prop_unambig4 u v = lin u === lin v ==> u === v
-

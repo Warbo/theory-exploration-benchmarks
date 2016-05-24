@@ -8,7 +8,7 @@ import Prelude (Bool(..),error,toEnum,fromEnum,pred,succ,sqrt,round
                ,Enum,Eq,Ord,Show,return,(.),undefined)
 import Tip
 import Data.Typeable
-import Definitions
+import Isaplanner.Definitions
 
 prop_01 n xs
   = (take n xs ++ drop n xs === xs)

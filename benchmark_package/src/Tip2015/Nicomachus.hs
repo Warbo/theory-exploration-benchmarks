@@ -14,4 +14,3 @@ cubes (S n) = cubes n + (S n * S n * S n)
 
 prop_theorem :: Nat -> Equality Nat
 prop_theorem n = cubes n === sum n * sum n
-

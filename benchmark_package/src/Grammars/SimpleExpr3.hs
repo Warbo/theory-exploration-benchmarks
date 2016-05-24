@@ -14,4 +14,3 @@ lin EX        = [X]
 lin EY        = [Y]
 
 prop_unambig3 u v = lin u === lin v ==> u === v
-

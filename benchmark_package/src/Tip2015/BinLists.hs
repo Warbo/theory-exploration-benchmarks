@@ -53,4 +53,3 @@ prop_times_assoc x y z = x `times` (y `times` z) === (x `times` y) `times` z
 
 prop_distrib :: Bin -> Bin -> Bin -> Equality Bin
 prop_distrib x y z = x `times` (y `plus` z) === (x `times` y) `plus` (x `times` z)
-

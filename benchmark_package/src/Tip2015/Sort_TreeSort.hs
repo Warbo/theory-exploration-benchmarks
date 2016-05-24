@@ -44,4 +44,3 @@ prop_AddSame x t = count x (flatten (add x t) []) === S (count x (flatten t []))
 
 -- Inserting an element preserves the counts of different elements.
 prop_AddDifferent x y t = x == y === False ==> count y (flatten (add x t) []) === count y (flatten t [])
-

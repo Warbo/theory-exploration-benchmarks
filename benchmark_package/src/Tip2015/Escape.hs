@@ -41,4 +41,3 @@ prop_Injective xs ys =
 
 prop_NoSpecial xs =
   all ok (escape xs) === True
-

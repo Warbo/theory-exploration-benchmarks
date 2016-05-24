@@ -84,4 +84,3 @@ prop_eq_sym x y = x == y ==> y == x
 prop_eq_refl x = x == x === True
 
 prop_lt_ne x y = y < x ==> x /= y
-

@@ -210,4 +210,3 @@ height (Node l x r) = S (max (height l) (height r))
 mirror :: Tree a -> Tree a
 mirror Leaf = Leaf
 mirror (Node l x r) = Node (mirror r) x (mirror l)
-

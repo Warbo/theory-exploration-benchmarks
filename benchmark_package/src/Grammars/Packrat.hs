@@ -50,4 +50,3 @@ linB ZB     = [X,Z,Y,Y]
 linB (SB b) = [X] ++ linB b ++ [Y,Y]
 
 prop_unambigPackrat u v = linS u === linS v ==> u === v
-

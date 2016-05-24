@@ -112,4 +112,3 @@ prop_left_distrib x y z = x `times` (y `plus` z) === (x `times` y) `plus` (x `ti
 
 prop_right_distrib :: Integer -> Integer -> Integer -> Equality Integer
 prop_right_distrib x y z = (x `plus` y) `times` z === (x `times` z) `plus` (y `times` z)
-

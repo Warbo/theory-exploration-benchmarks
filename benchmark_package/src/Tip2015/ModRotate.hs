@@ -2,8 +2,8 @@
 module Tip2015.ModRotate where
 
 import Tip.Prelude
-import Rotate
-import Mod
+import Tip2015.Rotate
+import Tip2015.Mod
 import qualified Prelude as P
 
 prop_mod :: Nat -> [a] -> Equality [a]

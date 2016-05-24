@@ -15,4 +15,3 @@ prop_M1 n =
 
 prop_M2 n =
   n >= 101 === True ==> m n === n-10
-
