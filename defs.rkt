@@ -74,3 +74,10 @@
   (if (null? syms)
       ""
       (format "~a\n~a" (car syms) (format-symbols (cdr syms)))))
+
+(define (theorem-files)
+  (filter (lambda (x) (string-suffix? (path->string x) ".smt2"))
+          (sequence->list (in-directory "modules/tip-benchmarks/benchmarks"))))
+
+(define (symbols-of-theorem path)
+  (benchmark-symbols (file->string path)))
