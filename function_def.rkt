@@ -43,7 +43,4 @@
 (define unique-defs
   (remove-duplicates defs-of-given))
 
-(define (show x)
-  (displayln (format-symbols x)))
-
 (show unique-defs)
