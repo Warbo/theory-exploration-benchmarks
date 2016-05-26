@@ -6,15 +6,17 @@
 (include "defs.rkt")
 
 (define given-functions
-  (map (lambda (line)
-         (with-input-from-string line
-           read))
-       (port->lines (current-input-port))))
+  (filter (lambda (x)
+            (not (eof-object? x)))
+          (map (lambda (line)
+                 (with-input-from-string line
+                   read))
+               (port->lines (current-input-port)))))
 
 (define (normalise def)
   (match def
          [(list name args typ body) (mk-def name args typ (normalise-cases body))]
-         [_                         (error "Function definition of unexpected form")]))
+         [_                         (error "Function definition of unexpected form" def)]))
 
 (define (normalise-cases exp)
   (match exp
