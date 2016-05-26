@@ -15,10 +15,8 @@
 (define (find-defs sym given ty-decs)
   (map (lambda (dec) (list 'declare-datatypes given (list dec)))
        (filter (lambda (ty-dec)
-                 (any (lambda (con-dec)
-                        (equal? (symbol->string (car con-dec))
-                                sym))
-                      (cdr ty-dec)))
+                 (equal? (format "~a" (car ty-dec))
+                         sym))
                ty-decs)))
 
 (define (any f xs)
@@ -31,7 +29,8 @@
 
 (define (files-with given)
   (filter (lambda (path)
-            (member given (map symbol->string (symbols-of-theorem path))))
+            (member given (map (lambda (x) (format "~a" x))
+                               (types-of-theorem path))))
           (theorem-files)))
 
 (define (defs-of given)

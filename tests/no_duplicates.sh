@@ -37,21 +37,32 @@ done
 
 # Check we find unique definitions for all discovered functions and constructors
 
-function symDef {
+function funDef {
     # Not perfect, but tries to get a particular symbol's definition. For
     # example, if we're given "foo", we don't want the definition of "foobar",
     # and we don't want other definitions whose bodies call "foo"
-    grep -F "$1" | grep "^($SYM "
+    grep -F "$1" | grep -F "($1 "
 }
 
-ALL=$(./all_symbols.sh)
+function conDef {
+    # Not perfect, but tries to get a particular constructor's definition. For
+    # example, if we're given "foo", we don't want the definition of "foobar",
+    # and we don't want other definitions whose bodies call "foo"
+    grep "^(declare-datatypes " | grep -F "$1" | grep -e "($1\( \|)\)"
+}
+
+
+ALL=$(./all_symbols.sh | shuf | head -n30)
 
 FUNS=$(echo "$ALL" | ./function_def.sh)
 CONS=$(echo "$ALL" | ./constructor_def.rkt)
 
 echo "$ALL" | while read -r SYM
 do
-    DEFS=$(echo -e "$FUNS\n$CONS" | symDef "$SYM")
+    FUNDEFS=$(echo "$FUNS" | funDef "$SYM")
+    CONDEFS=$(echo "$CONS" | conDef "$SYM")
+
+    DEFS=$(echo -e "$FUNDEFS\n$CONDEFS" | grep '^.')
     report "$?" "Found a definition for '$SYM'"
 
     COUNT=$(echo "$DEFS" | wc -l)
@@ -68,19 +79,31 @@ done
 # Check there's no overlap between function and constructor names
 echo "$ALL" | while read -r SYM
 do
-    MSG=
-
     FUN="0"
-    echo "$FUNS" | symDef "$SYM" > /dev/null && FUN="1"
+    echo "$FUNS" | funDef "$SYM" > /dev/null && FUN="1"
 
     CON="0"
-    echo "$CONS" | symDef "$SYM" > /dev/null && CON="1"
+    echo "$CONS" | conDef "$SYM" > /dev/null && CON="1"
 
     ! [[ "$FUN$CON" = "11" ]]
     report "$?" "'$SYM' isn't both a function and a constructor"
 
+    [[ "$FUN$CON" = "11" ]] && {
+        echo "Function definitions for '$SYM'"
+        echo "$FUNS" | funDef "$SYM"
+        echo "Constructor definitions for '$SYM'"
+        echo "$CONS" | conDef "$SYM"
+    } 1>&2
+
     ! [[ "$FUN$CON" = "00" ]]
     report "$?" "'$SYM' is either a function xor a constructor"
+
+    [[ "$FUN$CON" = "00" ]] && {
+        echo "Function definitions for '$SYM'"
+        echo "$FUNS" | funDef "$SYM"
+        echo "Constructor definitions for '$SYM'"
+        echo "$CONS" | conDef "$SYM"
+    } 1>&2
 done
 
 exit "$ERR"

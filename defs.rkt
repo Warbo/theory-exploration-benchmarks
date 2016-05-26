@@ -80,6 +80,9 @@
            (append (expression-constructors exp)
                    (expression-funs         exp))))
 
+(define (benchmark-types x)
+  (remove-duplicates (expression-types (read-benchmark x))))
+
 (define (benchmark-symbols x)
   (remove-duplicates (expression-symbols (read-benchmark x))))
 
@@ -94,6 +97,9 @@
 (define (theorem-files)
   (filter (lambda (x) (string-suffix? (path->string x) ".smt2"))
           (sequence->list (in-directory "modules/tip-benchmarks/benchmarks"))))
+
+(define (types-of-theorem path)
+  (benchmark-types (file->string path)))
 
 (define (symbols-of-theorem path)
   (benchmark-symbols (file->string path)))

@@ -9,26 +9,17 @@
   (match exp
          [(list 'define-fun     name args typ body) (if (equal? (symbol->string name)
                                                                 given)
-                                                        (list (list name
-                                                                    args
-                                                                    typ
-                                                                    body))
+                                                        (list exp)
                                                         null)]
          [(list 'define-fun-rec
                 (list 'par p
                       (list name args typ body)))   (if (equal? (symbol->string name)
                                                                 given)
-                                                        (list (list name
-                                                                    args
-                                                                    typ
-                                                                    body))
+                                                        (list exp)
                                                         null)]
          [(list 'define-fun-rec name args typ body) (if (equal? (symbol->string name)
                                                                 given)
-                                                        (list (list name
-                                                                    args
-                                                                    typ
-                                                                    body))
+                                                        (list exp)
                                                         null)]
          [(cons a b)                  (append (defs-from given a)
                                               (defs-from given b))]
