@@ -5,42 +5,54 @@
 (require racket/include)
 (include "defs.rkt")
 
-(define (defs-from exp)
+(define (defs-from given exp)
   (match exp
          [(list 'define-fun     name args typ body) (if (equal? (symbol->string name)
-                                                                given-symbol)
+                                                                given)
+                                                        (list (list name
+                                                                    args
+                                                                    typ
+                                                                    body))
+                                                        null)]
+         [(list 'define-fun-rec
+                (list 'par p
+                      (list name args typ body)))   (if (equal? (symbol->string name)
+                                                                given)
                                                         (list (list name
                                                                     args
                                                                     typ
                                                                     body))
                                                         null)]
          [(list 'define-fun-rec name args typ body) (if (equal? (symbol->string name)
-                                                                given-symbol)
+                                                                given)
                                                         (list (list name
                                                                     args
                                                                     typ
                                                                     body))
                                                         null)]
-         [(cons a b)                  (append (defs-from a)
-                                              (defs-from b))]
+         [(cons a b)                  (append (defs-from given a)
+                                              (defs-from given b))]
          [_                           null]))
 
-(define given-symbol
-  (car (port->lines (current-input-port))))
+(define given-symbols
+  (port->lines (current-input-port)))
 
-(define files-with-given
+(define (files-with given)
   (filter (lambda (path)
-            (member given-symbol (map symbol->string (symbols-of-theorem path))))
+            (member given (map symbol->string (symbols-of-theorem path))))
           (theorem-files)))
 
-(define defs-of-given
+(define (defs-of given)
   (foldl (lambda (path rest)
-           (append (defs-from (read-benchmark (file->string path)))
+           (append (defs-from given (read-benchmark (file->string path)))
                    rest))
          '()
-         files-with-given))
+         (files-with given)))
 
-(define unique-defs
-  (remove-duplicates defs-of-given))
+(define (unique-defs given)
+  (remove-duplicates (defs-of given)))
 
-(show unique-defs)
+(show (foldl (lambda (sym rest)
+               (append (unique-defs sym) rest))
+             '()
+             given-symbols))

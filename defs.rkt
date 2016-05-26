@@ -19,6 +19,11 @@
       (match exp
              [(cons 'match (cons arg cases)) (append (symbols-in arg)
                                                      (symbols-in (map case-symbols cases)))]
+             [(list 'lambda args body)       (remove* (map car args)
+                                                      (symbols-in body))]
+             [(list 'let defs body)          (remove* (map car defs)
+                                                      (append (symbols-in (map cdr defs))
+                                                              (symbols-in body)))]
              [(cons a b)                     (append (symbols-in a)
                                                      (symbols-in b))]
              [_                              null])))
@@ -47,23 +52,31 @@
 
 (define (expression-funs exp)
   (match exp
-         [(list 'define-fun     name args return body) (cons name (remove* (map car args) (symbols-in body)))]
+         [(list 'define-fun-rec
+                (list 'par p
+                      (list name args return body)))   (cons name (remove* (map car args) (symbols-in body)))]
          [(list 'define-fun-rec name args return body) (cons name (remove* (map car args) (symbols-in body)))]
+         [(list 'define-fun     name args return body) (cons name (remove* (map car args) (symbols-in body)))]
+
          [(cons a b)                                   (append (expression-funs a)
                                                                (expression-funs b))]
          [_                                            null]))
 
 (define (expression-types exp)
   (match exp
-         [(list 'define-fun     name args return body) (cons return (map cadr args))]
+         [(list 'define-fun-rec
+                (list 'par p
+                      (list name args return body)))   (cons return (map cadr args))]
          [(list 'define-fun-rec name args return body) (cons return (map cadr args))]
+         [(list 'define-fun     name args return body) (cons return (map cadr args))]
+
          [(list 'declare-datatypes given decs)         (map car decs)]
          [(cons a b)                                   (append (expression-types a)
                                                                (expression-types b))]
          [_                                            null]))
 
 (define (expression-symbols exp)
-  (remove* (append null (expression-types exp))
+  (remove* (expression-types exp)
            (append (expression-constructors exp)
                    (expression-funs         exp))))
 
