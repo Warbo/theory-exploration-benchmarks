@@ -24,7 +24,9 @@ SWAP=$(echo "$INPUT" | toSwap)
 # since that goes really slowly
 
 # Get regular definitions, but filter out those which require swapping
-echo "$INPUT" | ./function_def.rkt | removeSwaps
+REGULAR=$(echo "$INPUT" | ./function_def.rkt | removeSwaps)
 
 # Get any definitions which require swapping
-echo "$SWAP" | getSwappedDefs
+SWAPPED=$(echo "$SWAP" | getSwappedDefs)
+
+echo -e "$REGULAR\n$SWAPPED" | grep '^.' | sort -u

@@ -44,6 +44,11 @@
   (remove-duplicates (defs-of given)))
 
 (show (foldl (lambda (sym rest)
-               (append (unique-defs sym) rest))
+               ;; FIXME: If there are multiple definitions, given them unique names
+               (append (let ([defs (unique-defs sym)])
+                         (if (empty? defs)
+                             defs
+                             (take defs 1)))
+                       rest))
              '()
              given-symbols))

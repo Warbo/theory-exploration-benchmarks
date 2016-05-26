@@ -16,7 +16,8 @@ function customDatatypes {
 function builtInDatatypes {
     if grep -xF "Bool" > /dev/null
     then
-        echo '(declare-datatypes () ((Bool (true) (false))))'
+        true
+        #echo '(declare-datatypes () ((Bool (true) (false))))'
     fi
 }
 
