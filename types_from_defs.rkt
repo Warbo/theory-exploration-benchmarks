@@ -6,6 +6,6 @@
 (include "defs.rkt")
 
 (define (format-benchmark-symbols)
-  (format-symbols (benchmark-types (port->string (current-input-port)))))
+  (format-symbols (symbols-in (benchmark-types (port->string (current-input-port))))))
 
 (displayln (format-benchmark-symbols))

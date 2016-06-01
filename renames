@@ -1,0 +1,7 @@
+SType	(declare-datatypes () ((SType (ASType (A_0 A2)) (BSType (B_0 B2)))))
+ASType	(declare-datatypes () ((SType (ASType (A_0 A2)) (BSType (B_0 B2)))))
+BSType	(declare-datatypes () ((SType (ASType (A_0 A2)) (BSType (B_0 B2)))))
+Tok	(declare-datatypes () ((Tok (XTok) (YTok) (ZTok))))
+XTok	(declare-datatypes () ((Tok (XTok) (YTok) (ZTok))))
+YTok	(declare-datatypes () ((Tok (XTok) (YTok) (ZTok))))
+ZTok	(declare-datatypes () ((Tok (XTok) (YTok) (ZTok))))

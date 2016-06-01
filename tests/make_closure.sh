@@ -12,6 +12,10 @@ function report {
     fi
 }
 
+# Seq is a good test of type dependencies, since its constructors require Pair
+# and Maybe arguments which we should pick up as dependencies, as well as a
+# parameter 'a' which we shouldn't
+
 SEQ=$(echo "Seq" | bash mk_closure.sh)
 report "$?" "mk_closure works on Seq"
 

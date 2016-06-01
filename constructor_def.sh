@@ -1,8 +1,18 @@
 #! /usr/bin/env nix-shell
 #! nix-shell -i bash -p racket
 
+function typeDef {
+    racket constructor_def.rkt
+}
+
 function customConstructors {
-    racket type_def.rkt
+    typeDef | removeDupes
+}
+
+function removeDupes {
+    # Remove those definitions which we've renamed
+    grep -vf removes
+
 }
 
 function builtInConstructors {
@@ -20,9 +30,20 @@ function builtInConstructors {
     fi
 }
 
+function renamedConstructors {
+    while read -r LINE
+    do
+        if REPLACE=$(cut -f1 < renames | grep "^$LINE\t")
+        then
+            echo "$REPLACE" | cut -f2
+        fi
+    done
+}
+
 INPUT=$(cat)
 
-CUSTOM=$(echo "$INPUT" | customConstructors)
+ CUSTOM=$(echo "$INPUT" | customConstructors)
 BUILTIN=$(echo "$INPUT" | builtInConstructors)
+RENAMED=$(echo "$INPUT" | renamedConstructors)
 
-echo -e "$CUSTOM\n$BUILTIN" | grep '^.' | sort -u
+echo -e "$CUSTOM\n$BUILTIN\n$RENAMED" | grep '^.' | sort -u

@@ -6,9 +6,11 @@ function report {
     if [[ "$1" -eq 0 ]]
     then
         echo "ok - $2"
+        return 0
     else
         echo "not ok - $2"
         ERR=1
+        return 1
     fi
 }
 
@@ -65,26 +67,38 @@ function binary_search {
     echo "$BROKEN"
 }
 
-ALL=$(./all_symbols.sh)
+# Try making a signature with the Nat type, as well as its constructors. These
+# shouldn't conflict, since duplicate definitions should be removed
+echo -e "Nat\nS\nZ" | make_sig
+report "$?" "Made signature of Nat, Z and S"
 
+# Try making a signature of a few random symbols
+
+ ALL=$(./all_symbols.sh)
 SYMS=$(echo "$ALL" | shuf | head -n3)
 
+ALL_MSG="All symbols form signature"
+
 echo "$SYMS" | make_sig
-report "$?" "Made Haskell for $SYMS"
-
-
-exit "$ERR"
-
-MSG="All symbols form signature"
-if echo "$ALL" | make_sig
+if report "$?" "Made Haskell for $SYMS"
 then
-    report 0 "$MSG"
-else
-    report 1 "$MSG"
+    # OK, maybe worth trying all symbols
+    echo "$ALL" | make_sig
 
-    SUBSET=$(echo "$ALL" | binary_search)
-    echo -e "Can't make these symbols into a signature:\n$SUBSET" 1>&2
+    if report "$?" "$ALL_MSG"
+    then
+        true
+    else
+        # Try to narrow-down to a broken sub-set of symbols
+        SUBSET=$(echo "$ALL" | binary_search)
+        echo -e "Can't make these symbols into a signature:\n$SUBSET" 1>&2
+    fi
+else
+    # A sub-set didn't work, so the whole lot won't
+    report 1 "$ALL_MSG"
 fi
 
 #HS=$( | make_sig)
 #report "$?" "Made Haskell of all signatures"
+
+exit "$ERR"
