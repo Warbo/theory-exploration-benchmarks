@@ -54,13 +54,29 @@
   (match exp
          [(list 'define-fun-rec
                 (list 'par p
-                      (list name args return body)))   (cons name (remove* (map car args) (symbols-in body)))]
+                      (list name args return body)))   (cons name (remove* (append (map car args)
+                                                                                   (symbols-in p))
+                                                                           (symbols-in body)))]
          [(list 'define-fun-rec name args return body) (cons name (remove* (map car args) (symbols-in body)))]
+         [(list 'define-funs-rec decs defs)            (fun-rec-expressions decs defs)]
+         [(list 'define-fun
+                (list 'par p
+                      (list name args return body)))   (cons name (remove* (append (map car args)
+                                                                                   (symbols-in p))
+                                                                           (symbols-in body)))]
          [(list 'define-fun     name args return body) (cons name (remove* (map car args) (symbols-in body)))]
 
          [(cons a b)                                   (append (expression-funs a)
                                                                (expression-funs b))]
          [_                                            null]))
+
+(define (fun-rec-expressions decs defs)
+  (match (list decs defs)
+    [(list (cons (list name args return) more-decs)
+           (cons body                    more-defs)) (append (cons name (remove* (map car args)
+                                                                                 (symbols-in body)))
+                                                             (fun-rec-expressions more-decs more-defs))]
+    [_                                                null]))
 
 (define (expression-types exp)
   (dbg `(expression-types ,exp) (match exp
@@ -69,6 +85,10 @@
                       (list name args return body)))   (remove* (symbols-in p)
                                                                 (symbols-in (cons return (map cadr args))))]
          [(list 'define-fun-rec name args return body) (cons return (map cadr args))]
+         [(list 'define-fun
+                (list 'par p
+                      (list name args return body)))   (remove* (symbols-in p)
+                                                                (symbols-in (cons return (map cadr args))))]
          [(list 'define-fun     name args return body) (cons return (map cadr args))]
 
          [(list 'declare-datatypes given decs)         (append (map car decs)
@@ -105,6 +125,27 @@
 
 (define (benchmark-symbols x)
   (remove-duplicates (expression-symbols (read-benchmark x))))
+
+(define (qualify name expr)
+  (let* ([syms  (expression-symbols expr)]
+         [types (expression-types   expr)]
+         [all   (append syms types)])
+    (qualify-all name (symbols-in all) expr)))
+
+(define (qualify-all name all expr)
+  (if (empty? all)
+      expr
+      (qualify-all name (cdr all) (replace-in (car all)
+                                              (string-append name (symbol->string (car all)))
+                                              expr))))
+
+(define (replace-in old replacement expr)
+  (if (equal? old expr)
+      replacement
+      (match expr
+        [(cons a b) (cons (replace-in old replacement a)
+                          (replace-in old replacement b))]
+        [_          expr])))
 
 (define (format-symbols syms)
   (if (null? syms)
