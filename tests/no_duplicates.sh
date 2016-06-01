@@ -35,6 +35,32 @@ do
     report "$?" "Found exactly one definition of '$SYM'"
 done
 
+# Check we don't get parameters from types
+
+LIST=$(echo "list"  | ./type_def.sh)
+
+echo "$LIST" | grep "(a)" > /dev/null
+report "$?" "Parameter 'a' appears in list definition"
+
+SYMS=$(echo "$LIST" | ./symbols_of_theorems.rkt)
+
+echo "$SYMS" | grep "nil" > /dev/null
+report "$?" "Found nil in list definition"
+
+echo "$SYMS" | grep "cons" > /dev/null
+report "$?" "Found cons in list definition"
+
+! echo "$SYMS" | grep "^a$" > /dev/null
+report "$?" "Parameter 'a' ignored in list symbols"
+
+TYPS=$(echo "$LIST" | ./types_from_defs.rkt)
+
+echo "$TYPS" | grep "list" > /dev/null
+report "$?" "Found list in list definition"
+
+! echo "$TYPS" | grep "^a$" > /dev/null
+report "$?" "Parameter 'a' ignored in list types"
+
 # Check we find unique definitions for all discovered functions and constructors
 
 function funDef {

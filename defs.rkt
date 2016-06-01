@@ -37,13 +37,13 @@
          [_                     (error "Unexpected case form")]))
 
 (define (constructors-from-def given decs)
-  (remove* given
-           (foldl (lambda (dec got)
-                    (append got (match dec
-                                       [(cons type defs) (symbols-in (map constructor-symbols defs))]
-                                       [_                (error "Unexpected type definition")])))
-                  null
-                  decs)))
+  (remove* (symbols-in given)
+           (symbols-in (foldl (lambda (dec got)
+                                (append got (match dec
+                                              [(cons type defs) (symbols-in (map constructor-symbols defs))]
+                                              [_                (error "Unexpected type definition")])))
+                              null
+                              decs))))
 
 (define (constructor-symbols c)
   (match c
@@ -63,25 +63,45 @@
          [_                                            null]))
 
 (define (expression-types exp)
-  (match exp
+  (dbg `(expression-types ,exp) (match exp
          [(list 'define-fun-rec
                 (list 'par p
-                      (list name args return body)))   (cons return (map cadr args))]
+                      (list name args return body)))   (remove* (symbols-in p)
+                                                                (symbols-in (cons return (map cadr args))))]
          [(list 'define-fun-rec name args return body) (cons return (map cadr args))]
          [(list 'define-fun     name args return body) (cons return (map cadr args))]
 
-         [(list 'declare-datatypes given decs)         (map car decs)]
+         [(list 'declare-datatypes given decs)         (append (map car decs)
+                                                               (remove* (symbols-in given)
+                                                                        (symbols-in (map (lambda (x) (constructor-types (cdr x))) decs))))]
          [(cons a b)                                   (append (expression-types a)
                                                                (expression-types b))]
-         [_                                            null]))
+         [_                                            null])))
+
+(define (constructor-types defs)
+  (match defs
+    [(cons h t) (append (con-types h) (constructor-types t))]
+    [_          null]))
+
+(define (con-types def)
+  ;; Given (Cons (Cons_1 a) (Cons_2 (list a))) we want '(a list)
+  (let* ([each (map (lambda (x) (symbols-in (cdr x))) (cdr def))]
+         [out  (apply append each)])
+    ;(eprintf (format "~a\n" `(GOT_CONSTRUCTOR_DEF ,def)))
+    ;(eprintf (format "~a\n" `(EXTRACTED_TYPES     ,out)))
+    out))
 
 (define (expression-symbols exp)
   (remove* (expression-types exp)
            (append (expression-constructors exp)
                    (expression-funs         exp))))
 
+(define (dbg msg x)
+  ;(eprintf (format "~a ~a\n" msg x))
+  x)
+
 (define (benchmark-types x)
-  (remove-duplicates (expression-types (read-benchmark x))))
+  (remove-duplicates (symbols-in (expression-types (read-benchmark x)))))
 
 (define (benchmark-symbols x)
   (remove-duplicates (expression-symbols (read-benchmark x))))

@@ -1,4 +1,5 @@
-#!/usr/bin/env bash
+#! /usr/bin/env nix-shell
+#! nix-shell -i bash -p racket
 
 # Look up function definitions. Since some names denote multiple functions, we
 # choose one arbitrarily, and give all the others unique names.
@@ -24,7 +25,7 @@ SWAP=$(echo "$INPUT" | toSwap)
 # since that goes really slowly
 
 # Get regular definitions, but filter out those which require swapping
-REGULAR=$(echo "$INPUT" | ./function_def.rkt | removeSwaps)
+REGULAR=$(echo "$INPUT" | racket function_def.rkt | removeSwaps)
 
 # Get any definitions which require swapping
 SWAPPED=$(echo "$SWAP" | getSwappedDefs)

@@ -1,7 +1,8 @@
-#!/usr/bin/env bash
+#! /usr/bin/env nix-shell
+#! nix-shell -i bash -p racket
 
 function customConstructors {
-    ./type_def.rkt
+    racket type_def.rkt
 }
 
 function builtInConstructors {

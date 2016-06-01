@@ -1,4 +1,5 @@
-#!/usr/bin/env bash
+#! /usr/bin/env nix-shell
+#! nix-shell -i bash -p racket
 
 function parts {
     grep '^(' | while read -r COMPOUND
@@ -10,7 +11,7 @@ function parts {
 }
 
 function customDatatypes {
-    ./type_def.rkt
+    racket type_def.rkt
 }
 
 function builtInDatatypes {
