@@ -48,7 +48,8 @@ MINS=0
 echo "$SYMS" | grep "min1" > /dev/null && MINS=$(( MINS + 1 ))
 echo "$SYMS" | grep "min2" > /dev/null && MINS=$(( MINS + 1 ))
 [[ "$MINS" -eq 1 ]]
-report "$?" "Simple redundant functions deduped"
+report "$?" "Simple redundant functions deduped" ||
+    echo -e "DEFS:\n$DEFS\n\nSYMS:\n$SYMS\n\nMINS: $MINS" 1>&2
 unset MINS
 
 GIVEN="
@@ -62,7 +63,5 @@ SYMS=$(echo "$DEFS"  | grep "fun3" | ./symbols_of_theorems.sh)
 
 echo "$SYMS" | grep "min1" > /dev/null
 report "$?" "References to discarded duplicates are replaced"
-
-echo "$DEFS"
 
 exit "$ERR"
