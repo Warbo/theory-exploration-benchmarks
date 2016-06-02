@@ -14,21 +14,6 @@ function report {
     fi
 }
 
-function function_def {
-    FD_IN=$(cat)
-    echo "$FD_IN" | grep -F "(define-fun $1 "
-    echo "$FD_IN" | grep    "(define-fun (par ([^)]*) ($1 "
-    echo "$FD_IN" | grep -F "(define-fun-rec $1 "
-    echo "$FD_IN" | grep    "(define-fun-rec (par ([^)]*) ($1 "
-    echo "$FD_IN" | grep    "(define-funs-rec" | while read -r REC_LINE
-    do
-        if echo "$REC_LINE" | ./rec_names.rkt | grep -Fx "$1" > /dev/null
-        then
-            echo "$REC_LINE"
-        fi
-    done
-}
-
 function path {
     # Prefix our argument with the benchmarks directory, to save us typing it
     # over and over
@@ -36,7 +21,7 @@ function path {
 }
 
 function haveDef {
-    DEF=$(echo "$DEFS" | function_def "$1")
+    DEF=$(echo "$DEFS" | ./get_fun_def.sh "$1-sentinel")
     COUNT=$(echo "$DEF" | grep '^.' | wc -l)
 
     [[ "$COUNT" -eq 1 ]]
@@ -53,14 +38,82 @@ haveDef "tip2015/sort_StoogeSort2IsSort.smt2zsplitAt"     "parameterised"
 haveDef "tip2015/sort_StoogeSort2IsSort.smt2ztake"        "parameterised recursive"
 haveDef "tip2015/sort_StoogeSort2IsSort.smt2stooge2sort2" "mutually recursive"
 
-exit
-
-FILES=$(find modules/tip-benchmarks/benchmarks -name "*.smt2" | head -n20)
+FILES="modules/tip-benchmarks/benchmarks/grammars/simp_expr_unambig3.smt2
+modules/tip-benchmarks/benchmarks/grammars/simp_expr_unambig1.smt2
+modules/tip-benchmarks/benchmarks/grammars/simp_expr_unambig2.smt2
+modules/tip-benchmarks/benchmarks/grammars/simp_expr_unambig5.smt2
+modules/tip-benchmarks/benchmarks/grammars/simp_expr_unambig4.smt2
+modules/tip-benchmarks/benchmarks/grammars/packrat_unambigPackrat.smt2
+modules/tip-benchmarks/benchmarks/isaplanner/prop_54.smt2
+modules/tip-benchmarks/benchmarks/isaplanner/prop_37.smt2
+modules/tip-benchmarks/benchmarks/isaplanner/prop_45.smt2
+modules/tip-benchmarks/benchmarks/isaplanner/prop_79.smt2"
 
 DEFS=$(echo "$FILES" | ./mk_defs.sh)
+SYMS=$(echo "$DEFS"  | ./symbols_of_theorems.rkt)
 
-echo "$DEFS" | symbols_of_theorems.rkt
+for SYM in grammars/simp_expr_unambig3.smt2append-sentinel     \
+           grammars/simp_expr_unambig3.smt2lin-sentinel        \
+           grammars/simp_expr_unambig1.smt2append-sentinel     \
+           grammars/simp_expr_unambig1.smt2lin-sentinel        \
+           grammars/simp_expr_unambig2.smt2append-sentinel     \
+           grammars/simp_expr_unambig2.smt2lin-sentinel        \
+           grammars/simp_expr_unambig5.smt2linTerm-sentinel    \
+           grammars/simp_expr_unambig5.smt2append-sentinel     \
+           grammars/simp_expr_unambig5.smt2lin-sentinel        \
+           grammars/simp_expr_unambig4.smt2append-sentinel     \
+           grammars/simp_expr_unambig4.smt2linTerm-sentinel    \
+           grammars/simp_expr_unambig4.smt2lin-sentinel        \
+           grammars/packrat_unambigPackrat.smt2append-sentinel \
+           grammars/packrat_unambigPackrat.smt2linA-sentinel   \
+           grammars/packrat_unambigPackrat.smt2linB-sentinel   \
+           grammars/packrat_unambigPackrat.smt2linS-sentinel   \
+           isaplanner/prop_54.smt2plus-sentinel                \
+           isaplanner/prop_54.smt2minus-sentinel               \
+           isaplanner/prop_37.smt2equal-sentinel               \
+           isaplanner/prop_37.smt2elem-sentinel                \
+           isaplanner/prop_37.smt2delete-sentinel              \
+           isaplanner/prop_45.smt2zip-sentinel                 \
+           isaplanner/prop_79.smt2minus-sentinel
+do
+    echo "$SYMS" | grep -Fx "$SYM" > /dev/null
+    report "$?" "Found '$SYM' in symbols"
+done
 
+DUPES=0
+NORMALISED=""
+while read -r SYM
+do
+    DEF=$(echo "$DEFS" | ./get_def.sh "$SYM")
+    COUNT=$(echo "$DEF" | grep '^.' | wc -l)
+
+    [[ "$COUNT" -eq 1 ]]
+    report "$?" "Got definition for '$SYM'" || {
+        echo -e "SYM: $SYM\nDEF:\n$DEF\n\n" 1>&2
+    }
+
+    if echo "$DEF" | grep "(declare-datatypes" > /dev/null
+    then
+        # SYM is a type or constructor
+        true
+    else
+        # SYM is a function
+        MSG="Normalised '$SYM' isn't a duplicate"
+
+        CANON=$(echo "$DEF"  | ./canonical_functions.rkt)
+        if echo "$NORMALISED" | grep -Fx "$CANON" | grep '^.' > /dev/null
+        then
+            report 1 "$MSG"
+            DUPES=1
+            echo -e "SYM: $SYM\nDEF: $DEF\nCANON: $CANON\nNORMALISED:\n$NORMALISED\n\n" 1>&2
+        else
+            report 0 "$MSG"
+        fi
+        NORMALISED=$(echo -e "$NORMALISED\n$CANON")
+    fi
+done < <(echo "$SYMS")
+
+[[ "$DUPES" -eq 0 ]]
 report "$?" "No duplicate functions"
 
 exit "$ERR"

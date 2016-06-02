@@ -5,7 +5,7 @@
 (require racket/include)
 (include "defs.rkt")
 
-(define given-symbols
-  (port->lines (current-input-port)))
+(define name
+  (getenv "NAME"))
 
-(show (collapse-defs given-symbols))
+(show (remove-duplicates (defs-of-stdin name)))

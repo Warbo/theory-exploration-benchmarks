@@ -8,13 +8,18 @@ function trim {
     grep -v "^(check-sat)"
 }
 
-DEFS=""
+function fixup {
+    TO_FIX=$(cat)
+    for NATIVE in Bool true false or and ite "=>"
+    do
+        TO_FIX=$(echo "$TO_FIX" | sed -e "s@[a-zA-Z0-9/._]*.smt2$NATIVE@$NATIVE@g")
+    done
+    echo "$TO_FIX"
+}
+
 while read -r FILE
 do
     NAME=$(basename "$FILE")
      DIR=$(basename "$(dirname "$FILE")")
-    NEW=$(NAME="$DIR/$NAME" racket qualify.rkt < "$FILE")
-    DEFS=$(echo -e "$DEFS\n$NEW" | trim)
+    NAME="$DIR/$NAME" racket qualify.rkt < "$FILE" | fixup | trim
 done
-
-echo "$DEFS"

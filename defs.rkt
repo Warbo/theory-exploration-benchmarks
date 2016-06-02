@@ -13,6 +13,13 @@
                                                        (expression-constructors b))]
          [_                                    null]))
 
+(define (expression-destructors exp)
+  (match exp
+    [(list 'declare-datatypes given decs) (destructors-from-def decs)]
+    [(cons a b)                           (append (expression-destructors a)
+                                                  (expression-destructors b))]
+    [_                                    null]))
+
 (define (symbols-in exp)
   (if (symbol? exp)
       (list exp)
@@ -24,6 +31,8 @@
              [(list 'let defs body)          (remove* (map car defs)
                                                       (append (symbols-in (map cdr defs))
                                                               (symbols-in body)))]
+             [(list 'as val typ)             (append (symbols-in val)
+                                                     (symbols-in typ))]
              [(cons a b)                     (append (symbols-in a)
                                                      (symbols-in b))]
              [_                              null])))
@@ -45,10 +54,23 @@
                               null
                               decs))))
 
+(define (destructors-from-def decs)
+  (symbols-in (foldl (lambda (dec got)
+                       (append got (match dec
+                                     [(cons type defs) (symbols-in (map destructor-symbols defs))]
+                                     [_                (error "Unexpected type def")])))
+                     null
+                     decs)))
+
 (define (constructor-symbols c)
   (match c
          [(cons name vars) (list name)]
          [_                (error "Unexpected constructor form")]))
+
+(define (destructor-symbols c)
+  (match c
+    [(cons name vars) (map car vars)]
+    [_                (error "Unexpected destructor form")]))
 
 (define (expression-funs exp)
   (match exp
@@ -114,6 +136,7 @@
 (define (expression-symbols exp)
   (remove* (expression-types exp)
            (append (expression-constructors exp)
+                   (expression-destructors  exp)
                    (expression-funs         exp))))
 
 (define (dbg msg x)
@@ -136,7 +159,7 @@
   (if (empty? all)
       expr
       (qualify-all name (cdr all) (replace-in (car all)
-                                              (string-append name (symbol->string (car all)))
+                                              (string-append name (symbol->string (car all)) "-sentinel")
                                               expr))))
 
 (define (replace-in old replacement expr)
@@ -164,3 +187,52 @@
 
 (define (symbols-of-theorem path)
   (benchmark-symbols (file->string path)))
+
+(define (defs-from sym exp)
+  (match exp
+    [(list 'declare-datatypes given decs) (find-defs sym given decs)]
+    [(cons a b)                           (append (defs-from sym a)
+                                                  (defs-from sym b))]
+    [_                                    null]))
+
+(define (find-defs sym given ty-decs)
+  (map (lambda (dec) (list 'declare-datatypes given (list dec)))
+       (filter (lambda (ty-dec)
+                 (any (lambda (con-dec)
+                        (equal? (symbol->string (car con-dec))
+                                sym))
+                      (cdr ty-dec)))
+               ty-decs)))
+
+(define (any f xs)
+  (match xs
+    [(cons a b) (or (f a) (any f b))]
+    [_          #f]))
+
+(define (files-with given)
+  (filter (lambda (path)
+            (member given (map symbol->string (symbols-of-theorem path))))
+          (theorem-files)))
+
+(define (defs-of-src src given)
+  (foldl (lambda (str rest)
+           (append (defs-from given (read-benchmark str))
+                   rest))
+         '()
+         src))
+
+(define (defs-of given)
+  (defs-of-src (map file->string (files-with given)) given))
+
+(define (defs-of-stdin given)
+  (defs-of-src (port->lines (current-input-port)) given))
+
+(define (unique-defs-of given)
+  (remove-duplicates (defs-of given)))
+
+(define (collapse-defs syms)
+  (foldl (lambda (sym rest)
+           (append (unique-defs-of sym)
+                   rest))
+         '()
+         syms))
