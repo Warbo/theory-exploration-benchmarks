@@ -32,53 +32,65 @@ function haveDef {
 
 DEFS=$(path "tip2015/sort_StoogeSort2IsSort.smt2" | ./mk_defs.sh)
 
+# Check each function declaration syntax
+
 haveDef "tip2015/sort_StoogeSort2IsSort.smt2sort2"        "plain"
 haveDef "tip2015/sort_StoogeSort2IsSort.smt2insert2"      "recursive"
 haveDef "tip2015/sort_StoogeSort2IsSort.smt2zsplitAt"     "parameterised"
 haveDef "tip2015/sort_StoogeSort2IsSort.smt2ztake"        "parameterised recursive"
 haveDef "tip2015/sort_StoogeSort2IsSort.smt2stooge2sort2" "mutually recursive"
 
-FILES="modules/tip-benchmarks/benchmarks/grammars/simp_expr_unambig3.smt2
-modules/tip-benchmarks/benchmarks/grammars/simp_expr_unambig1.smt2
-modules/tip-benchmarks/benchmarks/grammars/simp_expr_unambig2.smt2
-modules/tip-benchmarks/benchmarks/grammars/simp_expr_unambig5.smt2
+# Check a wider selection of symbols
+
+FILES="modules/tip-benchmarks/benchmarks/grammars/simp_expr_unambig1.smt2
 modules/tip-benchmarks/benchmarks/grammars/simp_expr_unambig4.smt2
 modules/tip-benchmarks/benchmarks/grammars/packrat_unambigPackrat.smt2
 modules/tip-benchmarks/benchmarks/isaplanner/prop_54.smt2
-modules/tip-benchmarks/benchmarks/isaplanner/prop_37.smt2
-modules/tip-benchmarks/benchmarks/isaplanner/prop_45.smt2
-modules/tip-benchmarks/benchmarks/isaplanner/prop_79.smt2"
+modules/tip-benchmarks/benchmarks/isaplanner/prop_37.smt2"
 
 DEFS=$(echo "$FILES" | ./mk_defs.sh)
-SYMS=$(echo "$DEFS"  | ./symbols_of_theorems.rkt)
+SYMS=$(echo "$DEFS"  | ./symbols_of_theorems.sh)
 
-for SYM in grammars/simp_expr_unambig3.smt2append-sentinel     \
-           grammars/simp_expr_unambig3.smt2lin-sentinel        \
-           grammars/simp_expr_unambig1.smt2append-sentinel     \
-           grammars/simp_expr_unambig1.smt2lin-sentinel        \
-           grammars/simp_expr_unambig2.smt2append-sentinel     \
-           grammars/simp_expr_unambig2.smt2lin-sentinel        \
-           grammars/simp_expr_unambig5.smt2linTerm-sentinel    \
-           grammars/simp_expr_unambig5.smt2append-sentinel     \
-           grammars/simp_expr_unambig5.smt2lin-sentinel        \
-           grammars/simp_expr_unambig4.smt2append-sentinel     \
-           grammars/simp_expr_unambig4.smt2linTerm-sentinel    \
-           grammars/simp_expr_unambig4.smt2lin-sentinel        \
-           grammars/packrat_unambigPackrat.smt2append-sentinel \
-           grammars/packrat_unambigPackrat.smt2linA-sentinel   \
-           grammars/packrat_unambigPackrat.smt2linB-sentinel   \
-           grammars/packrat_unambigPackrat.smt2linS-sentinel   \
-           isaplanner/prop_54.smt2plus-sentinel                \
-           isaplanner/prop_54.smt2minus-sentinel               \
-           isaplanner/prop_37.smt2equal-sentinel               \
-           isaplanner/prop_37.smt2elem-sentinel                \
-           isaplanner/prop_37.smt2delete-sentinel              \
-           isaplanner/prop_45.smt2zip-sentinel                 \
-           isaplanner/prop_79.smt2minus-sentinel
+for SYM in true-sentinel false-sentinel ite-sentinel or-sentinel
+do
+    ! echo "$SYMS" | grep -Fx "$SYM" > /dev/null
+    report "$?" "Native symbol '$SYM' was stripped"
+done
+
+SUBSET="grammars/simp_expr_unambig1.smt2append-sentinel
+grammars/simp_expr_unambig1.smt2lin-sentinel
+grammars/simp_expr_unambig4.smt2nil-sentinel
+grammars/simp_expr_unambig4.smt2cons-sentinel
+grammars/simp_expr_unambig4.smt2C-sentinel
+grammars/simp_expr_unambig4.smt2D-sentinel
+grammars/simp_expr_unambig4.smt2X-sentinel
+grammars/simp_expr_unambig4.smt2Y-sentinel
+grammars/simp_expr_unambig4.smt2Pl-sentinel
+grammars/simp_expr_unambig4.smt2Plus-sentinel
+grammars/simp_expr_unambig4.smt2EX-sentinel
+grammars/simp_expr_unambig4.smt2EY-sentinel
+grammars/simp_expr_unambig4.smt2head-sentinel
+grammars/simp_expr_unambig4.smt2tail-sentinel
+grammars/simp_expr_unambig4.smt2Plus_0-sentinel
+grammars/simp_expr_unambig4.smt2Plus_1-sentinel
+grammars/simp_expr_unambig4.smt2append-sentinel
+grammars/simp_expr_unambig4.smt2linTerm-sentinel
+grammars/simp_expr_unambig4.smt2lin-sentinel
+grammars/packrat_unambigPackrat.smt2append-sentinel
+grammars/packrat_unambigPackrat.smt2linA-sentinel
+grammars/packrat_unambigPackrat.smt2linB-sentinel
+grammars/packrat_unambigPackrat.smt2linS-sentinel
+isaplanner/prop_54.smt2plus-sentinel
+isaplanner/prop_54.smt2minus-sentinel
+isaplanner/prop_37.smt2equal-sentinel
+isaplanner/prop_37.smt2elem-sentinel
+isaplanner/prop_37.smt2delete-sentinel"
+
+while read -r SYM
 do
     echo "$SYMS" | grep -Fx "$SYM" > /dev/null
     report "$?" "Found '$SYM' in symbols"
-done
+done < <(echo "$SUBSET")
 
 DUPES=0
 NORMALISED=""
@@ -111,7 +123,7 @@ do
         fi
         NORMALISED=$(echo -e "$NORMALISED\n$CANON")
     fi
-done < <(echo "$SYMS")
+done < <(echo "$SUBSET")
 
 [[ "$DUPES" -eq 0 ]]
 report "$?" "No duplicate functions"

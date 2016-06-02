@@ -54,8 +54,18 @@ do
 done
 
 pushd benchmark_package > /dev/null
+
+if command -v hsConfig > /dev/null
+then
+    hsConfig 1>&2
+else
+    cabal configure 1>&2
+fi
+report "$?" "Can configure benchmark package"
+
 cabal build 1>&2
 report "$?" "Can build benchmark package"
+
 popd > /dev/null
 
 exit "$ERR"

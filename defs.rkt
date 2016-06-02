@@ -35,6 +35,10 @@
                                                      (symbols-in typ))]
              [(cons a b)                     (append (symbols-in a)
                                                      (symbols-in b))]
+             ['or                            null]
+             ['ite                           null]
+             ['true                          null]
+             ['false                         null]
              [_                              null])))
 
 (define (case-symbols c)
@@ -199,8 +203,12 @@
   (map (lambda (dec) (list 'declare-datatypes given (list dec)))
        (filter (lambda (ty-dec)
                  (any (lambda (con-dec)
-                        (equal? (symbol->string (car con-dec))
-                                sym))
+                        (or (equal? (symbol->string (car con-dec))
+                                    sym)
+                            (any (lambda (des-dec)
+                                   (equal? (symbol->string (car des-dec))
+                                           sym))
+                                 (cdr con-dec))))
                       (cdr ty-dec)))
                ty-decs)))
 
