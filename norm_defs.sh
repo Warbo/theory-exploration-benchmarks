@@ -19,6 +19,10 @@ SO_FAR=""
 NAME_REPLACEMENTS=""
 
 function findRedundancies {
+    racket find_redundancies.rkt
+}
+
+function findRedundanciesOld {
     # Find alpha-equivalent expressions in stdin, outputting entries for SO_FAR
     # and NAME_REPLACEMENTS
 
@@ -32,6 +36,9 @@ function findRedundancies {
 
         # Get the normalised form of this line
         NORM=$(echo "$LINE" | racket canonical_functions.rkt)
+
+        # Get the names defined in this line
+        THESE_NAMES=$(echo "$LINE" | racket rec_names.rkt)
 
         # Check if this normal form has been seen before
         if EXISTING=$(echo "$THESE_SO_FAR" | grep -F "$NORM")
@@ -50,20 +57,20 @@ function findRedundancies {
 
             echo "Found redundant line '$LINE'" 1>&2
 
-            TO_REPLACE=$(echo "$LINE" | racket rec_names.rkt)
-            REPLACE_WITH=$(echo "$EXISTING" | cut -f1 | racket rec_names.rkt)
+            REPLACE_WITH=$(echo "$EXISTING" | cut -f1 | tr ' ' '\n')
 
             # Output entries for NAME_REPLACEMENTS
             while read -r REP
             do
                 echo -e "NAME\t$REP"
-            done < <(paste <(echo "$TO_REPLACE") <(echo "$REPLACE_WITH"))
+            done < <(paste <(echo "$THESE_NAMES") <(echo "$REPLACE_WITH"))
 
             continue
         fi
 
         # Output a seen entry for SO_FAR and remember it locally too
-        THESE_SO_FAR=$(echo -e "$THESE_SO_FAR\n$LINE\t$NORM")
+         SPACE_NAMES=$(echo "$THESE_NAMES" | tr '\n' ' ')
+        THESE_SO_FAR=$(echo -e "$THESE_SO_FAR\n$SPACE_NAMES\t$NORM")
         echo -e "DEF\t$LINE\t$NORM"
     done
 }
@@ -84,7 +91,7 @@ function stripRedundancies {
                 KEEP=0
                 break
             fi
-        done < <(echo "$LINE" | ./rec_names.rkt | grep '^.')
+        done < <(echo "$LINE" | racket rec_names.rkt | grep '^.')
         [[ "$KEEP" -eq 0 ]] || echo "$LINE"
     done
 }

@@ -244,3 +244,171 @@
                    rest))
          '()
          syms))
+
+(define (norm expr)
+  (match expr
+    [(  list 'define-fun-rec (list 'par p         def))
+     (let ([rec (norm-params p def)])
+       (list 'define-fun-rec (list 'par (car rec) (cdr rec))))]
+
+    [(  list 'define-fun-rec name        args      return body)
+     (let ([rec       (norm-func args body)])
+       (list 'define-fun-rec norm-func-1 (car rec) return (replace-in name
+                                                                      norm-func-1
+                                                                      (cdr rec))))]
+
+    [(  list 'define-fun (list 'par p         def))
+     (let ([rec (norm-params p def)])
+       (list 'define-fun (list 'par (car rec) (cdr rec))))]
+
+    [(  list 'define-fun name        args      return body)
+     (let ([rec (norm-func args body)])
+       (list 'define-fun norm-func-1 (car rec) return (replace-in name
+                                                                  norm-func-1
+                                                                  (cdr rec))))]
+
+    [  (list 'declare-datatypes given     decs)
+     (let* ([norm-decs (norm-types decs)]
+            [rec       (norm-type-params given norm-decs)])
+       (list 'declare-datatypes (car rec) (cdr rec)))]
+
+    [(cons a b) (cons (norm a) (norm b))]
+
+    [_ expr]))
+
+(define (norm-params ps def)
+  (if (empty? ps)
+      (match def
+        [           (list name        args      return body)
+         (let* ([fun (norm-func args body)])
+           (list ps (list norm-func-1 (car fun) return (replace-in name
+                                                                   norm-func-1
+                                                                   (cadr fun)))))]
+        [_ (error "Unexpected parameterised function definition" def)])
+      (let* ([p   (car ps)]
+             [rec (norm-params (cdr ps) def)]
+             [v   (next-var rec)])
+        (list (cons v (car rec))
+              (replace-in p v (cdr rec))))))
+
+(define (norm-func args body)
+  (if (empty? args)
+      (list args (norm body))
+      (let* ([arg (car args)]
+             [rec (norm-func (cdr args) body)]
+             [v   (next-var rec)])
+        (list (cons (cons v (cdr arg)) (car rec))
+              (replace-in (car arg) v (cdr rec))))))
+
+(define norm-func-prefix "defining-function-")
+(define norm-func-1 (string->symbol (string-append norm-func-prefix "1")))
+
+(define (norm-types decs)
+  (if (empty? decs)
+      decs
+      (let ([rec (norm-types (cdr decs))])
+        (cons (norm-type (car decs) rec) rec))))
+
+(define (norm-type-params ps decs)
+  (if (empty? ps)
+      (list ps decs)
+      (let* ([rec  (norm-type-params (cdr ps) decs)]
+             [name (inc-name var-prefix (max-name var-prefix rec))])
+        (list (cons name (first rec))
+              (replace-in (car ps)
+                          name
+                          (second rec))))))
+
+(define (next-var expr)
+  (string->symbol
+   (string-append var-prefix
+                  (number->string (+ 1 (var-num (max-var expr)))))))
+
+(define (max-var expr)
+  (if (is-var? expr)
+      expr
+      (match expr
+        [(cons a b) (if (var-lt? (max-var a) (max-var b))
+                        (max-var b)
+                        (max-var a))]
+        [_ (string->symbol (string-append var-prefix "0"))])))
+
+(define (is-var? v)
+  (if (symbol? v)
+      (string-prefix? (symbol->string v) var-prefix)
+      #f))
+
+(define (var-lt? x y)
+  (< (var-num x) (var-num y)))
+
+(define (var-num x)
+  (string->number (substring (symbol->string x) (string-length var-prefix))))
+
+(define (norm-type dec rest)
+  (let ([name (inc-name type-prefix (max-name type-prefix rest))]
+        [cs   (norm-constructors (cdr dec) rest)])
+    (cons name (replace-in (car dec) name cs))))
+
+(define (inc-name pre n)
+  (string->symbol (string-append pre (number->string (+ 1 n)))))
+
+(define (norm-constructors cs rest)
+  (if (empty? cs)
+      cs
+      (let ([rec (norm-constructors (cdr cs) rest)])
+        (cons (norm-constructor (car cs) (list rest rec)) rec))))
+
+(define (norm-constructor c rest)
+  (let ([name (inc-name constructor-prefix (max-name constructor-prefix rest))])
+    (cons name (norm-destructors (cdr c) rest))))
+
+(define (norm-destructors ds rest)
+  (if (empty? ds)
+      ds
+      (let* ([rec  (norm-destructors (cdr ds) rest)]
+             [name (inc-name destructor-prefix (max-name destructor-prefix (list rest rec)))])
+        (cons (cons name (cdr (car ds))) rec))))
+
+(define        type-prefix "defining-type-")
+(define constructor-prefix "normalise-constructor-")
+(define  destructor-prefix "normalise-destructor-")
+(define         var-prefix "normalise-var-")
+
+(define (max-name pre expr)
+  (match expr
+    [(cons a b) (if (< (max-name pre a) (max-name pre b))
+                    (max-name pre b)
+                    (max-name pre a))]
+    [x          (name-num pre x)]))
+
+(define (name-num pre x)
+  (if (symbol? x)
+      (if (string-prefix? (symbol->string x) pre)
+          (string->number (substring (symbol->string x)
+                                     (string-length pre)))
+          0)
+      0))
+
+(define (names-in defs)
+  (match defs
+    [(list 'define-funs-rec decs defs)            (map car decs)]
+    [(list 'define-fun
+           (list 'par p
+                 (list name args return body)))   (list name)]
+    [(list 'define-fun name args return body)     (list name)]
+    [(list 'define-fun-rec
+           (list 'par p
+                 (list name args return body)))   (list name)]
+    [(list 'define-fun-rec name args return body) (list name)]
+    [(list 'declare-datatypes given decs)         (type-names decs)]
+    [(cons a b)                                   (append (names-in a) (names-in b))]
+    [_                                            null]))
+
+(define (type-names decs)
+  (apply append (map (lambda (dec)
+                       (cons (car dec) ; type name
+                             (apply append (map (lambda (con)
+                                                  (cons (car con) ; constructor name
+                                                        (map car (cdr con)))) ; destructor names
+                                                (cdr dec)))))
+                     decs)))
