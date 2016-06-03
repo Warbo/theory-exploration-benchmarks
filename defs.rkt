@@ -1,4 +1,5 @@
 (require racket/match)
+(require racket/trace)
 
 (define (read-benchmark x)
   (let* ([content (string-append "(\n" x "\n)")])
@@ -98,14 +99,21 @@
 
 (define (fun-rec-expressions decs defs)
   (match (list decs defs)
+    [(list (cons (list 'par ps (list name args return)) more-decs)
+           (cons body                                   more-defs))
+     (append (cons name (remove* (append ps (map car args))
+                                 (symbols-in body)))
+             (fun-rec-expressions more-decs more-defs))]
     [(list (cons (list name args return) more-decs)
            (cons body                    more-defs)) (append (cons name (remove* (map car args)
                                                                                  (symbols-in body)))
                                                              (fun-rec-expressions more-decs more-defs))]
     [_                                                null]))
 
+;(trace fun-rec-expressions)
+
 (define (expression-types exp)
-  (dbg `(expression-types ,exp) (match exp
+  (match exp
          [(list 'define-fun-rec
                 (list 'par p
                       (list name args return body)))   (remove* (symbols-in p)
@@ -122,7 +130,7 @@
                                                                         (symbols-in (map (lambda (x) (constructor-types (cdr x))) decs))))]
          [(cons a b)                                   (append (expression-types a)
                                                                (expression-types b))]
-         [_                                            null])))
+         [_                                            null]))
 
 (define (constructor-types defs)
   (match defs
@@ -144,7 +152,7 @@
                    (expression-funs         exp))))
 
 (define (dbg msg x)
-  ;(eprintf (format "~a ~a\n" msg x))
+  (eprintf (format "~a ~a\n" msg x))
   x)
 
 (define (benchmark-types x)
@@ -202,19 +210,19 @@
 (define (find-defs sym given ty-decs)
   (map (lambda (dec) (list 'declare-datatypes given (list dec)))
        (filter (lambda (ty-dec)
-                 (any (lambda (con-dec)
-                        (or (equal? (symbol->string (car con-dec))
-                                    sym)
-                            (any (lambda (des-dec)
-                                   (equal? (symbol->string (car des-dec))
-                                           sym))
-                                 (cdr con-dec))))
-                      (cdr ty-dec)))
+                 (any-of (lambda (con-dec)
+                           (or (equal? (symbol->string (car con-dec))
+                                       sym)
+                               (any-of (lambda (des-dec)
+                                         (equal? (symbol->string (car des-dec))
+                                                 sym))
+                                       (cdr con-dec))))
+                         (cdr ty-dec)))
                ty-decs)))
 
-(define (any f xs)
+(define (any-of f xs)
   (match xs
-    [(cons a b) (or (f a) (any f b))]
+    [(cons a b) (or (f a) (any-of f b))]
     [_          #f]))
 
 (define (files-with given)
@@ -249,47 +257,78 @@
   (match expr
     [(  list 'define-fun-rec (list 'par p         def))
      (let ([rec (norm-params p def)])
-       (list 'define-fun-rec (list 'par (car rec) (cdr rec))))]
+       (list 'define-fun-rec (list 'par (first rec) (second rec))))]
 
     [(  list 'define-fun-rec name        args      return body)
      (let ([rec       (norm-func args body)])
-       (list 'define-fun-rec norm-func-1 (car rec) return (replace-in name
+       (list 'define-fun-rec norm-func-1 (first rec) return (replace-in name
                                                                       norm-func-1
-                                                                      (cdr rec))))]
+                                                                      (second rec))))]
 
     [(  list 'define-fun (list 'par p         def))
      (let ([rec (norm-params p def)])
-       (list 'define-fun (list 'par (car rec) (cdr rec))))]
+       (list 'define-fun (list 'par (first rec) (second rec))))]
 
     [(  list 'define-fun name        args      return body)
      (let ([rec (norm-func args body)])
-       (list 'define-fun norm-func-1 (car rec) return (replace-in name
+       (list 'define-fun norm-func-1 (first rec) return (replace-in name
                                                                   norm-func-1
-                                                                  (cdr rec))))]
+                                                                  (second rec))))]
 
     [  (list 'declare-datatypes given     decs)
      (let* ([norm-decs (norm-types decs)]
             [rec       (norm-type-params given norm-decs)])
        (list 'declare-datatypes (car rec) (cdr rec)))]
 
+    [  (list 'case pat body)
+     (let* ([norm-body  (norm body)]
+            [rec        (norm-case pat norm-body)]
+            [norm-pat   (first rec)]
+            [norm-body2 (second rec)])
+       (list 'case norm-pat norm-body2))]
+
+    [(list 'lambda args body)
+     (let ([rec (norm-func args body)])
+       (list 'lambda (first rec) (second rec)))]
+
     [(cons a b) (cons (norm a) (norm b))]
 
     [_ expr]))
 
+(define (norm-case pat body)
+  (match pat
+    [(list con)    (list pat body)]
+    [(cons con ps) (let* ([rec       (norm-case2 ps body)]
+                          [norm-ps   (first rec)]
+                          [norm-body (second rec)])
+                     (list (cons con norm-ps) norm-body))]
+    [_             (list pat body)]))
+
+(define (norm-case2 ps body)
+  (if (empty? ps)
+      (list ps body)
+      (let* ([p         (car ps)]
+             [rec       (norm-case2 (cdr ps) body)]
+             [norm-ps   (first rec)]
+             [norm-body (second rec)]
+             [name      (next-var (list norm-ps norm-body))])
+        (list (cons name norm-ps)
+              (replace-in p name norm-body)))))
+
 (define (norm-params ps def)
   (if (empty? ps)
       (match def
-        [           (list name        args      return body)
+        [           (list name        args        return body)
          (let* ([fun (norm-func args body)])
-           (list ps (list norm-func-1 (car fun) return (replace-in name
-                                                                   norm-func-1
-                                                                   (cadr fun)))))]
+           (list ps (list norm-func-1 (first fun) return (replace-in name
+                                                                     norm-func-1
+                                                                     (second fun)))))]
         [_ (error "Unexpected parameterised function definition" def)])
       (let* ([p   (car ps)]
              [rec (norm-params (cdr ps) def)]
              [v   (next-var rec)])
-        (list (cons v (car rec))
-              (replace-in p v (cdr rec))))))
+        (list (cons v (first rec))
+              (replace-in p v (second rec))))))
 
 (define (norm-func args body)
   (if (empty? args)
@@ -297,8 +336,8 @@
       (let* ([arg (car args)]
              [rec (norm-func (cdr args) body)]
              [v   (next-var rec)])
-        (list (cons (cons v (cdr arg)) (car rec))
-              (replace-in (car arg) v (cdr rec))))))
+        (list (cons (cons v (cdr arg)) (first rec))
+              (replace-in (car arg) v (second rec))))))
 
 (define norm-func-prefix "defining-function-")
 (define norm-func-1 (string->symbol (string-append norm-func-prefix "1")))
@@ -328,10 +367,10 @@
   (if (is-var? expr)
       expr
       (match expr
-        [(cons a b) (if (var-lt? (max-var a) (max-var b))
-                        (max-var b)
-                        (max-var a))]
-        [_ (string->symbol (string-append var-prefix "0"))])))
+        [(cons a b) (let ([ma (max-var a)]
+                          [mb (max-var b)])
+                      (if (var-lt? ma mb) mb ma))]
+        [_          (string->symbol (string-append var-prefix "0"))])))
 
 (define (is-var? v)
   (if (symbol? v)
@@ -376,9 +415,9 @@
 
 (define (max-name pre expr)
   (match expr
-    [(cons a b) (if (< (max-name pre a) (max-name pre b))
-                    (max-name pre b)
-                    (max-name pre a))]
+    [(cons a b) (let ([ma (max-name pre a)]
+                      [mb (max-name pre b)])
+                  (if (< ma mb) mb ma))]
     [x          (name-num pre x)]))
 
 (define (name-num pre x)

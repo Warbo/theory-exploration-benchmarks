@@ -19,11 +19,6 @@
                          sym))
                ty-decs)))
 
-(define (any f xs)
-  (match xs
-         [(cons a b) (or (f a) (any f b))]
-         [_          #f]))
-
 (define given-symbols
   (port->lines (current-input-port)))
 

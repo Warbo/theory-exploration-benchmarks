@@ -6,9 +6,11 @@ function report {
     if [[ "$1" -eq 0 ]]
     then
         echo "ok - $2"
+        return 0
     else
         echo "not ok - $2"
         ERR=1
+        return 1
     fi
 }
 
@@ -38,6 +40,9 @@ SYMS=$(./symbols_of_theorems.rkt < "$F")
 TYP="constructor"
 shouldFind Pos Neg Z S P N
 
+TYP="destructor"
+shouldFind p P_0 N_0
+
 TYP="function"
 shouldFind toInteger sign plus2 opposite timesSign mult minus plus absVal times
 
@@ -45,7 +50,7 @@ TYP="type"
 shouldNotFind Nat Sign Integer
 
 TYP="variable"
-shouldNotFind x y z m m2 n n2 n3 o p P_0 N_0
+shouldNotFind x y z m m2 n n2 n3 o
 
 TYP="keyword"
 shouldNotFind match case define-fun declare-datatypes define-fun assert-not \
@@ -53,7 +58,9 @@ shouldNotFind match case define-fun declare-datatypes define-fun assert-not \
 
 THEOREMS=$(echo "$SYMS" | ./theorems_from_symbols.rkt)
 echo "$THEOREMS" | contains "$F"
-report "$?" "Theorem '$F' allowed by its own symbols"
+report "$?" "Theorem '$F' allowed by its own symbols" || {
+    echo -e "SYMS:\n$SYMS\n\nTHEOREMS:\n$THEOREMS\n\nF: $F" 1>&2
+}
 
 [[ "$ERR" -eq 0 ]]
 report "$?" "Error code OK"

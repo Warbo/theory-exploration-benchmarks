@@ -76,15 +76,13 @@ grammars/simp_expr_unambig4.smt2Plus_1-sentinel
 grammars/simp_expr_unambig4.smt2append-sentinel
 grammars/simp_expr_unambig4.smt2linTerm-sentinel
 grammars/simp_expr_unambig4.smt2lin-sentinel
-grammars/packrat_unambigPackrat.smt2append-sentinel
-grammars/packrat_unambigPackrat.smt2linA-sentinel
-grammars/packrat_unambigPackrat.smt2linB-sentinel
-grammars/packrat_unambigPackrat.smt2linS-sentinel
-isaplanner/prop_54.smt2plus-sentinel
-isaplanner/prop_54.smt2minus-sentinel
-isaplanner/prop_37.smt2equal-sentinel
-isaplanner/prop_37.smt2elem-sentinel
-isaplanner/prop_37.smt2delete-sentinel"
+tip2015/sort_StoogeSort2IsSort.smt2nil-sentinel
+tip2015/sort_StoogeSort2IsSort.smt2cons-sentinel
+tip2015/sort_StoogeSort2IsSort.smt2sort2-sentinel
+tip2015/sort_StoogeSort2IsSort.smt2insert2-sentinel
+tip2015/sort_StoogeSort2IsSort.smt2zsplitAt-sentinel
+tip2015/sort_StoogeSort2IsSort.smt2ztake-sentinel
+tip2015/sort_StoogeSort2IsSort.smt2stooge2sort2-sentinel"
 
 ALL_FOUND=1
 while read -r SYM
@@ -102,9 +100,15 @@ ALL_SUFF=1
 DEFS=$(echo "$FILES" | bash mk_defs.sh)
 while read -r SYM
 do
-    echo "$SYM" | grep    '\.smt2'     > /dev/null || ALL_QUAL=0
-    echo "$SYM" | grep -- '-sentinel$' > /dev/null || ALL_SUFF=0
-done < <(echo "$DEFS" | bash symbols_of_theorems.sh)
+    echo "$SYM" | grep    '\.smt2'     > /dev/null || {
+        ALL_QUAL=0
+        echo -e "Unqualified symbol: $SYM" 1>&2
+    }
+    echo "$SYM" | grep -- '-sentinel$' > /dev/null || {
+        ALL_SUFF=0
+        echo -e "Unsuffixed symbol: $SYM" 1>&2
+    }
+done < <(echo "$DEFS" | bash symbols_of_theorems.sh | grep '^.')
 
 [[ "$ALL_QUAL" -eq 1 ]]
 report "$?" "All symbols are qualified"
@@ -115,32 +119,52 @@ report "$?" "All symbols are suffixed"
 ###
 
 DUPES=0
-NORMALISED=""
+NORMALISED=$(echo "$DEFS" | racket canonical_functions.rkt)
+while read -r NORM
+do
+    COUNT=$(echo "$NORMALISED" | grep -cF "$NORM")
+    [[ "$COUNT" -eq 1 ]] || {
+        DUPES=1
+        echo -e "Duplicate normalised forms!\nCOUNT: $COUNT\nNORM:$NORM" 1>&2
+    }
+done < <(echo "$NORMALISED")
+
+[[ "$DUPES" -eq 0 ]]
+report "$?" "No alpha-equivalent duplicates in result"
+
+GOT_QUAL=1
+INTACT=1
 while read -r SYM
 do
       DEF=$(echo "$QUAL" | bash get_def.sh "$SYM")
     COUNT=$(echo "$DEF"  | grep '^.' | wc -l)
 
-    [[ "$COUNT" -eq 1 ]]
-    report "$?" "Got definition for '$SYM'" #|| {
-        #echo -e "SYM: $SYM\nDEF:\n$DEF\n\n" 1>&2
-    #}
+    [[ "$COUNT" -eq 1 ]] || {
+        GOT_QUAL=0
+        echo -e "SYM: $SYM\nDEF:\n$DEF\n\n" 1>&2
+    }
 
-    # MSG="Normalised '$SYM' isn't a duplicate"
+      NORM_DEF=$(echo "$QUAL" | bash get_def.sh "$SYM")
+    NORM_COUNT=$(echo "$DEF"  | grep '^.' | wc -l)
 
-    # CANON=$(echo "$DEF"  | racket canonical_functions.rkt)
-    # if echo "$NORMALISED" | grep -Fx "$CANON" | grep '^.' > /dev/null
-    # then
-    #     report 1 "$MSG"
-    #     DUPES=1
-    #     echo -e "SYM: $SYM\nDEF: $DEF\nCANON: $CANON\nNORMALISED:\n$NORMALISED\n\n" 1>&2
-    # else
-    #     report 0 "$MSG"
-    # fi
-    # NORMALISED=$(echo -e "$NORMALISED\n$CANON")
+    [[ "$NORM_COUNT" -lt 2 ]] || {
+        echo "Got more than one definition of '$SYM'!" 1>&2
+    }
+
+    if [[ "$NORM_COUNT" -eq 1 ]]
+    then
+        [[ "x$DEF" = "x$NORM_DEF" ]] || {
+            INTACT=0
+            echo    "Mangled function definition!" 1>&2
+            echo -e "DEF: $DEF\nNORM_DEF: $NORM_DEF" 1>&2
+        }
+    fi
 done < <(echo "$SUBSET")
 
-[[ "$DUPES" -eq 0 ]]
-report "$?" "No duplicate functions"
+[[ "$GOT_QUAL" -eq 1 ]]
+report "$?" "All expected symbols got qualified"
+
+[[ "$INTACT" -eq 1 ]]
+report "$?" "Duplicate removal keeps definitions intact"
 
 exit "$ERR"
