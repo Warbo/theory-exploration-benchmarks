@@ -50,8 +50,8 @@ function findRedundancies {
 
             echo "Found redundant line '$LINE'" 1>&2
 
-            TO_REPLACE=$(echo "$LINE" | ./rec_names.rkt)
-            REPLACE_WITH=$(echo "$EXISTING" | cut -f1 | ./rec_names.rkt)
+            TO_REPLACE=$(echo "$LINE" | racket rec_names.rkt)
+            REPLACE_WITH=$(echo "$EXISTING" | cut -f1 | racket rec_names.rkt)
 
             # Output entries for NAME_REPLACEMENTS
             while read -r REP

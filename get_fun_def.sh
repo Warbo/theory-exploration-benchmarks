@@ -1,4 +1,5 @@
-#!/usr/bin/env bash
+#! /usr/bin/env nix-shell
+#! nix-shell -i bash -p racket
 
 # Return any lines of stdin which are function definitions of $1
 
@@ -9,7 +10,7 @@ echo "$INPUT" | grep -F "(define-fun-rec $1 "
 echo "$INPUT" | grep    "(define-fun-rec (par ([^)]*) ($1 "
 echo "$INPUT" | grep    "(define-funs-rec" | while read -r REC_LINE
 do
-    if echo "$REC_LINE" | ./rec_names.rkt | grep -Fx "$1" > /dev/null
+    if echo "$REC_LINE" | racket rec_names.rkt | grep -Fx "$1" > /dev/null
     then
         echo "$REC_LINE"
     fi

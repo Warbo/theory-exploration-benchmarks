@@ -21,7 +21,7 @@ function path {
 }
 
 function haveDef {
-    DEF=$(echo "$DEFS" | ./get_fun_def.sh "$1-sentinel")
+    DEF=$(echo "$DEFS" | bash get_fun_def.sh "$1-sentinel")
     COUNT=$(echo "$DEF" | grep '^.' | wc -l)
 
     [[ "$COUNT" -eq 1 ]]
@@ -30,9 +30,9 @@ function haveDef {
     }
 }
 
-DEFS=$(path "tip2015/sort_StoogeSort2IsSort.smt2" | ./mk_defs.sh)
-
 # Check each function declaration syntax
+
+DEFS=$(path "tip2015/sort_StoogeSort2IsSort.smt2" | bash mk_defs.sh)
 
 haveDef "tip2015/sort_StoogeSort2IsSort.smt2sort2"        "plain"
 haveDef "tip2015/sort_StoogeSort2IsSort.smt2insert2"      "recursive"
@@ -40,22 +40,22 @@ haveDef "tip2015/sort_StoogeSort2IsSort.smt2zsplitAt"     "parameterised"
 haveDef "tip2015/sort_StoogeSort2IsSort.smt2ztake"        "parameterised recursive"
 haveDef "tip2015/sort_StoogeSort2IsSort.smt2stooge2sort2" "mutually recursive"
 
-# Check a wider selection of symbols
+# Check a wider selection of files
 
 FILES="modules/tip-benchmarks/benchmarks/grammars/simp_expr_unambig1.smt2
 modules/tip-benchmarks/benchmarks/grammars/simp_expr_unambig4.smt2
-modules/tip-benchmarks/benchmarks/grammars/packrat_unambigPackrat.smt2
-modules/tip-benchmarks/benchmarks/isaplanner/prop_54.smt2
-modules/tip-benchmarks/benchmarks/isaplanner/prop_37.smt2"
+modules/tip-benchmarks/benchmarks/tip2015/sort_StoogeSort2IsSort.smt2"
 
-DEFS=$(echo "$FILES" | ./mk_defs.sh)
-SYMS=$(echo "$DEFS"  | ./symbols_of_theorems.sh)
+QUAL=$(echo "$FILES" | bash qual_all.sh)
+SYMS=$(echo "$QUAL"  | bash symbols_of_theorems.sh)
 
 for SYM in true-sentinel false-sentinel ite-sentinel or-sentinel
 do
     ! echo "$SYMS" | grep -Fx "$SYM" > /dev/null
     report "$?" "Native symbol '$SYM' was stripped"
 done
+
+###
 
 SUBSET="grammars/simp_expr_unambig1.smt2append-sentinel
 grammars/simp_expr_unambig1.smt2lin-sentinel
@@ -86,43 +86,58 @@ isaplanner/prop_37.smt2equal-sentinel
 isaplanner/prop_37.smt2elem-sentinel
 isaplanner/prop_37.smt2delete-sentinel"
 
+ALL_FOUND=1
 while read -r SYM
 do
-    echo "$SYMS" | grep -Fx "$SYM" > /dev/null
-    report "$?" "Found '$SYM' in symbols"
+    echo "$SYMS" | grep -Fx "$SYM" > /dev/null || ALL_FOUND=0
 done < <(echo "$SUBSET")
+
+[[ "$ALL_FOUND" -eq 1 ]]
+report "$?" "Found expected symbols"
+
+###
+
+ALL_QUAL=1
+ALL_SUFF=1
+DEFS=$(echo "$FILES" | bash mk_defs.sh)
+while read -r SYM
+do
+    echo "$SYM" | grep    '\.smt2'     > /dev/null || ALL_QUAL=0
+    echo "$SYM" | grep -- '-sentinel$' > /dev/null || ALL_SUFF=0
+done < <(echo "$DEFS" | bash symbols_of_theorems.sh)
+
+[[ "$ALL_QUAL" -eq 1 ]]
+report "$?" "All symbols are qualified"
+
+[[ "$ALL_SUFF" -eq 1 ]]
+report "$?" "All symbols are suffixed"
+
+###
 
 DUPES=0
 NORMALISED=""
 while read -r SYM
 do
-    DEF=$(echo "$DEFS" | ./get_def.sh "$SYM")
-    COUNT=$(echo "$DEF" | grep '^.' | wc -l)
+      DEF=$(echo "$QUAL" | bash get_def.sh "$SYM")
+    COUNT=$(echo "$DEF"  | grep '^.' | wc -l)
 
     [[ "$COUNT" -eq 1 ]]
-    report "$?" "Got definition for '$SYM'" || {
-        echo -e "SYM: $SYM\nDEF:\n$DEF\n\n" 1>&2
-    }
+    report "$?" "Got definition for '$SYM'" #|| {
+        #echo -e "SYM: $SYM\nDEF:\n$DEF\n\n" 1>&2
+    #}
 
-    if echo "$DEF" | grep "(declare-datatypes" > /dev/null
-    then
-        # SYM is a type or constructor
-        true
-    else
-        # SYM is a function
-        MSG="Normalised '$SYM' isn't a duplicate"
+    # MSG="Normalised '$SYM' isn't a duplicate"
 
-        CANON=$(echo "$DEF"  | ./canonical_functions.rkt)
-        if echo "$NORMALISED" | grep -Fx "$CANON" | grep '^.' > /dev/null
-        then
-            report 1 "$MSG"
-            DUPES=1
-            echo -e "SYM: $SYM\nDEF: $DEF\nCANON: $CANON\nNORMALISED:\n$NORMALISED\n\n" 1>&2
-        else
-            report 0 "$MSG"
-        fi
-        NORMALISED=$(echo -e "$NORMALISED\n$CANON")
-    fi
+    # CANON=$(echo "$DEF"  | racket canonical_functions.rkt)
+    # if echo "$NORMALISED" | grep -Fx "$CANON" | grep '^.' > /dev/null
+    # then
+    #     report 1 "$MSG"
+    #     DUPES=1
+    #     echo -e "SYM: $SYM\nDEF: $DEF\nCANON: $CANON\nNORMALISED:\n$NORMALISED\n\n" 1>&2
+    # else
+    #     report 0 "$MSG"
+    # fi
+    # NORMALISED=$(echo -e "$NORMALISED\n$CANON")
 done < <(echo "$SUBSET")
 
 [[ "$DUPES" -eq 0 ]]
