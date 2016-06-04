@@ -5,14 +5,14 @@
 (require racket/include)
 (include "defs.rkt")
 
-(define (defs-from sym exp)
+(define (type-defs-from sym exp)
   (match exp
-         [(list 'declare-datatypes given decs) (find-defs sym given decs)]
-         [(cons a b)                           (append (defs-from sym a)
-                                                       (defs-from sym b))]
+         [(list 'declare-datatypes given decs) (find-type-defs sym given decs)]
+         [(cons a b)                           (append (type-defs-from sym a)
+                                                       (type-defs-from sym b))]
          [_                                    null]))
 
-(define (find-defs sym given ty-decs)
+(define (find-type-defs sym given ty-decs)
   (map (lambda (dec) (list 'declare-datatypes given (list dec)))
        (filter (lambda (ty-dec)
                  (equal? (format "~a" (car ty-dec))
@@ -22,24 +22,24 @@
 (define given-symbols
   (port->lines (current-input-port)))
 
-(define (files-with given)
+(define (files-with-type given)
   (filter (lambda (path)
             (member given (map (lambda (x) (format "~a" x))
                                (types-of-theorem path))))
           (theorem-files)))
 
-(define (defs-of given)
+(define (defs-of-type given)
   (foldl (lambda (path rest)
-           (append (defs-from given (read-benchmark (file->string path)))
+           (append (type-defs-from given (read-benchmark (file->string path)))
                    rest))
          '()
-         (files-with given)))
+         (files-with-type given)))
 
-(define (unique-defs-of given)
-  (remove-duplicates (defs-of given)))
+(define (unique-defs-of-type given)
+  (remove-duplicates (defs-of-type given)))
 
 (show (foldl (lambda (sym rest)
-               (append (unique-defs-of sym)
+               (append (unique-defs-of-type sym)
                        rest))
              '()
              given-symbols))

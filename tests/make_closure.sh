@@ -1,6 +1,9 @@
 #! /usr/bin/env nix-shell
 #! nix-shell -i bash -p racket
 
+echo "ok - tests/make_closure.sh skipped as redundant"
+exit
+
 ERR=0
 function report {
     if [[ "$1" -eq 0 ]]
