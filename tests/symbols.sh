@@ -21,48 +21,64 @@ function contains {
 function shouldFind {
     for SYM in "$@"
     do
-        echo "$SYMS" | contains "$SYM"
-        report "$?" "Symbols of '$F' should contain $TYP '$SYM'"
+        echo "$SYMS" | contains "$SYM" || {
+            echo -e "Didn't find '$SYM' in:\n$SYMS\n\n" 1>&2
+            return 1
+        }
     done
+    return 0
 }
 
 function shouldNotFind {
     for SYM in "$@"
     do
-        ! echo "$SYMS" | contains "$SYM"
-        report "$?" "Symbols of '$F' shouldn't contain $TYP '$SYM'"
+        echo "$SYMS" | contains "$SYM" && {
+            echo -e "Found '$SYM' in:\n$SYMS\n\n" 1>&2
+            return 1
+        }
+        echo "$SYMS" | contains "$SYM-sentinel" && {
+            echo -e "Found '$SYM' in:\n$SYMS\n\n" 1>&2
+            return 1
+        }
     done
+    return 0
 }
 
 F="modules/tip-benchmarks/benchmarks/tip2015/int_right_distrib.smt2"
 SYMS=$(./symbols_of_theorems.rkt < "$F")
+report "$?" "Can get symbols from '$F'"
 
-TYP="constructor"
 shouldFind Pos Neg Z S P N
+report "$?" "Found constructors"
 
-TYP="destructor"
 shouldFind p P_0 N_0
+report "$?" "Found destructors"
 
-TYP="function"
 shouldFind toInteger sign plus2 opposite timesSign mult minus plus absVal times
+report "$?" "Found functions"
 
-TYP="type"
-shouldNotFind Nat Sign Integer
+shouldNotFind Nat Sign Integer "=>"
+report "$?" "Types stripped"
 
-TYP="variable"
 shouldNotFind x y z m m2 n n2 n3 o
+report "$?" "Variables stripped"
 
-TYP="keyword"
 shouldNotFind match case define-fun declare-datatypes define-fun assert-not \
               forall = check-sat
+report "$?" "Keywords stripped"
 
 THEOREMS=$(echo "$SYMS" | ./theorems_from_symbols.rkt)
-echo "$THEOREMS" | contains "$F"
-report "$?" "Theorem '$F' allowed by its own symbols" || {
-    echo -e "SYMS:\n$SYMS\n\nTHEOREMS:\n$THEOREMS\n\nF: $F" 1>&2
-}
+report "$?" "Got theorems from symbols"
 
-[[ "$ERR" -eq 0 ]]
-report "$?" "Error code OK"
+echo "$THEOREMS" | contains "$F"
+report "$?" "Theorem '$F' allowed by its own symbols" ||
+    echo -e "SYMS:\n$SYMS\n\nTHEOREMS:\n$THEOREMS\n\nF: $F" 1>&2
+
+F="modules/tip-benchmarks/benchmarks/tip2015/list_PairEvens.smt2"
+SYMS=$(./symbols_of_theorems.rkt < "$F")
+report "$?" "Can get symbols from '$F'"
+
+shouldNotFind "=>"
+report "$?" "Higher-order types stripped"
 
 exit "$ERR"

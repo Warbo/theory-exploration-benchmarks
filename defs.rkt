@@ -22,25 +22,35 @@
     [_                                    null]))
 
 (define (symbols-in exp)
-  (if (symbol? exp)
-      (list exp)
-      (match exp
-             [(cons 'match (cons arg cases)) (append (symbols-in arg)
-                                                     (symbols-in (map case-symbols cases)))]
-             [(list 'lambda args body)       (remove* (map car args)
-                                                      (symbols-in body))]
-             [(list 'let defs body)          (remove* (map car defs)
-                                                      (append (symbols-in (map cdr defs))
-                                                              (symbols-in body)))]
-             [(list 'as val typ)             (append (symbols-in val)
-                                                     (symbols-in typ))]
-             [(cons a b)                     (append (symbols-in a)
-                                                     (symbols-in b))]
-             ['or                            null]
-             ['ite                           null]
-             ['true                          null]
-             ['false                         null]
-             [_                              null])))
+  (match exp
+    [(cons 'match (cons arg cases)) (append (symbols-in arg)
+                                            (symbols-in (map case-symbols cases)))]
+    [(list 'lambda args body)       (remove* (map car args)
+                                             (symbols-in body))]
+    [(list 'let defs body)          (remove* (map car defs)
+                                             (append (symbols-in (map cdr defs))
+                                                     (symbols-in body)))]
+    [(list 'as val typ)             (append (symbols-in val)
+                                            (symbols-in typ))]
+    [(cons a b)                     (append (symbols-in a)
+                                            (symbols-in b))]
+    ['and                           null]
+    ['or                            null]
+    ['xor                           null]
+    ['iff                           null]
+    ['ite                           null]
+    ['true                          null]
+    ['false                         null]
+    ['not                           null]
+    ['implies                       null]
+    ['distinct                      null]
+    ['@                             null]
+    ['=                             null]
+    ['<=                            null]
+    ['-                             null]
+    ['+                             null]
+    ['div                           null]
+    [_                              (if (symbol? exp) (list exp) null)]))
 
 (define (case-symbols c)
   (match c
