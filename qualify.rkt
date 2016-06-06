@@ -9,6 +9,6 @@
   (read-benchmark (port->string (current-input-port))))
 
 (define name
-  (getenv "NAME"))
+  (string-replace (getenv "NAME") "'" "_tick_"))
 
 (show (qualify name given))

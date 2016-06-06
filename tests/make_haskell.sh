@@ -26,7 +26,8 @@ function make_sig {
 for F in "$DIR/isaplanner/prop_54.smt2" \
          "$DIR/tip2015/propositional_AndIdempotent.smt2" \
          "$DIR/isaplanner/prop_36.smt2" \
-         "$DIR/tip2015/sort_MSortTDPermutes.smt2"
+         "$DIR/tip2015/sort_MSortTDPermutes.smt2" \
+         "$DIR/tip2015/tree_sort_SortPermutes'.smt2"
 do
     SIG=$(echo "$F" | make_sig)
     report "$?" "Made Haskell file for '$F'" || {
@@ -37,18 +38,15 @@ done
 
 # Try making a signature of a few random files
 
-for N in 1 3 10 50
+for N in 1 3 10
 do
     FILES=$(find "$DIR" -name "*.smt2" | shuf | head -n$N)
-
-    ALL_MSG="All symbols form signature"
 
     SIG=$(echo "$FILES" | make_sig)
     report "$?" "Made Haskell for $N files" || {
         echo -e "FILES:\n$FILES\n\nSIG:\n$SIG\n\n" 1>&2
         break  # Not worth trying larger samples
     }
-    echo -e "SIG:\n$SIG\n\nFILES:\n$FILES\n\n" 1>&2
 done
 
 exit "$ERR"
