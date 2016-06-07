@@ -25,11 +25,11 @@ function checkNormal {
 
 checkNormal "function" \
             "(define-fun sort2 ((x Int) (y Int)) (list Int) (ite (<= x y) (cons x (cons y (as nil (list Int)))) (cons y (cons x (as nil (list Int))))))" \
-            "(define-fun defining-function-1 ((normalise-var-2 Int) (normalise-var-1 Int)) (list Int) ((((ite (<= normalise-var-2 normalise-var-1) (cons normalise-var-2 (cons normalise-var-1 (as nil (list Int)))) (cons normalise-var-1 (cons normalise-var-2 (as nil (list Int)))))))))"
+            "(define-fun defining-function-1 ((normalise-var-2 Int) (normalise-var-1 Int)) (list Int) (ite (<= normalise-var-2 normalise-var-1) (cons normalise-var-2 (cons normalise-var-1 (as nil (list Int)))) (cons normalise-var-1 (cons normalise-var-2 (as nil (list Int))))))"
 
 checkNormal "parameterised function" \
             "(define-fun (par (a) (zsplitAt ((x Int) (y (list a))) (Pair (list a) (list a)) (Pair2 (ztake x y) (zdrop x y)))))" \
-            "(define-fun (par (normalise-var-3) (((defining-function-1 ((normalise-var-2 Int) (normalise-var-1 (list normalise-var-3))) (Pair (list normalise-var-3) (list normalise-var-3)) (((Pair2 (ztake normalise-var-2 normalise-var-1) (zdrop normalise-var-2 normalise-var-1)))))))))"
+            "(define-fun (par (normalise-var-3) (defining-function-1 ((normalise-var-2 Int) (normalise-var-1 (list normalise-var-3))) (Pair (list normalise-var-3) (list normalise-var-3)) (Pair2 (ztake normalise-var-2 normalise-var-1) (zdrop normalise-var-2 normalise-var-1)))))"
 
 checkNormal "datatype" \
             "(declare-datatypes (a) ((list (nil) (cons (head a) (tail (list a))))))" \
