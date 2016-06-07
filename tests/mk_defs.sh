@@ -136,16 +136,17 @@ GOT_QUAL=1
 INTACT=1
 while read -r SYM
 do
+    printf '.' 1>&2
       DEF=$(echo "$QUAL" | bash get_def.sh "$SYM")
-    COUNT=$(echo "$DEF"  | grep '^.' | wc -l)
+    COUNT=$(echo "$DEF"  | grep -c '^.')
 
     [[ "$COUNT" -eq 1 ]] || {
         GOT_QUAL=0
         echo -e "SYM: $SYM\nDEF:\n$DEF\n\n" 1>&2
     }
 
-      NORM_DEF=$(echo "$QUAL" | bash get_def.sh "$SYM")
-    NORM_COUNT=$(echo "$DEF"  | grep '^.' | wc -l)
+      NORM_DEF=$(echo "$DEFS"     | bash get_def.sh "$SYM")
+    NORM_COUNT=$(echo "$NORM_DEF" | grep -c '^.')
 
     [[ "$NORM_COUNT" -lt 2 ]] || {
         echo "Got more than one definition of '$SYM'!" 1>&2

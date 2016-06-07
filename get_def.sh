@@ -3,5 +3,5 @@
 
 INPUT=$(cat)
 
-echo "$INPUT" | bash get_fun_def.sh "$1"
-echo "$INPUT" | NAME="$1" racket get_con_def.rkt
+echo "$INPUT" | grep -F "$1" | bash get_fun_def.sh "$1"
+echo "$INPUT" | grep -F "$1" | NAME="$1" racket get_con_def.rkt
