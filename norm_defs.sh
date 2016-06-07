@@ -1,5 +1,5 @@
 #! /usr/bin/env nix-shell
-#! nix-shell -i bash -p racket
+#! nix-shell -i bash -p racket pv
 
 # Remove alpha-equivalent definitions and update references
 
@@ -27,9 +27,13 @@ function stripRedundancies {
     # NAME_REPLACEMENTS as necessary
 
     REPLACEMENTS=$(echo "$NAME_REPLACEMENTS" | grep '^.' | cut -f2)
-    while read -r LINE
+    SR_INPUT=$(cat | grep '^.')
+
+    while read -r LINE_DEFS
     do
-        KEEP=1
+             KEEP=1
+             LINE=$(echo "$LINE_DEFS" | cut -f1)
+        DEF_NAMES=$(echo "$LINE_DEFS" | cut -f2)
         while read -r DEF_NAME
         do
             if echo "$REPLACEMENTS" | grep "$DEF_NAME" > /dev/null
@@ -37,9 +41,9 @@ function stripRedundancies {
                 KEEP=0
                 break
             fi
-        done < <(echo "$LINE" | racket rec_names.rkt | grep '^.')
+        done < <(echo "$DEF_NAMES" | tr ' ' '\n' | grep '^.')
         [[ "$KEEP" -eq 0 ]] || echo "$LINE"
-    done
+    done < <(paste <(echo "$SR_INPUT") <(echo "$SR_INPUT" | racket all_names.rkt))
 }
 
 function replaceReferences {
@@ -71,8 +75,13 @@ do
     # reference we should use in its place
     NAME_REPLACEMENTS=$(echo "$FINDINGS" | grep "^NAME")
 
+    COUNT=$(echo "$NAME_REPLACEMENTS" | wc -l)
+    echo "Removing $COUNT alpha-equivalent definitions" 1>&2
+
+    NORM_LINES=$(echo "$NORMALISED" | wc -l)
+
     # Remove the definitions of anything in NAME_REPLACEMENTS
-    NORMALISED=$(echo "$NORMALISED" | stripRedundancies)
+    NORMALISED=$(echo "$NORMALISED" | stripRedundancies | pv -l -s "$NORM_LINES")
 
     # Replace all references to things which have been removed
     NORMALISED=$(echo "$NORMALISED" | replaceReferences)

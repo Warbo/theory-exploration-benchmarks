@@ -1,5 +1,5 @@
 #! /usr/bin/env nix-shell
-#! nix-shell -i bash -p racket -p haskellPackages.tip-lib
+#! nix-shell -i bash -p racket -p haskellPackages.tip-lib -p pv
 
 ERR=0
 
@@ -17,10 +17,6 @@ function report {
     fi
 }
 
-function make_sig {
-    bash mk_defs.sh | bash mk_signature.sh
-}
-
 # Try making a signature for a few files
 
 for F in "$DIR/isaplanner/prop_54.smt2" \
@@ -29,7 +25,7 @@ for F in "$DIR/isaplanner/prop_54.smt2" \
          "$DIR/tip2015/sort_MSortTDPermutes.smt2" \
          "$DIR/tip2015/tree_sort_SortPermutes'.smt2"
 do
-    SIG=$(echo "$F" | make_sig)
+    SIG=$(echo "$F" | bash mk_haskell.sh)
     report "$?" "Made Haskell file for '$F'" || {
         echo -e "F: $F\nSIG:\n$SIG\n\n" 1>&2
         exit 1
@@ -42,7 +38,7 @@ for N in 1 3
 do
     FILES=$(find "$DIR" -name "*.smt2" | shuf | head -n$N)
 
-    SIG=$(echo "$FILES" | make_sig)
+    SIG=$(echo "$FILES" | bash mk_haskell.sh)
     report "$?" "Made Haskell for $N files" || {
         echo -e "FILES:\n$FILES\n\nSIG:\n$SIG\n\n" 1>&2
         break  # Not worth trying larger samples

@@ -42,13 +42,6 @@
                              new-sf
                              new-nr))))
 
-(define (join-spaces xs)
-  (if (empty? xs)
-      ""
-      (if (equal? (length xs) 1)
-          (format "~a" (car xs))
-          (format "~a ~a" (car xs) (join-spaces (cdr xs))))))
-
 (define output
   (let* ([results           (remove-redundancies given-lines null null)]
          [so-far            (first results)]

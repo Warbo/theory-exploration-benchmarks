@@ -461,3 +461,10 @@
                                                         (map car (cdr con)))) ; destructor names
                                                 (cdr dec)))))
                      decs)))
+
+(define (join-spaces xs)
+  (if (empty? xs)
+      ""
+      (if (equal? (length xs) 1)
+          (format "~a" (car xs))
+          (format "~a ~a" (car xs) (join-spaces (cdr xs))))))

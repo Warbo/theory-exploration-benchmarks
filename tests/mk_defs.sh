@@ -1,5 +1,5 @@
 #! /usr/bin/env nix-shell
-#! nix-shell -i bash -p racket
+#! nix-shell -i bash -p racket pv
 
 ERR=0
 function report {
@@ -154,7 +154,12 @@ do
 
     if [[ "$NORM_COUNT" -eq 1 ]]
     then
-        [[ "x$DEF" = "x$NORM_DEF" ]] || {
+        # The symbols in NORM_DEF may be replacements, so we can't compare
+        # directly. Instead, we just infer the structure:
+         DEF_SHAPE=$(echo      "$DEF" | tr -dc '()')
+        NORM_SHAPE=$(echo "$NORM_DEF" | tr -dc '()')
+
+        [[ "x$DEF_SHAPE" = "x$NORM_SHAPE" ]] || {
             INTACT=0
             echo    "Mangled function definition!" 1>&2
             echo -e "DEF: $DEF\nNORM_DEF: $NORM_DEF" 1>&2
