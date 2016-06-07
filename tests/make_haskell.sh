@@ -38,7 +38,7 @@ done
 
 # Try making a signature of a few random files
 
-for N in 1 3 10
+for N in 1 3
 do
     FILES=$(find "$DIR" -name "*.smt2" | shuf | head -n$N)
 

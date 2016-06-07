@@ -12,28 +12,52 @@ function report {
 }
 
 # Check we can get find unique definitions for some known constructors
+GOT=1
+UNIQUE=1
 for SYM in Pos Neg Z S P N
 do
     FOUND=$(echo "$SYM" | ./constructor_def.rkt)
-    [[ -n "$FOUND" ]]
-    report "$?" "Found at least one definition of '$SYM'"
+    [[ -n "$FOUND" ]] || {
+        GOT=0
+        echo -e "No definition of '$SYM'" 1>&2
+    }
 
     COUNT=$(echo "$FOUND" | wc -l)
-    [[ "$COUNT" -eq 1 ]]
-    report "$?" "Found exactly one definition of '$SYM'"
+    [[ "$COUNT" -eq 1 ]] || {
+        UNIQUE=0
+        echo -e "Multiple definitions of '$SYM'"
+    }
 done
 
+[[ "$GOT" -eq 1 ]]
+report "$?" "Found at least one definition of constructors"
+
+[[ "$UNIQUE" -eq 1 ]]
+report "$?" "Found exactly one definition of constructors"
+
 # Check we can find unique definitions for some known functions
+GOT=1
+UNIQUE=1
 for SYM in toInteger sign plus2 opposite timesSign mult minus plus absVal times
 do
     FOUND=$(echo "$SYM" | ./function_def.sh)
-    [[ -n "$FOUND" ]]
-    report "$?" "Found at least one definition of '$SYM'"
+    [[ -n "$FOUND" ]] || {
+        GOT=0
+        echo -e "No definition for '$SYM'" 1>&2
+    }
 
     COUNT=$(echo "$FOUND" | wc -l)
-    [[ "$COUNT" -eq 1 ]]
-    report "$?" "Found exactly one definition of '$SYM'"
+    [[ "$COUNT" -eq 1 ]] || {
+        UNIQUE=0
+        echo -e "Multiple definitions of '$SYM'" 1>&2
+    }
 done
+
+[[ "$GOT" -eq 1 ]]
+report "$?" "Found at least one definition of functions"
+
+[[ "$UNIQUE" -eq 1 ]]
+report "$?" "Found exactly one definition of functions"
 
 # Check we don't get parameters from types
 
@@ -83,24 +107,31 @@ ALL=$(./all_symbols.sh | shuf | head -n30)
 FUNS=$(echo "$ALL" | ./function_def.sh)
 CONS=$(echo "$ALL" | ./constructor_def.rkt)
 
+GOT=1
+UNIQUE=1
 echo "$ALL" | while read -r SYM
 do
     FUNDEFS=$(echo "$FUNS" | funDef "$SYM")
     CONDEFS=$(echo "$CONS" | conDef "$SYM")
 
-    DEFS=$(echo -e "$FUNDEFS\n$CONDEFS" | grep '^.')
-    report "$?" "Found a definition for '$SYM'"
+    DEFS=$(echo -e "$FUNDEFS\n$CONDEFS" | grep '^.') || {
+        GOT=0
+        echo -e "No definition for '$SYM'" 1>&2
+    }
 
     COUNT=$(echo "$DEFS" | wc -l)
 
-    [[ "$COUNT" -eq 1 ]]
-    report "$?" "Definition of '$SYM' is unique"
-
-    if [[ "$COUNT" -ne 1 ]]
-    then
-        echo -e "'$SYM' defs:\n$DEFS" 1>&2
-    fi
+    [[ "$COUNT" -eq 1 ]] || {
+        UNIQUE=0
+        echo -e "Multiple definitions of '$SYM':\n$DEFS\n\n" 1>&2
+    }
 done
+
+[[ "$GOT" -eq 1 ]]
+report "$?" "Found a definition for all symbols"
+
+[[ "$UNIQUE" -eq 1 ]]
+report "$?" "All symbol definitions are unique"
 
 # Check there's no overlap between function and constructor names
 echo "$ALL" | while read -r SYM
