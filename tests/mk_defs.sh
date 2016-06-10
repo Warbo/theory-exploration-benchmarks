@@ -1,5 +1,5 @@
 #! /usr/bin/env nix-shell
-#! nix-shell -i bash -p racket pv
+#! nix-shell -i bash -p racket mysql
 
 ERR=0
 function report {
@@ -132,11 +132,16 @@ done < <(echo "$NORMALISED")
 [[ "$DUPES" -eq 0 ]]
 report "$?" "No alpha-equivalent duplicates in result"
 
+TOTAL=$(echo "$SUBSET" | wc -l)
+INDEX=1
+
 GOT_QUAL=1
 INTACT=1
 while read -r SYM
 do
-    printf '.' 1>&2
+    echo "$INDEX/$TOTAL" 1>&2
+    INDEX=$(( INDEX + 1 ))
+
       DEF=$(echo "$QUAL" | bash get_def.sh "$SYM")
     COUNT=$(echo "$DEF"  | grep -c '^.')
 

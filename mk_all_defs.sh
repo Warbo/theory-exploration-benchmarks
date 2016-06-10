@@ -1,5 +1,5 @@
 #! /usr/bin/env nix-shell
-#! nix-shell -i bash -p racket pv
+#! nix-shell -i bash -p racket mysql
 
 # Combine all definitions from modules/tip-benchmarks/benchmarks
 

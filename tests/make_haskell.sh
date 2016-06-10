@@ -1,5 +1,5 @@
 #! /usr/bin/env nix-shell
-#! nix-shell -i bash -p racket -p haskellPackages.tip-lib -p pv
+#! nix-shell -i bash -p racket -p haskellPackages.tip-lib -p mysql
 
 ERR=0
 

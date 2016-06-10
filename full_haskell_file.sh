@@ -1,5 +1,5 @@
 #! /usr/bin/env nix-shell
-#! nix-shell -i bash -p racket -p haskellPackages.tip-lib pv
+#! nix-shell -i bash -p racket -p haskellPackages.tip-lib mysql
 
 ALL=$(find modules/tip-benchmarks/benchmarks -name "*.smt2")
 

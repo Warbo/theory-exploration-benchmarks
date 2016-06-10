@@ -301,9 +301,27 @@
      (let ([rec (norm-func args body)])
        (list 'lambda (first rec) (second rec)))]
 
+    [(list 'let bindings body)
+     (let* ([rec (norm-let bindings (norm body))])
+       (list 'let (first rec) (second rec)))]
+
     [(cons a b) (cons (norm a) (norm b))]
 
     [_ expr]))
+
+(define (norm-let bindings body)
+  (if (empty? bindings)
+      (list bindings (norm body))
+      (let* ([binding   (first  bindings)]
+             [name      (first  binding)]
+             [value     (second binding)]
+             [new-value (norm value)]
+             [rec       (norm-let (cdr bindings) body)]
+             [new-binds (first  rec)]
+             [new-body  (second rec)]
+             [new-name  (next-var (list new-body new-value new-binds))])
+        (list (cons (list new-name new-value) new-binds)
+              (replace-in name new-name new-body)))))
 
 (define (norm-case pat body)
   (match pat

@@ -1,5 +1,5 @@
 #! /usr/bin/env nix-shell
-#! nix-shell -i bash -p racket pv
+#! nix-shell -i bash -p racket mysql
 
 ERR=0
 function report {
@@ -21,7 +21,7 @@ function checkNormal {
     report "$?" "Normalising $1 as expected"
 }
 
-# Check that each form normalises as we expect
+# Check that each binding form normalises as we expect
 
 checkNormal "function" \
             "(define-fun sort2 ((x Int) (y Int)) (list Int) (ite (<= x y) (cons x (cons y (as nil (list Int)))) (cons y (cons x (as nil (list Int))))))" \
@@ -34,6 +34,18 @@ checkNormal "parameterised function" \
 checkNormal "datatype" \
             "(declare-datatypes (a) ((list (nil) (cons (head a) (tail (list a))))))" \
             "(declare-datatypes (normalise-var-1) (((defining-type-1 (normalise-constructor-2) (normalise-constructor-1 (normalise-destructor-2 normalise-var-1) (normalise-destructor-1 (defining-type-1 normalise-var-1)))))))"
+
+checkNormal "let binding" \
+            "(define-fun-rec msorttd ((x (list Int))) (list Int) (let ((k (div (zlength x) 2))) (lmerge (msorttd (ztake k x)) (msorttd (zdrop k x)))))" \
+            "(define-fun-rec defining-function-1 ((normalise-var-2 (list Int))) (list Int) (let ((normalise-var-1 (div (zlength normalise-var-2) 2))) (lmerge (defining-function-1 (ztake normalise-var-1 normalise-var-2)) (defining-function-1 (zdrop normalise-var-1 normalise-var-2)))))"
+
+checkNormal "pattern match" \
+            "(define-fun-rec s ((x Bin)) Bin (match x (case One (ZeroAnd One)) (case (ZeroAnd xs) (OneAnd xs)) (case (OneAnd ys) (ZeroAnd (s ys)))))" \
+            "(define-fun-rec defining-function-1 ((normalise-var-2 Bin)) Bin (match normalise-var-2 (case One (ZeroAnd One)) (case (ZeroAnd normalise-var-1) (OneAnd normalise-var-1)) (case (OneAnd normalise-var-1) (ZeroAnd (defining-function-1 normalise-var-1)))))"
+
+checkNormal "anonymous function" \
+            "(define-fun-rec qsort ((y Int) (xs (list Int))) (list Int) (append (append (qsort (filter (lambda ((z Int)) (<= z y)) xs)) (cons y (as nil (list Int)))) (qsort (filter (lambda ((x2 Int)) (> x2 y)) xs))))" \
+            "(define-fun-rec defining-function-1 ((normalise-var-3 Int) (normalise-var-2 (list Int))) (list Int) (append (append (defining-function-1 (filter (lambda ((normalise-var-1 Int)) (<= normalise-var-1 normalise-var-3)) normalise-var-2)) (cons normalise-var-3 (as nil (list Int)))) (defining-function-1 (filter (lambda ((normalise-var-1 Int)) (> normalise-var-1 normalise-var-3)) normalise-var-2))))"
 
 # Check that definitions which normalise to the same thing are deduped
 
