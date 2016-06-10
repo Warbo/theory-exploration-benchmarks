@@ -172,7 +172,7 @@
   (remove-duplicates (expression-symbols (read-benchmark x))))
 
 (define do-not-qualify
-  (list 'Int 'Bool))
+  (list 'Int 'Bool '*))
 
 (define (qualify name expr)
   (let* ([syms  (expression-symbols expr)]
