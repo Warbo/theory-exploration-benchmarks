@@ -171,10 +171,13 @@
 (define (benchmark-symbols x)
   (remove-duplicates (expression-symbols (read-benchmark x))))
 
+(define do-not-qualify
+  (list 'Int 'Bool))
+
 (define (qualify name expr)
   (let* ([syms  (expression-symbols expr)]
          [types (expression-types   expr)]
-         [all   (append syms types)])
+         [all   (remove* do-not-qualify (append syms types))])
     (qualify-all name (symbols-in all) expr)))
 
 (define (qualify-all name all expr)

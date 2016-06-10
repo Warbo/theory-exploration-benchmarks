@@ -8,7 +8,9 @@ function addCheckSat {
 }
 
 function removeSuffices {
-    # Remove "-sentinel" suffices
+    # Remove "-sentinel" suffices. Do this after all other string-based
+    # transformations, since the sentinels prevent us messing with, say, the
+    # symbol "plus2", when we only wanted to change the symbol "plus"
     sed -e 's/-sentinel//g'
 }
 
@@ -32,13 +34,14 @@ function fixNames {
     fixInt | grep -v "[() ]or2[() ]" |
              grep -v "tip2015/propositional_AndCommutative.smt2models" |
              grep -v "\.smt2>" | # tip2015/sort_QSortPermutes.smt2>
-             grep -v "\.smt2[^a-zA-Z0-9_]" | # tip2015/sort_StoogeSort2Permutes.smt2*
-             grep -v "\.smt2Form" | # tip2015/propositional_AndIdempotent.smt2Form
+             #grep -v "\.smt2[^a-zA-Z0-9_]" | # tip2015/sort_StoogeSort2Permutes.smt2*
+             #grep -v "\.smt2Form" | # tip2015/propositional_AndIdempotent.smt2Form
              grep -v "tip2015/polyrec_seq_index.smt2mod"
 }
 
 function fixInt {
     # "Int" may be built-in, if so remove any qualification
+    # FIXME: This should be handled by the qualify script. Try disabling this and see
     FI_INPUT=$(cat)
     FI_OUTPUT="$FI_INPUT"
 
@@ -59,6 +62,14 @@ function fixInt {
 }
 
 function nameReplacements {
+    # Unqualify any names which only have one definition. For example, given:
+    #
+    # (define-fun foo.smt2baz-sentinel  ...)
+    # (define-fun foo.smt2quux-sentinel ...)
+    # (define-fun bar.smt2quux-sentinel ...)
+    #
+    # We can unqualify 'foo.smt2baz-sentinel' to get 'baz', but we can't for
+    # 'quux' since there are two distinct versions.
     NR_NAMES=$(allNames)
 
     while read -r NAME
@@ -67,7 +78,7 @@ function nameReplacements {
         then
             UNQUAL=$(echo "$NAME" | sed -e 's/.*\.smt2\(.*\)/\1/g' |
                                     sed -e 's/-sentinel//g')
-            COUNT=$(echo "$NR_NAMES" | grep -cF "$UNQUAL")
+            COUNT=$(echo "$NR_NAMES" | grep -cF ".smt2$UNQUAL-sentinel")
             if [[ "$COUNT" -eq 1 ]]
             then
                 echo -e "$NAME\t$UNQUAL"

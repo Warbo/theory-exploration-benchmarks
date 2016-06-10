@@ -5,7 +5,7 @@ INPUT=$(cat)
 
 TIP_INPUT=$(echo "$INPUT" | bash prepare.sh)
 
-tip <(echo -e "$TIP_INPUT") --haskell-spec
+tip <(echo "$TIP_INPUT") --haskell-spec
 CODE="$?"
 
 [[ "$CODE" -eq 0 ]] ||
