@@ -177,8 +177,8 @@
 (define (qualify name expr)
   (let* ([syms  (expression-symbols expr)]
          [types (expression-types   expr)]
-         [all   (remove* do-not-qualify (append syms types))])
-    (qualify-all name (symbols-in all) expr)))
+         [all   (remove* do-not-qualify (symbols-in (append syms types)))])
+    (qualify-all name all expr)))
 
 (define (qualify-all name all expr)
   (if (empty? all)
