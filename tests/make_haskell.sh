@@ -123,7 +123,8 @@ $DIR/tip2015/sort_MSortTDPermutes.smt2
 $DIR/tip2015/tree_sort_SortPermutes'.smt2
 $DIR/tip2015/sort_StoogeSort2Permutes.smt2
 $DIR/tip2015/sort_StoogeSortPermutes.smt2
-$DIR/tip2015/polyrec_seq_index.smt2"
+$DIR/tip2015/polyrec_seq_index.smt2
+$DIR/tip2015/sort_QSortPermutes.smt2"
 
     while read -r F
     do
