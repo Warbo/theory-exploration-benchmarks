@@ -5,6 +5,9 @@ ERR=0
 
 DIR="modules/tip-benchmarks/benchmarks"
 
+TEMP_DIR=$(mktemp --tmpdir -d "te-benchmark-temp-test-data-XXXXX")
+DBG="$TEMP_DIR/stderr"
+
 function report {
     if [[ "$1" -eq 0 ]]
     then
@@ -24,7 +27,6 @@ function stringToHaskell {
     # Note: We make a file in a directory, to avoid problems if tmpdir begins
     # with a number (e.g. '/var/run/user/1000'); otherwise qualified variable
     # names would be invalid
-    TEMP_DIR=$(mktemp --tmpdir -d "te-benchmark-temp-test-data-XXXXX")
     TEMP_FILE="$TEMP_DIR/test.smt2"
 
     echo "$1" | tr -d '\n' > "$TEMP_FILE"
@@ -33,7 +35,6 @@ function stringToHaskell {
     STH_CODE="$?"
 
     rm -f "$TEMP_FILE"
-    rmdir "$TEMP_DIR"
     return "$STH_CODE"
 }
 
@@ -43,14 +44,17 @@ function testForm {
                    (Not (Not_0 Form))
                    (Var (Var_0 Int)))))"
 
-    PREPARED=$(echo "$FORM" | tr -d '\n' | ./prepare.sh)
-    report "$?" "Can prepare 'Form' input"
+    PREPARED=$(echo "$FORM" | tr -d '\n' | ./prepare.sh 2> "$DBG")
+    report "$?" "Can prepare 'Form' input" ||
+        cat "$DBG" 1>&2
 
     echo "$PREPARED" | grep "(declare-datatypes" > /dev/null
-    report "$?" "Prepared 'Form' input defines a datatype"
+    report "$?" "Prepared 'Form' input defines a datatype" ||
+        echo -e "PREPARED:\n$PREPARED\n\n" 1>&2
 
-    SIG=$(stringToHaskell "$FORM")
-    report "$?" "'Form' datatype gets a signature"
+    SIG=$(stringToHaskell "$FORM" 2> "$DBG")
+    report "$?" "'Form' datatype gets a signature" ||
+        cat "$DBG" 1>&2
 
     DATA_COUNT=$(echo "$SIG" | grep -c "^data ")
 
@@ -85,14 +89,18 @@ function testMutualRecursion {
               (models2 q x)
               (models5 q x y))))"
 
-    PREPARED=$(echo "$MUT" | tr -d '\n' | ./prepare.sh)
-    report "$?" "Can prepare mutually-recursive input"
+    PREPARED=$(echo "$MUT" | tr -d '\n' | ./prepare.sh 2> "$DBG")
+    report "$?" "Can prepare mutually-recursive input" ||
+        cat "$DBG" 1>&2
 
     echo "$PREPARED" | grep "(define-funs-rec" > /dev/null
     report "$?" "Mutually-recursive function definitions survive preparation"
 
-    SIG=$(stringToHaskell "$MUT")
-    report "$?" "Mutually-recursive functions gets a signature"
+    SIG=$(stringToHaskell "$MUT" 2> "$DBG")
+    report "$?" "Mutually-recursive functions gets a signature" || {
+        echo -e "SIG:\n$SIG\n\nstderr:" 1>&2
+        cat "$DBG" 1>&2
+    }
 
     for FUN in models models2 models5
     do
@@ -108,16 +116,21 @@ function testMutualRecursion {
 function testSingleFiles {
     FILES="$DIR/isaplanner/prop_54.smt2
 $DIR/tip2015/propositional_AndIdempotent.smt2
+$DIR/tip2015/propositional_AndCommutative.smt2
+$DIR/tip2015/mccarthy91_M2.smt2
 $DIR/isaplanner/prop_36.smt2
 $DIR/tip2015/sort_MSortTDPermutes.smt2
 $DIR/tip2015/tree_sort_SortPermutes'.smt2
-$DIR/tip2015/sort_StoogeSort2Permutes.smt2"
+$DIR/tip2015/sort_StoogeSort2Permutes.smt2
+$DIR/tip2015/sort_StoogeSortPermutes.smt2
+$DIR/tip2015/polyrec_seq_index.smt2"
 
     while read -r F
     do
-        SIG=$(echo "$F" | bash mk_haskell.sh)
+        SIG=$(echo "$F" | bash mk_haskell.sh 2> "$DBG")
         report "$?" "Made Haskell file for '$F'" || {
-            echo -e "F: $F\nSIG:\n$SIG\n\n" 1>&2
+            echo -e "F: $F\nSIG:\n$SIG\n\nstderr:" 1>&2
+            cat "$DBG" 1>&2
             exit 1
         }
     done < <(echo "$FILES")
@@ -128,9 +141,10 @@ function testMultipleFiles {
     do
         FILES=$(find "$DIR" -name "*.smt2" | shuf | head -n$N)
 
-        SIG=$(echo "$FILES" | bash mk_haskell.sh)
+        SIG=$(echo "$FILES" | bash mk_haskell.sh 2> "$DBG")
         report "$?" "Made Haskell for $N files" || {
-            echo -e "FILES:\n$FILES\n\nSIG:\n$SIG\n\n" 1>&2
+            echo -e "FILES:\n$FILES\n\nSIG:\n$SIG\n\nstderr:" 1>&2
+            cat "$DBG" 1>&2
             break  # Not worth trying larger samples
         }
     done
@@ -144,4 +158,6 @@ testSingleFiles
 
 #testMultipleFiles
 
+[[ -e "$TEMP_DIR/stderr" ]] && rm -f "$TEMP_DIR/stderr"
+rmdir "$TEMP_DIR"
 exit "$ERR"

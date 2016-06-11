@@ -31,12 +31,14 @@ function fixNames {
     # Remove problematic lines (e.g. symbols which don't have a corresponding
     # definition).
     # FIXME: We should really make these work rather than stripping them out
-    fixInt | grep -v "tip2015/propositional_AndCommutative.smt2models" |
-             grep -v "\.smt2>" | # tip2015/sort_QSortPermutes.smt2>
+    fixInt
+    #  grep -v "tip2015/polyrec_seq_index.smt2mod"
+             # grep -v "\.smt2>" | # tip2015/sort_QSortPermutes.smt2>
              #grep -v "[() ]or2[() ]" |
              #grep -v "\.smt2[^a-zA-Z0-9_]" | # tip2015/sort_StoogeSort2Permutes.smt2*
              #grep -v "\.smt2Form" | # tip2015/propositional_AndIdempotent.smt2Form
-             grep -v "tip2015/polyrec_seq_index.smt2mod"
+             #grep -v "tip2015/propositional_AndCommutative.smt2models" |
+
 }
 
 function fixInt {
