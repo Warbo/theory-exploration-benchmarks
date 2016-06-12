@@ -49,8 +49,10 @@ function testForm {
         cat "$DBG" 1>&2
 
     echo "$PREPARED" | grep "(declare-datatypes" > /dev/null
-    report "$?" "Prepared 'Form' input defines a datatype" ||
+    report "$?" "Prepared 'Form' input defines a datatype" || {
         echo -e "PREPARED:\n$PREPARED\n\n" 1>&2
+        cat "$DBG" 1>&2
+    }
 
     SIG=$(stringToHaskell "$FORM" 2> "$DBG")
     report "$?" "'Form' datatype gets a signature" ||
@@ -61,6 +63,7 @@ function testForm {
     [[ "$DATA_COUNT" -eq 1 ]]
     report "$?" "'Form' datatype appears in signature" || {
         echo -e "SIG:\n$SIG\n\n" 1>&2
+        cat "$DBG" 1>&2
     }
 }
 
@@ -94,7 +97,10 @@ function testMutualRecursion {
         cat "$DBG" 1>&2
 
     echo "$PREPARED" | grep "(define-funs-rec" > /dev/null
-    report "$?" "Mutually-recursive function definitions survive preparation"
+    report "$?" "Mutually-recursive function definitions survive preparation" || {
+        echo -e "PREPARED:\n$PREPARED\n\n" 1>&2
+        cat "$DBG" 1>&2
+    }
 
     SIG=$(stringToHaskell "$MUT" 2> "$DBG")
     report "$?" "Mutually-recursive functions gets a signature" || {
@@ -109,6 +115,7 @@ function testMutualRecursion {
         [[ "$DEF_COUNT" -gt 0 ]]
         report "$?" "'$FUN' is defined in signature" || {
             echo -e "SIG:\n$SIG\n\n" 1>&2
+            cat "$DBG" 1>&2
         }
     done
 }
@@ -132,13 +139,28 @@ $DIR/tip2015/sort_QSortPermutes.smt2"
         report "$?" "Made Haskell file for '$F'" || {
             echo -e "F: $F\nSIG:\n$SIG\n\nstderr:" 1>&2
             cat "$DBG" 1>&2
-            exit 1
         }
     done < <(echo "$FILES")
 }
 
 function testMultipleFiles {
-    for N in 1 3
+    FILES="$DIR/tip2015/tree_SwapAB.smt2
+$DIR/tip2015/list_z_count_nub.smt2"
+
+    SIG=$(echo "$FILES" | bash mk_haskell.sh 2> "$DBG")
+    report "$?" "No conflicting locals/globals" || {
+        cat "$DBG"
+    }
+
+    echo "$SIG" | grep "local-" > /dev/null
+    report "$?" "Local variables renamed" || {
+        echo -e "SIG:\n$SIG\n\n" 1>&2
+        cat "$DBG"
+    }
+}
+
+function testRandomFiles {
+    for N in 1 2 4 8
     do
         FILES=$(find "$DIR" -name "*.smt2" | shuf | head -n$N)
 
@@ -157,7 +179,7 @@ testMutualRecursion
 
 testSingleFiles
 
-#testMultipleFiles
+testMultipleFiles
 
 [[ -e "$TEMP_DIR/stderr" ]] && rm -f "$TEMP_DIR/stderr"
 rmdir "$TEMP_DIR"

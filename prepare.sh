@@ -27,34 +27,6 @@ function removePrefices {
     echo "$RP_INPUT"
 }
 
-function fixNames {
-    # Remove problematic lines (e.g. symbols which don't have a corresponding
-    # definition).
-    fixInt
-}
-
-function fixInt {
-    # "Int" may be built-in, if so remove any qualification
-    # FIXME: This should be handled by the qualify script. Try disabling this and see
-    FI_INPUT=$(cat)
-    FI_OUTPUT="$FI_INPUT"
-
-    FI_NAMES=$(echo "$FI_INPUT" | allNames)
-    while read -r INT_NAME
-    do
-        if echo "$FI_NAMES" | grep -Fx "$INT_NAME" > /dev/null
-        then
-            # This name is defined. Leave it.
-            true
-        else
-            # Undefined. Replace with native Int.
-            FI_OUTPUT="${FI_OUTPUT//"$INT_NAME"/Int}"
-        fi
-    done < <(echo "$FI_INPUT" | racket types_from_defs.rkt | grep "\.smt2Int$")
-
-    echo "$FI_OUTPUT"
-}
-
 function nameReplacements {
     # Unqualify any names which only have one definition. For example, given:
     #
@@ -64,7 +36,7 @@ function nameReplacements {
     #
     # We can unqualify 'foo.smt2baz-sentinel' to get 'baz', but we can't for
     # 'quux' since there are two distinct versions.
-    NR_NAMES=$(allNames)
+    NR_NAMES=$(racket rec_names.rkt)
 
     while read -r NAME
     do
@@ -81,8 +53,4 @@ function nameReplacements {
     done < <(echo "$NR_NAMES")
 }
 
-function allNames {
-    racket rec_names.rkt
-}
-
-removePrefices | removeSuffices | fixNames | addCheckSat
+removePrefices | removeSuffices | addCheckSat

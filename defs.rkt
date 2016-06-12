@@ -22,7 +22,7 @@
     [_                                    null]))
 
 (define (symbols-in exp)
-  (match exp
+  (remove* native-symbols (match exp
     [(cons 'match (cons arg cases)) (append (symbols-in arg)
                                             (symbols-in (map case-symbols cases)))]
     [(list 'lambda args body)       (remove* (map car args)
@@ -34,23 +34,7 @@
                                             (symbols-in typ))]
     [(cons a b)                     (append (symbols-in a)
                                             (symbols-in b))]
-    ['and                           null]
-    ['or                            null]
-    ['xor                           null]
-    ['iff                           null]
-    ['ite                           null]
-    ['true                          null]
-    ['false                         null]
-    ['not                           null]
-    ['implies                       null]
-    ['distinct                      null]
-    ['@                             null]
-    ['=                             null]
-    ['<=                            null]
-    ['-                             null]
-    ['+                             null]
-    ['div                           null]
-    [_                              (if (symbol? exp) (list exp) null)]))
+    [_                              (if (symbol? exp) (list exp) null)])))
 
 (define (case-symbols c)
   (match c
@@ -151,8 +135,6 @@
   ;; Given (Cons (Cons_1 a) (Cons_2 (list a))) we want '(a list)
   (let* ([each (map (lambda (x) (symbols-in (cdr x))) (cdr def))]
          [out  (apply append each)])
-    ;(eprintf (format "~a\n" `(GOT_CONSTRUCTOR_DEF ,def)))
-    ;(eprintf (format "~a\n" `(EXTRACTED_TYPES     ,out)))
     out))
 
 (define (expression-symbols exp)
@@ -171,14 +153,15 @@
 (define (benchmark-symbols x)
   (remove-duplicates (expression-symbols (read-benchmark x))))
 
-(define do-not-qualify
-  (list 'Int 'Bool '* '> 'mod))
+(define native-symbols
+  (list 'Int 'Bool '* '> 'mod 'and 'or 'xor 'iff 'ite 'true 'false 'not 'implies
+        'distinct '@ '= '<= '- '+ '* 'div))
 
 (define (qualify name expr)
   (let* ([syms  (expression-symbols expr)]
          [types (expression-types   expr)]
-         [all   (remove* do-not-qualify (symbols-in (append syms types)))])
-    (qualify-all name all expr)))
+         [all   (symbols-in (append syms types))])
+    (qualify-all name all (prefix-locals expr))))
 
 (define (qualify-all name all expr)
   (if (empty? all)
@@ -186,6 +169,57 @@
       (qualify-all name (cdr all) (replace-in (car all)
                                               (string-append name (symbol->string (car all)) "-sentinel")
                                               expr))))
+
+(define (locals-in expr)
+  (match expr
+    [(list 'define-fun-rec (list 'par p (list name args return body)))
+     (symbols-in (append p (map first args) (locals-in body)))]
+
+    [(list 'define-fun-rec                    name args return body)
+     (symbols-in (append   (map first args) (locals-in body)))]
+
+    [(list 'define-fun     (list 'par p (list name args return body)))
+     (symbols-in (append p (map first args) (locals-in body)))]
+
+    [(list 'define-fun                        name args return body)
+     (symbols-in (append   (map first args) (locals-in body)))]
+
+    [(list 'declare-datatypes given decs)
+     (symbols-in given)]
+
+    [(list 'case pat body)
+     (symbols-in (append (locals-in body)
+                         (match pat
+                           [(list con)    null]
+                           [(cons con ps) ps]
+                           [_             null])))]
+
+    [(list 'lambda args body)
+     (symbols-in (append (map first args) (locals-in body)))]
+
+    [(list 'let bindings body)
+     (symbols-in (append (map first bindings) (locals-in body)))]
+
+    [(cons a b) (append (locals-in a) (locals-in b))]
+
+    [_ null]))
+
+(define (prefix-locals expr)
+  ;; Turn bindings like (lambda (x Int) (f x)) into
+  ;; (lambda (local-x Int) (f local-x)) to prevent conflicts between local and
+  ;; global names (e.g. if there's a destructor called x)
+  (prefix-all (locals-in expr) expr))
+
+(define (prefix-all locals expr)
+  (if (empty? locals)
+      expr
+      (prefix-all (cdr locals)
+                  (replace-in (car locals)
+                              (prefix-local (car locals))
+                              expr))))
+
+(define (prefix-local s)
+  (string->symbol (string-append "local-" (symbol->string s))))
 
 (define (replace-in old replacement expr)
   (if (equal? old expr)
