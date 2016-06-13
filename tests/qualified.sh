@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
 ERR=0
+
 function report {
     if [[ "$1" -eq 0 ]]
     then

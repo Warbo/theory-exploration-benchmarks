@@ -8,6 +8,12 @@ DIR="modules/tip-benchmarks/benchmarks"
 TEMP_DIR=$(mktemp --tmpdir -d "te-benchmark-temp-test-data-XXXXX")
 DBG="$TEMP_DIR/stderr"
 
+function tearDown {
+    rm -rf "$TEMP_DIR"
+}
+
+trap tearDown EXIT
+
 function report {
     if [[ "$1" -eq 0 ]]
     then
@@ -181,6 +187,4 @@ testSingleFiles
 
 testMultipleFiles
 
-[[ -e "$TEMP_DIR/stderr" ]] && rm -f "$TEMP_DIR/stderr"
-rmdir "$TEMP_DIR"
 exit "$ERR"
