@@ -152,7 +152,7 @@ $DIR/tip2015/list_z_count_nub.smt2"
         cat "$DBG"
     }
 
-    echo "$SIG" | grep "local-" > /dev/null
+    echo "$SIG" | grep "local" > /dev/null
     report "$?" "Local variables renamed" || {
         echo -e "SIG:\n$SIG\n\n" 1>&2
         cat "$DBG"
