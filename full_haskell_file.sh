@@ -3,7 +3,10 @@
 
 ALL=$(find modules/tip-benchmarks/benchmarks -name "*.smt2")
 
-if [[ -z "$1" ]]
+if  [[ -n "$FILES" ]]
+then
+    echo "Using given FILES" 1>&2
+elif [[ -z "$1" ]]
 then
     echo "No limit given, using all files" 1>&2
     FILES="$ALL"
