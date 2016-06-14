@@ -48,6 +48,9 @@ do
     [[ -f tip-benchmark-sig.cabal ]]
     report "$?" "Made Cabal file"
 
+    [[ -f LICENSE ]]
+    report "$?" "Made LICENSE file"
+
     command -v cabal > /dev/null
     report "$?" "Have cabal"
 

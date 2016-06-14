@@ -51,6 +51,6 @@ library
 " > "$OUT_DIR/tip-benchmark-sig.cabal"
 
 echo "Auto-generated from https://github.com/tip-org/benchmarks, the same
-LICENSE applies" > LICENSE
+LICENSE applies" > "$OUT_DIR/LICENSE"
 
 exit 0
