@@ -7,6 +7,8 @@ function trim {
 }
 
 function fixup {
+    cat
+    return
     TO_FIX=$(cat)
     for NATIVE in Bool true false or and ite "=>"
     do

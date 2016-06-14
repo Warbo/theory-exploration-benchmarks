@@ -81,4 +81,11 @@ report "$?" "Can get symbols from '$F'"
 shouldNotFind "=>"
 report "$?" "Higher-order types stripped"
 
+F="modules/tip-benchmarks/benchmarks/tip2015/propositional_AndCommutative.smt2"
+SYMS=$(./symbols_of_theorems.rkt < "$F")
+report "$?" "Can get symbols from '$F'"
+
+shouldFind "or2"
+report "$?" "Found 'or2'"
+
 exit "$ERR"

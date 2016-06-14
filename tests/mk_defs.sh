@@ -43,6 +43,35 @@ haveDef "tip2015/sort_StoogeSort2IsSort.smt2stooge2sort2" "mutually recursive"
 
 # Check a wider selection of files
 
+F="modules/tip-benchmarks/benchmarks/tip2015/propositional_AndCommutative.smt2
+modules/tip-benchmarks/benchmarks/tip2015/propositional_Sound.smt2
+modules/tip-benchmarks/benchmarks/tip2015/propositional_Okay.smt2
+modules/tip-benchmarks/benchmarks/tip2015/regexp_RecSeq.smt2
+modules/tip-benchmarks/benchmarks/tip2015/relaxedprefix_correct.smt2
+modules/tip-benchmarks/benchmarks/tip2015/propositional_AndIdempotent.smt2
+modules/tip-benchmarks/benchmarks/tip2015/propositional_AndImplication.smt2"
+
+Q=$(echo "$F" | bash qual_all.sh)
+
+S=$(echo "$Q" | bash symbols_of_theorems.sh)
+echo "$S" | grep -F "or2-sentinel" > /dev/null
+report "$?" "Found an 'or2' symbol" || {
+    echo -e "F:\n$F\n\nQ:\n$Q\n\nS:\n$S\n\n" 1>&2
+}
+
+! echo "$S" | grep -Fx "or2-sentinel" > /dev/null
+report "$?" "'or2' is qualified" || {
+    echo -e "F:\n$F\n\nQ:\n$Q\n\nS:\n$S\n\n" 1>&2
+}
+
+D=$(echo "$F" | bash mk_defs.sh)
+
+S=$(echo "$D" | bash symbols_of_theorems.sh)
+echo "$S" | grep -F "or2-sentinel" > /dev/null
+report "$?" "Found 'or2' symbol" || {
+    echo -e "F:\n$F\n\nD:\n$D\n\nS:\n$S\n\n" 1>&2
+}
+
 FILES="modules/tip-benchmarks/benchmarks/grammars/simp_expr_unambig1.smt2
 modules/tip-benchmarks/benchmarks/grammars/simp_expr_unambig4.smt2
 modules/tip-benchmarks/benchmarks/tip2015/sort_StoogeSort2IsSort.smt2"

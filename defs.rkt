@@ -155,7 +155,7 @@
 
 (define native-symbols
   (list 'Int 'Bool '* '> 'mod 'and 'or 'xor 'iff 'ite 'true 'false 'not 'implies
-        'distinct '@ '= '<= '- '+ '* 'div))
+        'distinct '@ '= '<= '- '+ '* 'div '=> 'as))
 
 (define (qualify name expr)
   (let* ([syms  (expression-symbols expr)]

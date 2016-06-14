@@ -17,7 +17,8 @@ function report {
 DIR="modules/tip-benchmarks/benchmarks"
 FRESH=$(find "$DIR" -name "*.smt2" | shuf | head -n10)
 
-REGRESSIONS="$DIR/tip2015/list_elem_map.smt2"
+REGRESSIONS="$DIR/tip2015/list_elem_map.smt2
+$DIR/tip2015/propositional_AndCommutative.smt2"
 
 FILES=$(echo -e "$REGRESSIONS\n$FRESH")
 COUNT=$(echo "$FILES" | wc -l)
