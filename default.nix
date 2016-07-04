@@ -26,7 +26,7 @@ stdenv.mkDerivation (rec {
 
     mkdir -p "$out/bin"
     cp '${mkPkg}' "$out/bin/"
-    chmod +x "$out/bin/*"
+    chmod +x "$out/bin/"*
   '';
 
   # Wrapper around full_haskell_package, which is the "end result" of all these
