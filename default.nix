@@ -4,14 +4,17 @@ stdenv.mkDerivation (rec {
   name = "te-benchmark";
   src  = ./.;
 
-  propagatedBuildInputs = [ bash haskellPackages.cabal-install nix racket ];
+  propagatedBuildInputs = [ bash haskellPackages.cabal-install nix racket
+                            (haskellPackages.ghcWithPackages (hs: [
+                              hs.tip-lib
+                            ])) ];
 
   NIX_PATH   = builtins.getEnv "NIX_PATH";
   NIX_REMOTE = builtins.getEnv "NIX_REMOTE";
 
   doCheck = true;
   checkPhase = ''
-    ./test.sh
+    HOME="$PWD" ./test.sh
   '';
 
   installPhase = ''
