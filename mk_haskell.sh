@@ -1,5 +1,4 @@
-#! /usr/bin/env nix-shell
-#! nix-shell -i bash -p racket -p haskellPackages.tip-lib mysql
+#!/usr/bin/env bash
 
 DEFS=$(bash mk_defs.sh)
 

@@ -1,12 +1,13 @@
-{ bash, haskellPackages, nix, racket, stdenv, writeScript }:
+{ bash, haskellPackages, mysql, nix, racket, stdenv, writeScript }:
 
 stdenv.mkDerivation (rec {
   name = "te-benchmark";
   src  = ./.;
 
-  propagatedBuildInputs = [ bash haskellPackages.cabal-install nix racket
+  propagatedBuildInputs = [ bash haskellPackages.cabal-install nix racket mysql
                             (haskellPackages.ghcWithPackages (hs: [
-                              hs.tip-lib
+                              hs.tip-lib hs.QuickCheck hs.quickspec
+                              hs.testing-feat
                             ])) ];
 
   NIX_PATH   = builtins.getEnv "NIX_PATH";
@@ -24,7 +25,8 @@ stdenv.mkDerivation (rec {
     cp -r modules "$out/lib/"
 
     mkdir -p "$out/bin"
-    cp '${mkPkg}'
+    cp '${mkPkg}' "$out/bin/"
+    chmod +x "$out/bin/*"
   '';
 
   # Wrapper around full_haskell_package, which is the "end result" of all these

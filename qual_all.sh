@@ -1,5 +1,4 @@
-#! /usr/bin/env nix-shell
-#! nix-shell -i bash -p racket
+#!/usr/bin/env bash
 
 function trim {
     grep -v "^(assert-not " |

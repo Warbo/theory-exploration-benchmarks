@@ -1,5 +1,4 @@
-#! /usr/bin/env nix-shell
-#! nix-shell -i bash -p racket
+#!/usr/bin/env bash
 
 # Return any lines of stdin which are function definitions of $1
 

@@ -1,5 +1,4 @@
-#! /usr/bin/env nix-shell
-#! nix-shell -i bash -p racket
+#!/usr/bin/env bash
 
 F="modules/tip-benchmarks/benchmarks/grammars/simp_expr_unambig3.smt2"
 

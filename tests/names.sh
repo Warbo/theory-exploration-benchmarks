@@ -1,5 +1,4 @@
-#! /usr/bin/env nix-shell
-#! nix-shell -p racket -i bash
+#!/usr/bin/env bash
 
 ERR=0
 function report {

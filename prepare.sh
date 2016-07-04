@@ -1,5 +1,4 @@
-#! /usr/bin/env nix-shell
-#! nix-shell -i bash -p racket
+#!/usr/bin/env bash
 
 function addCheckSat {
     # Add '(check-sat)' as the last line to appease tip-tools

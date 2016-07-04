@@ -1,4 +1,3 @@
-#! /usr/bin/env nix-shell
-#! nix-shell -i bash -p racket
+#!/usr/bin/env bash
 
 racket function_def.rkt | grep '^.' | sort -u

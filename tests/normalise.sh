@@ -1,5 +1,4 @@
-#! /usr/bin/env nix-shell
-#! nix-shell -i bash -p racket mysql
+#!/usr/bin/env bash
 
 ERR=0
 function report {

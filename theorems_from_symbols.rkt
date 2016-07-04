@@ -1,5 +1,4 @@
-#! /usr/bin/env nix-shell
-#! nix-shell -p racket -i racket
+#!/usr/bin/env racket
 #lang racket
 
 (require racket/include)

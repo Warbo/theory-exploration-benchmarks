@@ -1,5 +1,4 @@
-#! /usr/bin/env nix-shell
-#! nix-shell -p haskellPackages.tip-lib -p racket -i bash
+#!/usr/bin/env bash
 
 INPUT=$(cat)
 
