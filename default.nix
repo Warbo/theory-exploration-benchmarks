@@ -25,7 +25,7 @@ stdenv.mkDerivation (rec {
     cp -r modules "$out/lib/"
 
     mkdir -p "$out/bin"
-    cp '${mkPkg}' "$out/bin/"
+    cp '${mkPkg}' "$out/bin/fullTePkg"
     chmod +x "$out/bin/"*
   '';
 
