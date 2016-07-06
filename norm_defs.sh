@@ -51,10 +51,6 @@ function stripRedundancies {
 }
 
 function replaceReferences {
-
-    # Use replace from the mysql package, as per
-    # http://stackoverflow.com/a/4179429/884682
-
     RR_INPUT=$(cat)
     RR_COUNT=$(echo "$NAME_REPLACEMENTS" | wc -l)
     RR_INDEX=1
@@ -63,7 +59,7 @@ function replaceReferences {
         echo "$RR_INDEX/$RR_COUNT" 1>&2
         RR_INDEX=$(( RR_INDEX + 1 ))
 
-        RR_INPUT=$(echo "$RR_INPUT" | replace "$source" "$dest")
+        RR_INPUT="${RR_INPUT//$source/$dest}"
     done < <(echo "$NAME_REPLACEMENTS" | grep '^.')
 
     echo "$RR_INPUT"

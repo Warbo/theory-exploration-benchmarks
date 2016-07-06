@@ -1,10 +1,10 @@
-{ bash, haskellPackages, mysql, nix, racket, stdenv, writeScript }:
+{ bash, haskellPackages, racket, stdenv, writeScript }:
 
 stdenv.mkDerivation (rec {
   name = "te-benchmark";
   src  = ./.;
 
-  propagatedBuildInputs = [ bash haskellPackages.cabal-install nix racket mysql
+  propagatedBuildInputs = [ bash haskellPackages.cabal-install racket
                             (haskellPackages.ghcWithPackages (hs: [
                               hs.tip-lib hs.QuickCheck hs.quickspec
                               hs.testing-feat
