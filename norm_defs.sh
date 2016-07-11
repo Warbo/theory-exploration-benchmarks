@@ -10,9 +10,6 @@ NORMALISED=$(cat | grep '^.')
 # tell when the content has stabilised
 OLD=""
 
-# Maps lines (definitions) to their normalised form, as "DEF\t$LINE\t$NORM"
-SO_FAR=""
-
 # Maps names removed due to redundancy, to the equivalent included name, as
 # "NAME\t$OLD\t$NEW"
 NAME_REPLACEMENTS=""
@@ -24,7 +21,7 @@ function findRedundancies {
 function stripRedundancies {
     # Remove alpha-equivalent expressions from stdin, according to
     # NAME_REPLACEMENTS
-    REPLACEMENTS=$(echo "$NAME_REPLACEMENTS" | grep '^.' | cut -f2)
+    REPLACEMENTS=$(echo "$NAME_REPLACEMENTS" | grep '^.' | cut -f1)
     SR_INPUT=$(cat | grep '^.')
 
     SR_COUNT=$(echo "$SR_INPUT" | wc -l)
@@ -54,7 +51,7 @@ function replaceReferences {
     RR_INPUT=$(cat)
     RR_COUNT=$(echo "$NAME_REPLACEMENTS" | wc -l)
     RR_INDEX=1
-    while IFS=$'\t' read sentinel source dest
+    while IFS=$'\t' read source dest
     do
         echo "$RR_INDEX/$RR_COUNT" 1>&2
         RR_INDEX=$(( RR_INDEX + 1 ))
@@ -70,15 +67,7 @@ do
     OLD="$NORMALISED"
 
     # Find alpha-equivalent terms
-    FINDINGS=$(echo "$NORMALISED" | findRedundancies)
-
-    # Each "DEF" line indicates the first occurrence of a definition, which we
-    # will keep while discarding any subsequent alpha-equivalent ones
-               SO_FAR=$(echo "$FINDINGS" | grep "^DEF")
-
-    # Each "NAME" line gives the name of something to remove, along with the
-    # reference we should use in its place
-    NAME_REPLACEMENTS=$(echo "$FINDINGS" | grep "^NAME")
+    NAME_REPLACEMENTS=$(echo "$NORMALISED" | findRedundancies)
     COUNT=$(echo "$NAME_REPLACEMENTS" | wc -l)
 
     # Remove the definitions of anything in NAME_REPLACEMENTS

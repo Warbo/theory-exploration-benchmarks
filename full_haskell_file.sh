@@ -11,7 +11,7 @@ then
     FILES="$ALL"
 else
     echo "Given limit of '$1' files" 1>&2
-    FILES=$(echo "$ALL" | head -n$1)
+    FILES=$(echo "$ALL" | head -n"$1")
 fi
 
 COUNT=$(echo "$FILES" | wc -l)
