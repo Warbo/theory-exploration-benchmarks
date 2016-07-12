@@ -44,8 +44,8 @@
 (define output
   (let* ([results           (remove-redundancies given-lines null null)]
          [name-replacements (second results)])
-    (append (map (lambda (x)
-                   (format "~a\t~a" (first x) (second x)))
-                 name-replacements))))
+    (map (lambda (x)
+           (format "~a\t~a" (first x) (second x)))
+         name-replacements)))
 
 (show output)
