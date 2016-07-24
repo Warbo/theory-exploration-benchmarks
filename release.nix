@@ -1,7 +1,16 @@
 with import <nixpkgs> {};
+with lib;
+with builtins;
 
-lib.mapAttrs (n: v: import ./. {
-                      inherit bash racket stdenv writeScript;
-                      haskellPackages = v;
-                    })
-             haskell.packages
+# Ignore some Haskell versions, to save memory
+let discard    = v: hasPrefix "lts" v || elem v [
+                      "ghc6123"
+                    ];
+
+    hsVersions = filterAttrs (n: _: !(discard n)) haskell.packages;
+
+ in lib.mapAttrs (n: v: import ./. {
+                          inherit bash racket stdenv writeScript;
+                          haskellPackages = v;
+                        })
+                 hsVersions
