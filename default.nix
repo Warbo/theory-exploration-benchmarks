@@ -1,43 +1,68 @@
 { bash, haskellPackages, racket, stdenv, writeScript }:
 
-stdenv.mkDerivation (rec {
-  name = "te-benchmark";
-  src  = ./.;
+rec {
 
-  propagatedBuildInputs = [ bash haskellPackages.cabal-install racket
-                            (haskellPackages.ghcWithPackages (hs: [
-                              hs.tip-lib hs.QuickCheck hs.quickspec
-                              hs.testing-feat
-                            ])) ];
+  te-benchmark = builtins.trace "FIXME: Test te-benchmark against all systems and Haskell versions"
+                   stdenv.mkDerivation (rec {
+    name = "te-benchmark";
+    src  = ./.;
 
-  NIX_PATH   = builtins.getEnv "NIX_PATH";
-  NIX_REMOTE = builtins.getEnv "NIX_REMOTE";
+    propagatedBuildInputs = [ bash haskellPackages.cabal-install racket
+                              (haskellPackages.ghcWithPackages (hs: [
+                                hs.tip-lib hs.QuickCheck hs.quickspec
+                                hs.testing-feat
+                              ])) ];
 
-  doCheck = true;
-  checkPhase = ''
-    HOME="$PWD" ./test.sh
-  '';
+    NIX_PATH   = builtins.getEnv "NIX_PATH";
+    NIX_REMOTE = builtins.getEnv "NIX_REMOTE";
 
-  installPhase = ''
-    mkdir -p      "$out/lib"
-    cp    *.rkt   "$out/lib/"
-    cp    *.sh    "$out/lib/"
-    cp -r modules "$out/lib/"
+    doCheck = true;
+    checkPhase = ''
+      HOME="$PWD" ./test.sh
+    '';
 
-    mkdir -p "$out/bin"
-    cp '${mkPkg}' "$out/bin/fullTePkg"
-    chmod +x "$out/bin/"*
-  '';
+    installPhase = ''
+      mkdir -p      "$out/lib"
+      cp    *.rkt   "$out/lib/"
+      cp    *.sh    "$out/lib/"
+      cp -r modules "$out/lib/"
 
-  # Wrapper around full_haskell_package, which is the "end result" of all these
-  # packages
-  mkPkg = writeScript "te-benchmark" ''
-    #!/usr/bin/env bash
-    set -e
+      mkdir -p "$out/bin"
+      cp "$mkPkg" "$out/bin/fullTePkg"
+      chmod +x "$out/bin/"*
+    '';
 
-    BASE=$(dirname "$(readlink -f "$0")")
-    cd "$BASE/../lib/"
+    # Wrapper around full_haskell_package, which is the "end result" of all
+    # these scripts
+    passAsFile = [ "mkPkg" ];
+    mkPkg      = writeScript "te-benchmark" ''
+      #!/usr/bin/env bash
+      set -e
 
-    ./full_haskell_package.sh "$@"
-  '';
-})
+      BASE=$(dirname "$(readlink -f "$0")")
+      cd "$BASE/../lib/"
+
+      ./full_haskell_package.sh "$@"
+    '';
+  });
+
+  tip-benchmarks = stdenv.mkDerivation {
+    name         = "tip-benchmarks";
+    buildInputs  = [ te-benchmark ];
+    buildCommand = ''
+      source $stdenv/setup
+      set -e
+
+      # fullTePkg expects OUT_DIR env var
+      OUT_DIR="$PWD/tip-benchmark-sig"
+      mkdir -p "$OUT_DIR"
+      export OUT_DIR
+
+      # Create Haskell package
+      fullTePkg
+
+      # Store Haskell package
+      cp -a "$OUT_DIR" "$out"
+    '';
+  };
+}
