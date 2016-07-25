@@ -3,9 +3,7 @@ with lib;
 with builtins;
 
 # Ignore some Haskell versions, to save memory
-let discard    = v: hasPrefix "lts" v || elem v [
-                      "ghc6123"
-                    ];
+let discard    = v: !(elem v [ "ghc7103" ]);
 
     hsVersions = filterAttrs (n: _: !(discard n)) haskell.packages;
 
