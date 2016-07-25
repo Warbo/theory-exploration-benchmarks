@@ -48,18 +48,8 @@ function stripRedundancies {
 }
 
 function replaceReferences {
-    RR_INPUT=$(cat)
-    RR_COUNT=$(echo "$NAME_REPLACEMENTS" | wc -l)
-    RR_INDEX=1
-    while IFS=$'\t' read source dest
-    do
-        echo "$RR_INDEX/$RR_COUNT" 1>&2
-        RR_INDEX=$(( RR_INDEX + 1 ))
-
-        RR_INPUT="${RR_INPUT//$source/$dest}"
-    done < <(echo "$NAME_REPLACEMENTS" | grep '^.')
-
-    echo "$RR_INPUT"
+    # We use Python because Bash is SLOW
+    python replace_strings.py <(echo "$NAME_REPLACEMENTS" | grep '^.')
 }
 
 while ! [[ "x$NORMALISED" = "x$OLD" ]]

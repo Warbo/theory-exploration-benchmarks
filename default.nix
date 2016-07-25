@@ -1,4 +1,4 @@
-{ bash, haskellPackages, racket, stdenv, writeScript }:
+{ bash, fetchurl, haskellPackages, python, racket, stdenv, writeScript }:
 
 # Wrapper around full_haskell_package, which is the "end result" of all
 # these scripts
@@ -11,13 +11,14 @@ let mkPkg = writeScript "te-benchmark" ''
 
               ./full_haskell_package.sh "$@"
             '';
+
  in rec {
 
   te-benchmark = stdenv.mkDerivation (rec {
     name = "te-benchmark";
     src  = ./.;
 
-    propagatedBuildInputs = [ bash haskellPackages.cabal-install racket
+    propagatedBuildInputs = [ bash haskellPackages.cabal-install python racket
                               (haskellPackages.ghcWithPackages (hs: [
                                 hs.tip-lib hs.QuickCheck hs.quickspec
                                 hs.testing-feat
