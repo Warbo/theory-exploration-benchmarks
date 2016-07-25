@@ -1,14 +1,20 @@
-with import <nixpkgs> {};
-with lib;
+{ supportedSystems ? [ "i686-linux" "x86_64-linux" ] }:
+
 with builtins;
 
-# Ignore some Haskell versions, to save memory
-let discard    = v: !(elem v [ "ghc7103" "ghc801" ]);
+let forSystem = system:
+  with import <nixpkgs> { inherit system; };
+  with lib;
 
-    hsVersions = filterAttrs (n: _: !(discard n)) haskell.packages;
+  # Ignore some Haskell versions, to save memory
+  let discard    = v: !(elem v [ "ghc7103" "ghc801" ]);
 
- in lib.mapAttrs (n: v: import ./. {
-                          inherit bash racket stdenv writeScript;
-                          haskellPackages = v;
-                        })
-                 hsVersions
+      hsVersions = filterAttrs (n: _: !(discard n)) haskell.packages;
+
+   in lib.mapAttrs (n: v: import ./. {
+                            inherit bash racket stdenv writeScript;
+                            haskellPackages = v;
+                          })
+                   hsVersions;
+ in listToAttrs (map (system: { name = system; value = forSystem system; })
+                     supportedSystems)
