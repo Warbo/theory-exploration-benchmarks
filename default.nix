@@ -28,7 +28,7 @@ rec {
       cp -r modules "$out/lib/"
 
       mkdir -p "$out/bin"
-      cp "$mkPkg" "$out/bin/fullTePkg"
+      cp "$mkPkgPath" "$out/bin/fullTePkg"
       chmod +x "$out/bin/"*
     '';
 
