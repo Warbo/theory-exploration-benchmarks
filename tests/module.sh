@@ -20,7 +20,7 @@ function tearDown {
 
 trap tearDown EXIT
 
-for N in 1 3 50
+for N in 1 3 5
 do
     echo "Testing with $N files" 1>&2
 
