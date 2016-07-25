@@ -36,6 +36,7 @@ let mkPkg = writeScript "te-benchmark" ''
       mkdir -p      "$out/lib"
       cp    *.rkt   "$out/lib/"
       cp    *.sh    "$out/lib/"
+      cp    *.py    "$out/lib/"
       cp -r modules "$out/lib/"
 
       mkdir -p "$out/bin"
