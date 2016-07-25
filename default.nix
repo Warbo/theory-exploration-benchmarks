@@ -1,6 +1,17 @@
 { bash, haskellPackages, racket, stdenv, writeScript }:
 
-rec {
+# Wrapper around full_haskell_package, which is the "end result" of all
+# these scripts
+let mkPkg = writeScript "te-benchmark" ''
+              #!/usr/bin/env bash
+              set -e
+
+              BASE=$(dirname "$(readlink -f "$0")")
+              cd "$BASE/../lib/"
+
+              ./full_haskell_package.sh "$@"
+            '';
+ in rec {
 
   te-benchmark = stdenv.mkDerivation (rec {
     name = "te-benchmark";
@@ -27,21 +38,8 @@ rec {
       cp -r modules "$out/lib/"
 
       mkdir -p "$out/bin"
-      cp "$mkPkgPath" "$out/bin/fullTePkg"
+      cp "${mkPkg}" "$out/bin/fullTePkg"
       chmod +x "$out/bin/"*
-    '';
-
-    # Wrapper around full_haskell_package, which is the "end result" of all
-    # these scripts
-    passAsFile = [ "mkPkg" ];
-    mkPkg      = writeScript "te-benchmark" ''
-      #!/usr/bin/env bash
-      set -e
-
-      BASE=$(dirname "$(readlink -f "$0")")
-      cd "$BASE/../lib/"
-
-      ./full_haskell_package.sh "$@"
     '';
   });
 
