@@ -199,7 +199,7 @@ do
             echo -e "DEF: $DEF\nNORM_DEF: $NORM_DEF" 1>&2
         }
     fi
-done < <(echo "$SUBSET")
+done < <(echo "$SUBSET" | shuf | head -n5)
 
 [[ "$GOT_QUAL" -eq 1 ]]
 report "$?" "All expected symbols got qualified"
