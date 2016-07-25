@@ -31,13 +31,15 @@ do
     INDEX=$(( INDEX + 1 ))
 
     NAME=$(basename "$FILE")
+    NAME2=$(echo "$NAME" | sed -e "s/'/_tick_/g") # Fix names with '
+
     SYMS=$(NAME="$NAME" ./qualify.rkt < "$FILE" | ./symbols_of_theorems.rkt)
     QUALIFIED=1
     while read -r SYM
     do
         QUALIFIED=0
         echo -e "Symbol '$SYM' unqualified in '$FILE'" 1>&2
-    done < <(echo "$SYMS" | grep -vF "$NAME" | grep '^.')
+    done < <(echo "$SYMS" | grep -vF "$NAME2" | grep '^.')
 
     [[ "$QUALIFIED" -eq 1 ]] || {
         ALL_QUAL=0
