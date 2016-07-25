@@ -2,8 +2,7 @@
 
 rec {
 
-  te-benchmark = builtins.trace "FIXME: Test te-benchmark against all systems"
-                   stdenv.mkDerivation (rec {
+  te-benchmark = stdenv.mkDerivation (rec {
     name = "te-benchmark";
     src  = ./.;
 
