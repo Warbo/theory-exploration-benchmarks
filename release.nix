@@ -12,7 +12,8 @@ let forSystem = system:
       hsVersions = filterAttrs (n: _: !(discard n)) haskell.packages;
 
    in lib.mapAttrs (n: v: import ./. {
-                            inherit bash fetchurl racket stdenv writeScript;
+                            inherit bash fetchurl python racket stdenv
+                                    writeScript;
                             haskellPackages = v;
                           })
                    hsVersions;
