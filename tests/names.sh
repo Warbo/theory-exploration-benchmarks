@@ -14,8 +14,6 @@ function report {
 }
 
 function namesMatch {
-    EXPECT=""
-
     NAMES=$(echo "$2" | racket rec_names.rkt)
 
     [[ "x$NAMES" = "x$3" ]]

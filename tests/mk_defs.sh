@@ -22,7 +22,7 @@ function path {
 
 function haveDef {
     DEF=$(echo "$DEFS" | bash get_fun_def.sh "$1-sentinel")
-    COUNT=$(echo "$DEF" | grep '^.' | wc -l)
+    COUNT=$(echo "$DEF" | grep -c '^.')
 
     [[ "$COUNT" -eq 1 ]]
     report "$?" "Can get $2 function definition" || {
