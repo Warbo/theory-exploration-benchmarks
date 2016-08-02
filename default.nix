@@ -41,16 +41,16 @@ rec {
       cp    *.py    "$out/lib/"
       cp -r modules "$out/lib/"
 
-      mkdir -p "$out/bin"
+      mkdir -p    "$out/bin"
       cp "$mkPkg" "$out/bin/fullTePkg"
-      chmod +x "$out/bin/"*
+      chmod +x    "$out/bin/"*
     '';
   });
 
   # Uses te-benchmark to produce one big smtlib file
   tip-benchmark-smtlib = stdenv.mkDerivation {
-    name         = "tip-benchmark-smtlib";
-    buildInputs  = [ te-benchmark ];
+    name        = "tip-benchmark-smtlib";
+    buildInputs = [ te-benchmark ];
 
     getSig = writeScript "tip-smtlib" ''
                #!/usr/bin/env bash
@@ -59,6 +59,7 @@ rec {
                BASE=$(dirname "$(readlink -f "$0")")
                cd "$BASE/../lib/"
 
+               echo "$PWD/combined-benchmark.smt2"
              '';
 
     buildCommand = ''
@@ -70,7 +71,9 @@ rec {
 
       # Create combined benchmark
       cd "${te-benchmark}/lib"
-      ./mk_defs.sh > "$out/lib/combined-benchmark.smt2"
+
+      find modules/tip-benchmarks/benchmarks -name "*.smt2" |
+        ./mk_final_defs.sh > "$out/lib/combined-benchmark.smt2"
 
       # Install command for accessing the benchmark
       cp "$getSig" "$out/bin/completeTipSig"
@@ -85,6 +88,17 @@ rec {
     buildCommand = ''
       source $stdenv/setup
       set -e
+
+      command -v completeTipSig || {
+        echo "Don't have completeTipSig" 1>&2
+        exit 1
+      }
+
+      F=$(completeTipSig)
+      [[ -e "$F" ]] || {
+        echo "Benchmarks file '$F' doesn't exist" 1>&2
+        exit 1
+      }
 
       # fullTePkg expects OUT_DIR env var
       OUT_DIR="$PWD/tip-benchmark-sig"
