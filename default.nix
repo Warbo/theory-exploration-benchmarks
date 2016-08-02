@@ -1,19 +1,8 @@
 { bash, fetchurl, haskellPackages, python, racket, stdenv, writeScript }:
 
-# Wrapper around full_haskell_package, which is the "end result" of all
-# these scripts
-let mkPkg = writeScript "te-benchmark" ''
-              #!/usr/bin/env bash
-              set -e
+rec {
 
-              BASE=$(dirname "$(readlink -f "$0")")
-              cd "$BASE/../lib/"
-
-              ./full_haskell_package.sh "$@"
-            '';
-
- in rec {
-
+  # Scripts for combining all TIP benchmarks into one
   te-benchmark = stdenv.mkDerivation (rec {
     name = "te-benchmark";
     src  = ./.;
@@ -32,6 +21,19 @@ let mkPkg = writeScript "te-benchmark" ''
       HOME="$PWD" ./test.sh
     '';
 
+    # Wrapper around full_haskell_package, which is the "end result" of all
+    # these scripts. The scripts assume they're being run from their own
+    # directory, so we find out what that is and 'cd' to it.
+    mkPkg = writeScript "te-benchmark" ''
+              #!/usr/bin/env bash
+              set -e
+
+              BASE=$(dirname "$(readlink -f "$0")")
+              cd "$BASE/../lib/"
+
+              ./full_haskell_package.sh "$@"
+            '';
+
     installPhase = ''
       mkdir -p      "$out/lib"
       cp    *.rkt   "$out/lib/"
@@ -40,14 +42,46 @@ let mkPkg = writeScript "te-benchmark" ''
       cp -r modules "$out/lib/"
 
       mkdir -p "$out/bin"
-      cp "${mkPkg}" "$out/bin/fullTePkg"
+      cp "$mkPkg" "$out/bin/fullTePkg"
       chmod +x "$out/bin/"*
     '';
   });
 
+  # Uses te-benchmark to produce one big smtlib file
+  tip-benchmark-smtlib = stdenv.mkDerivation {
+    name         = "tip-benchmark-smtlib";
+    buildInputs  = [ te-benchmark ];
+
+    getSig = writeScript "tip-smtlib" ''
+               #!/usr/bin/env bash
+               set -e
+
+               BASE=$(dirname "$(readlink -f "$0")")
+               cd "$BASE/../lib/"
+
+             '';
+
+    buildCommand = ''
+      source $stdenv/setup
+      set -e
+
+      mkdir -p "$out/lib"
+      mkdir -p "$out/bin"
+
+      # Create combined benchmark
+      cd "${te-benchmark}/lib"
+      ./mk_defs.sh > "$out/lib/combined-benchmark.smt2"
+
+      # Install command for accessing the benchmark
+      cp "$getSig" "$out/bin/completeTipSig"
+      chmod +x "$out/bin"/*
+    '';
+  };
+
+  # Uses tip-benchmark-smtlib to produce a Haskell package
   tip-benchmarks = stdenv.mkDerivation {
     name         = "tip-benchmarks";
-    buildInputs  = [ te-benchmark ];
+    buildInputs  = [ te-benchmark tip-benchmark-smtlib ];
     buildCommand = ''
       source $stdenv/setup
       set -e
