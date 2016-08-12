@@ -16,11 +16,6 @@ rec {
     NIX_PATH   = builtins.getEnv "NIX_PATH";
     NIX_REMOTE = builtins.getEnv "NIX_REMOTE";
 
-    doCheck = true;
-    checkPhase = ''
-      HOME="$PWD" ./test.sh
-    '';
-
     # Wrapper around full_haskell_package, which is the "end result" of all
     # these scripts. The scripts assume they're being run from their own
     # directory, so we find out what that is and 'cd' to it.
@@ -46,6 +41,21 @@ rec {
       chmod +x    "$out/bin/"*
     '';
   });
+
+  # Test suite takes ages, so keep it separate
+  te-benchmark-tests = stdenv.mkDerivation {
+    name = "te-tests";
+
+    teBenchmark  = te-benchmark;
+
+    buildCommand = ''
+      source $stdenv/setup
+
+      cd "$teBenchmark"
+      HOME="$PWD" ./test.sh || exit 1
+      touch "$out"
+    '';
+  };
 
   # Uses te-benchmark to produce one big smtlib file
   tip-benchmark-smtlib = stdenv.mkDerivation {
