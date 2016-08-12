@@ -51,7 +51,7 @@ rec {
     buildCommand = ''
       source $stdenv/setup
 
-      cd "$teBenchmark"
+      cd "$teBenchmark/lib"
       HOME="$PWD" ./test.sh || exit 1
       touch "$out"
     '';
