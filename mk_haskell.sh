@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-if [[ "x$1" = "xall" ]] && command -v completeTipSig 2> /dev/null
+if [[ "x$1" = "xall" ]] && command -v completeTipSig 1> /dev/null 2> /dev/null
 then
     DEFS=$(cat "$(completeTipSig)")
 else
