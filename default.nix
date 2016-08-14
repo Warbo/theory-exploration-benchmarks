@@ -89,6 +89,12 @@ rec {
       cp "$getSig" "$out/bin/completeTipSig"
       chmod +x "$out/bin"/*
     '';
+
+    # This is a fixed-output derivation; the output must be a regular
+    # file with MD5 hash md5.
+    outputHashMode = "flat";
+    outputHashAlgo = "sha256";
+    outputHash     = "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b";
   };
 
   # Uses tip-benchmark-smtlib to produce a Haskell package
