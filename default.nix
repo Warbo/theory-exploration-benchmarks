@@ -72,60 +72,42 @@ rec {
                echo "$PWD/combined-benchmark.smt2"
              '';
 
+    teBenchmark = te-benchmark;
+
     buildCommand = ''
       source $stdenv/setup
       set -e
 
-      mkdir -p "$out/lib"
-      mkdir -p "$out/bin"
-
       # Create combined benchmark
-      cd "${te-benchmark}/lib"
+      cd "$teBenchmark/lib"
 
       find modules/tip-benchmarks/benchmarks -name "*.smt2" |
-        ./mk_final_defs.sh > "$out/lib/combined-benchmark.smt2"
-
-      # Install command for accessing the benchmark
-      cp "$getSig" "$out/bin/completeTipSig"
-      chmod +x "$out/bin"/*
+        ./mk_final_defs.sh > "$out"
     '';
 
-    # This is a fixed-output derivation; the output must be a regular
-    # file with MD5 hash md5.
+    # Use a fixed-output derivation to prevent unnecessary recalculation
     outputHashMode = "flat";
     outputHashAlgo = "sha256";
-    outputHash     = "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b";
+    outputHash     = "06z59gr8j6661qhhb3cqhz6wr440a2siap7v9zaqlsj17qj80ygw";
   };
 
   # Uses tip-benchmark-smtlib to produce a Haskell package
   tip-benchmarks = stdenv.mkDerivation {
     name         = "tip-benchmarks";
-    buildInputs  = [ te-benchmark tip-benchmark-smtlib ];
+    buildInputs  = [ te-benchmark ];
+    teBenchmark  = te-benchmark;
+    SMT_FILE     = tip-benchmark-smtlib;
     buildCommand = ''
       source $stdenv/setup
       set -e
 
-      command -v completeTipSig || {
-        echo "Don't have completeTipSig" 1>&2
-        exit 1
-      }
-
-      F=$(completeTipSig)
-      [[ -e "$F" ]] || {
-        echo "Benchmarks file '$F' doesn't exist" 1>&2
-        exit 1
-      }
-
-      # fullTePkg expects OUT_DIR env var
-      OUT_DIR="$PWD/tip-benchmark-sig"
+      OUT_DIR="$out"
       mkdir -p "$OUT_DIR"
       export OUT_DIR
 
       # Create Haskell package
-      fullTePkg
-
-      # Store Haskell package
-      cp -a "$OUT_DIR" "$out"
+      cd "$teBenchmark/lib"
+      ./full_haskell_package.sh "$@"
     '';
   };
 }

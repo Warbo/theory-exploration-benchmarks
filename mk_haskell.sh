@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
 
-if [[ "x$1" = "xall" ]] && command -v completeTipSig 1> /dev/null 2> /dev/null
+if [[ "x$1" = "xall" ]] && [[ -n "$SMT_FILE" ]]
 then
-    DEFS=$(cat "$(completeTipSig)")
+    [[ -e "$SMT_FILE" ]] || {
+        echo "Given file '$SMT_FILE' doesn't exist" 1>&2
+        exit 1
+    }
+    DEFS=$(cat "$SMT_FILE")
 else
     DEFS=$(bash mk_final_defs.sh)
 fi
