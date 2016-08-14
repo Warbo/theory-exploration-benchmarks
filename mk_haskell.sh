@@ -6,6 +6,7 @@ then
         echo "Given file '$SMT_FILE' doesn't exist" 1>&2
         exit 1
     }
+    echo "Using file '$SMT_FILE'" 1>&2
     DEFS=$(cat "$SMT_FILE")
 else
     DEFS=$(bash mk_final_defs.sh)

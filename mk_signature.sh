@@ -2,6 +2,7 @@
 
 INPUT=$(cat)
 
+echo "Running tip --haskell-spec" 1>&2
 tip <(echo "$INPUT") --haskell-spec
 CODE="$?"
 

@@ -1,20 +1,22 @@
 #!/usr/bin/env bash
 
 function addCheckSat {
-    # Add '(check-sat)' as the last line to appease tip-tools
+    echo "Adding '(check-sat)' as the last line to appease tip-tools" 1>&2
     cat
     echo "(check-sat)"
 }
 
 function removeSuffices {
-    # Remove "-sentinel" suffices. Do this after all other string-based
-    # transformations, since the sentinels prevent us messing with, say, the
-    # symbol "plus2", when we only wanted to change the symbol "plus"
+    echo "Removing '-sentinel' suffices" 1>&2
+
+    # Do this after all other string-based transformations, since the sentinels
+    # prevent us messing with, say, the symbol "plus2", when we only wanted to
+    # change the symbol "plus"
     sed -e 's/-sentinel//g'
 }
 
 function removePrefices {
-    # Remove filename prefices when they result is unambiguous
+    echo "Removing unambiguous filename prefices" 1>&2
     RP_INPUT=$(cat)
     while read -r RP_REPLACE
     do
@@ -27,7 +29,9 @@ function removePrefices {
 }
 
 function nameReplacements {
-    # Unqualify any names which only have one definition. For example, given:
+    echo "Unqualify any names which only have one definition" 1>&2
+
+    # For example, given:
     #
     # (define-fun foo.smt2baz-sentinel  ...)
     # (define-fun foo.smt2quux-sentinel ...)
@@ -46,6 +50,7 @@ function nameReplacements {
             COUNT=$(echo "$NR_NAMES" | grep -cF ".smt2$UNQUAL-sentinel")
             if [[ "$COUNT" -eq 1 ]]
             then
+                echo "Unqualifying '$NAME' to '$UNQUAL'" 1>&2
                 echo -e "$NAME\t$UNQUAL"
             fi
         fi
