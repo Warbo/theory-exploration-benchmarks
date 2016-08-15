@@ -84,11 +84,6 @@ rec {
       find modules/tip-benchmarks/benchmarks -name "*.smt2" |
         ./mk_final_defs.sh > "$out"
     '';
-
-    # Use a fixed-output derivation to prevent unnecessary recalculation
-    outputHashMode = "flat";
-    outputHashAlgo = "sha256";
-    outputHash     = "0zw883cjpj75phhryv14pr03z2mzavmvyr3lngi5zlpwfc1k1jxv";
   };
 
   # Uses tip-benchmark-smtlib to produce a Haskell package
