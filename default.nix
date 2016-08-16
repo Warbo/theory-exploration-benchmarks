@@ -5,8 +5,7 @@ let propagatedBuildInputs = [
       (haskellPackages.ghcWithPackages (hs: [
         hs.tip-lib hs.QuickCheck hs.quickspec hs.testing-feat
       ])) ];
-
-rec {
+in rec {
 
   # Scripts for combining all TIP benchmarks into one
   te-benchmark = stdenv.mkDerivation (rec {
