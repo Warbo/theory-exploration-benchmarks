@@ -1,5 +1,11 @@
 { bash, fetchurl, haskellPackages, python, racket, stdenv, writeScript }:
 
+let propagatedBuildInputs = [
+      bash haskellPackages.cabal-install python racket
+      (haskellPackages.ghcWithPackages (hs: [
+        hs.tip-lib hs.QuickCheck hs.quickspec hs.testing-feat
+      ])) ];
+
 rec {
 
   # Scripts for combining all TIP benchmarks into one
@@ -7,11 +13,7 @@ rec {
     name = "te-benchmark";
     src  = ./.;
 
-    propagatedBuildInputs = [ bash haskellPackages.cabal-install python racket
-                              (haskellPackages.ghcWithPackages (hs: [
-                                hs.tip-lib hs.QuickCheck hs.quickspec
-                                hs.testing-feat
-                              ])) ];
+    inherit propagatedBuildInputs;
 
     NIX_PATH   = builtins.getEnv "NIX_PATH";
     NIX_REMOTE = builtins.getEnv "NIX_REMOTE";
@@ -46,12 +48,14 @@ rec {
   te-benchmark-tests = stdenv.mkDerivation {
     name = "te-tests";
 
-    teBenchmark  = te-benchmark;
+    inherit propagatedBuildInputs;
+
+    src = ./.;
 
     buildCommand = ''
       source $stdenv/setup
 
-      cd "$teBenchmark/lib"
+      cd "$src"
       HOME="$PWD" ./test.sh || exit 1
       touch "$out"
     '';
