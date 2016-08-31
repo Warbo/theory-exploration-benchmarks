@@ -1,10 +1,15 @@
-{ bash, fetchurl, haskellPackages, python, racket, stdenv, writeScript }:
+{ bash, buildEnv, fetchurl, haskellPackages, makeWrapper, python, racket,
+  stdenv, writeScript }:
 
 let propagatedBuildInputs = [
       bash haskellPackages.cabal-install python racket
       (haskellPackages.ghcWithPackages (hs: [
         hs.tip-lib hs.QuickCheck hs.quickspec hs.testing-feat
       ])) ];
+    env = buildEnv {
+      name  = "tip-bench-env";
+      paths = propagatedBuildInputs;
+    };
 in rec {
 
   # Scripts for combining all TIP benchmarks into one
@@ -12,6 +17,7 @@ in rec {
     name = "te-benchmark";
     src  = ./.;
 
+    buildInputs = [ makeWrapper ];
     inherit propagatedBuildInputs;
 
     NIX_PATH   = builtins.getEnv "NIX_PATH";
@@ -32,8 +38,14 @@ in rec {
 
     installPhase = ''
       mkdir -p      "$out/lib"
+
+      for F in *.sh
+      do
+        NAME=$(basename "$F")
+        makeWrapper "$F" "$out/lib/$NAME" --prefix PATH : "${env}/bin"
+      done
+
       cp    *.rkt   "$out/lib/"
-      cp    *.sh    "$out/lib/"
       cp    *.py    "$out/lib/"
       cp -r modules "$out/lib/"
 
