@@ -46,9 +46,8 @@ in rec {
       mkdir -p    "$out/bin"
       cp "$mkPkg" "$out/bin/fullTePkg"
       chmod +x    "$out/bin/"*
-    '';
 
-    postInstall = ''
+      # Ensure tip is available
       wrapProgram "$out/lib/mk_signature.sh" --prefix PATH : "${env}/bin"
     '';
   });
