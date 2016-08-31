@@ -42,7 +42,7 @@ in rec {
       for F in *.sh
       do
         NAME=$(basename "$F")
-        makeWrapper "$F" "$out/lib/$NAME" --prefix PATH : "${env}/bin"
+        makeWrapper "$PWD/$F" "$out/lib/$NAME" --prefix PATH : "${env}/bin"
       done
 
       cp    *.rkt   "$out/lib/"
