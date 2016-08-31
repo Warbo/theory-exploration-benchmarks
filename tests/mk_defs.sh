@@ -21,7 +21,7 @@ function path {
 }
 
 function haveDef {
-    DEF=$(echo "$DEFS" | bash get_fun_def.sh "$1-sentinel")
+    DEF=$(echo "$DEFS" | ./get_fun_def.sh "$1-sentinel")
     COUNT=$(echo "$DEF" | grep -c '^.')
 
     [[ "$COUNT" -eq 1 ]]
@@ -32,7 +32,7 @@ function haveDef {
 
 # Check each function declaration syntax
 
-DEFS=$(path "tip2015/sort_StoogeSort2IsSort.smt2" | bash mk_defs.sh)
+DEFS=$(path "tip2015/sort_StoogeSort2IsSort.smt2" | ./mk_defs.sh)
 
 haveDef "tip2015/sort_StoogeSort2IsSort.smt2sort2"        "plain"
 haveDef "tip2015/sort_StoogeSort2IsSort.smt2insert2"      "recursive"
@@ -50,9 +50,9 @@ modules/tip-benchmarks/benchmarks/tip2015/relaxedprefix_correct.smt2
 modules/tip-benchmarks/benchmarks/tip2015/propositional_AndIdempotent.smt2
 modules/tip-benchmarks/benchmarks/tip2015/propositional_AndImplication.smt2"
 
-Q=$(echo "$F" | bash qual_all.sh)
+Q=$(echo "$F" | ./qual_all.sh)
 
-S=$(echo "$Q" | bash symbols_of_theorems.sh)
+S=$(echo "$Q" | ./symbols_of_theorems.sh)
 echo "$S" | grep -F "or2-sentinel" > /dev/null
 report "$?" "Found an 'or2' symbol" || {
     echo -e "F:\n$F\n\nQ:\n$Q\n\nS:\n$S\n\n" 1>&2
@@ -63,9 +63,9 @@ report "$?" "'or2' is qualified" || {
     echo -e "F:\n$F\n\nQ:\n$Q\n\nS:\n$S\n\n" 1>&2
 }
 
-D=$(echo "$F" | bash mk_defs.sh)
+D=$(echo "$F" | ./mk_defs.sh)
 
-S=$(echo "$D" | bash symbols_of_theorems.sh)
+S=$(echo "$D" | ./symbols_of_theorems.sh)
 echo "$S" | grep -F "or2-sentinel" > /dev/null
 report "$?" "Found 'or2' symbol" || {
     echo -e "F:\n$F\n\nD:\n$D\n\nS:\n$S\n\n" 1>&2
@@ -75,8 +75,8 @@ FILES="modules/tip-benchmarks/benchmarks/grammars/simp_expr_unambig1.smt2
 modules/tip-benchmarks/benchmarks/grammars/simp_expr_unambig4.smt2
 modules/tip-benchmarks/benchmarks/tip2015/sort_StoogeSort2IsSort.smt2"
 
-QUAL=$(echo "$FILES" | bash qual_all.sh)
-SYMS=$(echo "$QUAL"  | bash symbols_of_theorems.sh)
+QUAL=$(echo "$FILES" | ./qual_all.sh)
+SYMS=$(echo "$QUAL"  | ./symbols_of_theorems.sh)
 
 for SYM in true-sentinel false-sentinel ite-sentinel or-sentinel
 do
@@ -126,7 +126,7 @@ report "$?" "Found expected symbols"
 
 ALL_QUAL=1
 ALL_SUFF=1
-DEFS=$(echo "$FILES" | bash mk_defs.sh)
+DEFS=$(echo "$FILES" | ./mk_defs.sh)
 while read -r SYM
 do
     echo "$SYM" | grep    '\.smt2'     > /dev/null || {
@@ -137,7 +137,7 @@ do
         ALL_SUFF=0
         echo -e "Unsuffixed symbol: $SYM" 1>&2
     }
-done < <(echo "$DEFS" | bash symbols_of_theorems.sh | grep '^.')
+done < <(echo "$DEFS" | ./symbols_of_theorems.sh | grep '^.')
 
 [[ "$ALL_QUAL" -eq 1 ]]
 report "$?" "All symbols are qualified"
@@ -148,7 +148,7 @@ report "$?" "All symbols are suffixed"
 ###
 
 DUPES=0
-NORMALISED=$(echo "$DEFS" | racket canonical_functions.rkt)
+NORMALISED=$(echo "$DEFS" | ./canonical_functions.rkt)
 while read -r NORM
 do
     COUNT=$(echo "$NORMALISED" | grep -cF "$NORM")
@@ -171,7 +171,7 @@ do
     echo "$INDEX/$TOTAL" 1>&2
     INDEX=$(( INDEX + 1 ))
 
-      DEF=$(echo "$QUAL" | bash get_def.sh "$SYM")
+      DEF=$(echo "$QUAL" | ./get_def.sh "$SYM")
     COUNT=$(echo "$DEF"  | grep -c '^.')
 
     [[ "$COUNT" -eq 1 ]] || {
@@ -179,7 +179,7 @@ do
         echo -e "SYM: $SYM\nDEF:\n$DEF\n\n" 1>&2
     }
 
-      NORM_DEF=$(echo "$DEFS"     | bash get_def.sh "$SYM")
+      NORM_DEF=$(echo "$DEFS"     | ./get_def.sh "$SYM")
     NORM_COUNT=$(echo "$NORM_DEF" | grep -c '^.')
 
     [[ "$NORM_COUNT" -lt 2 ]] || {

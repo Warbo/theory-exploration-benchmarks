@@ -36,7 +36,7 @@ function stringToHaskell {
 
     echo "$1" | tr -d '\n' > "$TEMP_FILE"
 
-    echo "$TEMP_FILE" | bash mk_haskell.sh
+    echo "$TEMP_FILE" | ./mk_haskell.sh
     STH_CODE="$?"
 
     rm -f "$TEMP_FILE"
@@ -140,7 +140,7 @@ $DIR/tip2015/sort_QSortPermutes.smt2"
 
     while read -r F
     do
-        SIG=$(echo "$F" | bash mk_haskell.sh 2> "$DBG")
+        SIG=$(echo "$F" | ./mk_haskell.sh 2> "$DBG")
         report "$?" "Made Haskell file for '$F'" || {
             echo -e "F: $F\nSIG:\n$SIG\n\nstderr:" 1>&2
             cat "$DBG" 1>&2
@@ -152,7 +152,7 @@ function testMultipleFiles {
     FILES="$DIR/tip2015/tree_SwapAB.smt2
 $DIR/tip2015/list_z_count_nub.smt2"
 
-    SIG=$(echo "$FILES" | bash mk_haskell.sh 2> "$DBG")
+    SIG=$(echo "$FILES" | ./mk_haskell.sh 2> "$DBG")
     report "$?" "No conflicting locals/globals" || {
         cat "$DBG"
     }
@@ -169,7 +169,7 @@ function testRandomFiles {
     do
         FILES=$(find "$DIR" -name "*.smt2" | shuf | head -n$N)
 
-        SIG=$(echo "$FILES" | bash mk_haskell.sh 2> "$DBG")
+        SIG=$(echo "$FILES" | ./mk_haskell.sh 2> "$DBG")
         report "$?" "Made Haskell for $N files" || {
             echo -e "FILES:\n$FILES\n\nSIG:\n$SIG\n\nstderr:" 1>&2
             cat "$DBG" 1>&2

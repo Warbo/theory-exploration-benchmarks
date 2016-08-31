@@ -39,7 +39,7 @@ function nameReplacements {
     #
     # We can unqualify 'foo.smt2baz-sentinel' to get 'baz', but we can't for
     # 'quux' since there are two distinct versions.
-    NR_NAMES=$(racket rec_names.rkt)
+    NR_NAMES=$(./rec_names.rkt)
 
     while read -r NAME
     do

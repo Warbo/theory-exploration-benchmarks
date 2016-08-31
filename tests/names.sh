@@ -14,7 +14,7 @@ function report {
 }
 
 function namesMatch {
-    NAMES=$(echo "$2" | racket rec_names.rkt)
+    NAMES=$(echo "$2" | ./rec_names.rkt)
 
     [[ "x$NAMES" = "x$3" ]]
     report "$?" "Got expected names from $1" ||

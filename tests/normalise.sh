@@ -14,7 +14,7 @@ function report {
 }
 
 function checkNormal {
-    CANON=$(echo "$2" | racket canonical_functions.rkt)
+    CANON=$(echo "$2" | ./canonical_functions.rkt)
 
     [[ "x$CANON" = "x$3" ]]
     report "$?" "Normalising $1 as expected"
@@ -53,8 +53,8 @@ GIVEN="
 (define-fun min2 ((a Int) (b Int)) Int (ite (<= a b) a b))
 "
 
-DEFS=$(echo "$GIVEN" | bash norm_defs.sh "example")
-SYMS=$(echo "$DEFS"  | bash symbols_of_theorems.sh)
+DEFS=$(echo "$GIVEN" | ./norm_defs.sh "example")
+SYMS=$(echo "$DEFS"  | ./symbols_of_theorems.sh)
 
 MINS=0
 echo "$SYMS" | grep "min1" > /dev/null && MINS=$(( MINS + 1 ))
@@ -70,8 +70,8 @@ GIVEN="
 (define-fun fun3 ((x Int)) Int (min2 x x))
 "
 
-DEFS=$(echo "$GIVEN" | bash norm_defs.sh "example")
-SYMS=$(echo "$DEFS"  | grep "fun3" | bash symbols_of_theorems.sh)
+DEFS=$(echo "$GIVEN" | ./norm_defs.sh "example")
+SYMS=$(echo "$DEFS"  | grep "fun3" | ./symbols_of_theorems.sh)
 
 echo "$SYMS" | grep "min1" > /dev/null
 report "$?" "References to discarded duplicates are replaced"

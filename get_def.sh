@@ -2,5 +2,5 @@
 
 INPUT=$(cat)
 
-echo "$INPUT" | grep -F "$1" | bash get_fun_def.sh "$1"
-echo "$INPUT" | grep -F "$1" | NAME="$1" racket get_con_def.rkt
+echo "$INPUT" | grep -F "$1" | ./get_fun_def.sh "$1"
+echo "$INPUT" | grep -F "$1" | NAME="$1" ./get_con_def.rkt

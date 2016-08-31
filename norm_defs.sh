@@ -14,10 +14,6 @@ OLD=""
 # "NAME\t$OLD\t$NEW"
 NAME_REPLACEMENTS=""
 
-function findRedundancies {
-    racket find_redundancies.rkt
-}
-
 function stripRedundancies {
     # Remove alpha-equivalent expressions from stdin, according to
     # NAME_REPLACEMENTS
@@ -44,7 +40,7 @@ function stripRedundancies {
             fi
         done < <(echo "$DEF_NAMES" | tr ' ' '\n' | grep '^.')
         [[ "$KEEP" -eq 0 ]] || echo "$LINE"
-    done < <(paste <(echo "$SR_INPUT") <(echo "$SR_INPUT" | racket all_names.rkt))
+    done < <(paste <(echo "$SR_INPUT") <(echo "$SR_INPUT" | ./all_names.rkt))
 }
 
 function replaceReferences {
@@ -57,7 +53,7 @@ do
     OLD="$NORMALISED"
 
     # Find alpha-equivalent terms
-    NAME_REPLACEMENTS=$(echo "$NORMALISED" | findRedundancies)
+    NAME_REPLACEMENTS=$(echo "$NORMALISED" | ./find_redundancies.rkt)
     COUNT=$(echo "$NAME_REPLACEMENTS" | wc -l)
 
     # Remove the definitions of anything in NAME_REPLACEMENTS

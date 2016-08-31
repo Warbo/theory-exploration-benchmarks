@@ -10,7 +10,7 @@ function parts {
 }
 
 function customDatatypes {
-    racket type_def.rkt | removeDupes
+    ./type_def.rkt | removeDupes
 }
 
 function builtInDatatypes {

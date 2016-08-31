@@ -21,4 +21,4 @@ COUNT=$(echo "$FILES" | wc -l)
 
 echo -e "Processing $COUNT files:" 1>&2
 
-echo "$FILES" | bash mk_haskell.sh "$NUM"
+echo "$FILES" | ./mk_haskell.sh "$NUM"

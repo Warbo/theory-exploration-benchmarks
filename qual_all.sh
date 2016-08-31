@@ -18,4 +18,4 @@ function fixup {
 
 # Combine all definitions in files given on stdin
 
-racket qual_all.rkt | fixup | trim
+./qual_all.rkt | fixup | trim
