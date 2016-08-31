@@ -38,13 +38,7 @@ in rec {
 
     installPhase = ''
       mkdir -p      "$out/lib"
-
-      for F in *.sh
-      do
-        NAME=$(basename "$F")
-        makeWrapper "$PWD/$F" "$out/lib/$NAME" --prefix PATH : "${env}/bin"
-      done
-
+      cp    *.sh    "$out/lib/"
       cp    *.rkt   "$out/lib/"
       cp    *.py    "$out/lib/"
       cp -r modules "$out/lib/"
@@ -52,6 +46,10 @@ in rec {
       mkdir -p    "$out/bin"
       cp "$mkPkg" "$out/bin/fullTePkg"
       chmod +x    "$out/bin/"*
+    '';
+
+    postInstall = ''
+      wrapProgram "$out/lib/mk_signature.sh" --prefix PATH : "${env}/bin"
     '';
   });
 
