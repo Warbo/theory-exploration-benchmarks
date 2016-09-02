@@ -114,7 +114,8 @@ in rec {
 
       # Create Haskell package
       cd "$teBenchmark/lib"
-      ./full_haskell_package.sh "$@"
+      find modules/tip-benchmarks/benchmarks/ -name "*.smt2" |
+        ./mk_final_defs.sh | ./full_haskell_package.sh
     '';
   };
 }
