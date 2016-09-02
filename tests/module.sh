@@ -32,9 +32,10 @@ do
     OUT_DIR=$(mktemp --tmpdir -d "te-benchmark-temp-test-module-XXXXX")
     export OUT_DIR
 
-    ./full_haskell_package.sh "$N"
+    THESE=$(echo "$FILES" | head -n "$N")
+    echo "$THESE" |./mk_final_defs.sh | ./full_haskell_package.sh
     report "$?" "Made Haskell from $N files" || {
-        echo -e "FILES:\n$FILES\n\n" 1>&2
+        echo -e "THESE:\n$THESE\n" 1>&2
     }
 
     pushd "$OUT_DIR" > /dev/null
