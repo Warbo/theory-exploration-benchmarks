@@ -5,9 +5,9 @@
     exit 1
 }
 
-echo "Running full_haskell_file.sh" 1>&2
-HS=$(./full_haskell_file.sh "$@") || {
-    echo -e "Failed to make Haskell file\nArgs: $*\nHS:\n$HS\n\n" 1>&2
+echo "Running mk_signature.sh" 1>&2
+HS=$(./mk_signature.sh) || {
+    echo -e "Failed to make Haskell file\nHS:\n$HS\n\n" 1>&2
     exit 1
 }
 

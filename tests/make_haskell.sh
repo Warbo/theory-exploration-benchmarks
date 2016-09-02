@@ -26,8 +26,8 @@ function report {
 }
 
 function stringToHaskell {
-    # mk_haskell.sh takes in filenames, so it can qualify names. This makes and
-    # cleans up temporary files for testing.
+    # mk_final_defs.sh takes in filenames, so it can qualify names. This makes
+    # and cleans up temporary files for testing.
 
     # Note: We make a file in a directory, to avoid problems if tmpdir begins
     # with a number (e.g. '/var/run/user/1000'); otherwise qualified variable
@@ -36,7 +36,7 @@ function stringToHaskell {
 
     echo "$1" | tr -d '\n' > "$TEMP_FILE"
 
-    echo "$TEMP_FILE" | ./mk_haskell.sh
+    echo "$TEMP_FILE" | ./mk_final_defs.sh | ./mk_signature.sh
     STH_CODE="$?"
 
     rm -f "$TEMP_FILE"
@@ -140,7 +140,7 @@ $DIR/tip2015/sort_QSortPermutes.smt2"
 
     while read -r F
     do
-        SIG=$(echo "$F" | ./mk_haskell.sh 2> "$DBG")
+        SIG=$(echo "$F" | ./mk_final_defs.sh | ./mk_signature.sh 2> "$DBG")
         report "$?" "Made Haskell file for '$F'" || {
             echo -e "F: $F\nSIG:\n$SIG\n\nstderr:" 1>&2
             cat "$DBG" 1>&2
@@ -152,7 +152,7 @@ function testMultipleFiles {
     FILES="$DIR/tip2015/tree_SwapAB.smt2
 $DIR/tip2015/list_z_count_nub.smt2"
 
-    SIG=$(echo "$FILES" | ./mk_haskell.sh 2> "$DBG")
+    SIG=$(echo "$FILES" | ./mk_final_defs.sh | ./mk_signature.sh 2> "$DBG")
     report "$?" "No conflicting locals/globals" || {
         cat "$DBG"
     }
@@ -169,7 +169,7 @@ function testRandomFiles {
     do
         FILES=$(find "$DIR" -name "*.smt2" | shuf | head -n$N)
 
-        SIG=$(echo "$FILES" | ./mk_haskell.sh 2> "$DBG")
+        SIG=$(echo "$FILES" | ./mk_final_defs.sh | ./mk_signature.sh 2> "$DBG")
         report "$?" "Made Haskell for $N files" || {
             echo -e "FILES:\n$FILES\n\nSIG:\n$SIG\n\nstderr:" 1>&2
             cat "$DBG" 1>&2
