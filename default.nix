@@ -23,19 +23,6 @@ in rec {
     NIX_PATH   = builtins.getEnv "NIX_PATH";
     NIX_REMOTE = builtins.getEnv "NIX_REMOTE";
 
-    # Wrapper around full_haskell_package, which is the "end result" of all
-    # these scripts. The scripts assume they're being run from their own
-    # directory, so we find out what that is and 'cd' to it.
-    mkPkg = writeScript "te-benchmark" ''
-              #!/usr/bin/env bash
-              set -e
-
-              BASE=$(dirname "$(readlink -f "$0")")
-              cd "$BASE/../lib/"
-
-              ./full_haskell_package.sh "$@"
-            '';
-
     installPhase = ''
       mkdir -p      "$out/lib"
       cp    *.sh    "$out/lib/"
@@ -43,12 +30,16 @@ in rec {
       cp    *.py    "$out/lib/"
       cp -r modules "$out/lib/"
 
-      mkdir -p    "$out/bin"
-      cp "$mkPkg" "$out/bin/fullTePkg"
-      chmod +x    "$out/bin/"*
-
       # Ensure tip is available
       wrapProgram "$out/lib/mk_signature.sh" --prefix PATH : "${env}/bin"
+
+      mkdir -p    "$out/bin"
+      for F in "$out/lib"/*.sh "$out/lib"/*.rkt "$out/lib"/*.py
+      do
+        NAME=$(basename "$F")
+        echo -e "#!/usr/bin/env bash\ncd '$out/lib'\n'$F' \"\$@\"" > "$out/bin/$NAME"
+      done
+      chmod +x    "$out/bin/"*
     '';
   });
 
