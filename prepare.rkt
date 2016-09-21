@@ -6,8 +6,18 @@
 (include "defs.rkt")
 
 (define (tag-constructors x)
-  ;; Tag constructors with 'CON' to disambiguate
-  x)
+  ;; Tag constructors with 'CONSTRUCTOR' to disambiguate
+  (foldl (lambda (c y)
+           (replace-in c (prefix-name c "CONSTRUCTOR") y))
+         x
+         (expression-constructors x)))
+
+(define (tag-types x)
+  ;; Tag types with 'TYPE' to disambiguate
+  (foldl (lambda (t y)
+           (replace-in t (prefix-name t "TYPE") y))
+         x
+         (expression-types x)))
 
 (define (prefix-name n p)
   (string->symbol (string-append p (symbol->string n))))
@@ -68,10 +78,8 @@
   (let* ([consts (expression-constructors x)])
     (append x (map (curry func-for x) consts))))
 
-(define (tag-types x)
-  ;; Tag types with 'TYP' to disambiguate
-  x)
-
 (show
- (add-constructor-funcs
-  (read-benchmark (port->string (current-input-port)))))
+ (tag-types
+  (tag-constructors
+   (add-constructor-funcs
+    (read-benchmark (port->string (current-input-port)))))))
