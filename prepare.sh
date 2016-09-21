@@ -57,4 +57,4 @@ function nameReplacements {
     done < <(echo "$NR_NAMES")
 }
 
-removePrefices | removeSuffices | addCheckSat
+./prepare.rkt | removePrefices | removeSuffices | addCheckSat
