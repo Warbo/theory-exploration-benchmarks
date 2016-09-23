@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
+set -e
+set -o pipefail
 
-QUAL=$(./qual_all.sh)
-
-echo -e "qual_all.sh output:\n$QUAL\n\n" 1>&2
-
-echo "$QUAL" | ./norm_defs.sh
+./qual_all.sh | ./norm_defs.sh

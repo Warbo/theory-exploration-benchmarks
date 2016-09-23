@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+set -o pipefail
+set -e
 
 function addCheckSat {
     echo "Adding '(check-sat)' as the last line to appease tip-tools" 1>&2
