@@ -45,7 +45,7 @@ function stripRedundancies {
 
 function replaceReferences {
     # We use Python because Bash is SLOW
-    ./replace_strings.py <(echo "$NAME_REPLACEMENTS" | grep '^.')
+    ./replace_strings.rkt <(echo "$NAME_REPLACEMENTS" | grep '^.')
 }
 
 while ! [[ "x$NORMALISED" = "x$OLD" ]]

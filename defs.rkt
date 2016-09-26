@@ -6,6 +6,7 @@
 (provide qual-all)
 (provide rec-names)
 (provide prepare)
+(provide mk-defs)
 (provide all-names)
 (provide find-redundancies)
 (provide symbols-of-theorems)
@@ -652,6 +653,17 @@
 (define (mk-defs)
   (run-pipeline/out '(./qual_all.rkt) '(./norm_defs.sh)))
 
+(define (mk-defs-s s)
+  (pipe s (lambda () (run-pipeline '(./qual_all.rkt) '(./norm_defs.sh)))))
+
+(module+ test
+  (for-each (lambda (f)
+              (check-equal? (mk-defs-s f)
+                            (pipe f mk-defs)))
+            '("modules/tip-benchmarks/benchmarks/grammars/simp_expr_unambig1.smt2"
+              "modules/tip-benchmarks/benchmarks/grammars/simp_expr_unambig4.smt2"
+              "modules/tip-benchmarks/benchmarks/tip2015/sort_StoogeSort2IsSort.smt2")))
+
 (define (string->lines s)
   (string-split s "\n" #:trim? #f))
 
@@ -799,7 +811,7 @@
       (have-def defs "tip2015/sort_StoogeSort2IsSort.smt2ztake"        "parameterised recursive")
       (have-def defs "tip2015/sort_StoogeSort2IsSort.smt2stooge2sort2" "mutually recursive"))))
 
-(module+ test
+#;(module+ test
   (test-case "Real symbols qualified"
     (let* ([f "modules/tip-benchmarks/benchmarks/tip2015/propositional_AndCommutative.smt2\nmodules/tip-benchmarks/benchmarks/tip2015/propositional_Sound.smt2\nmodules/tip-benchmarks/benchmarks/tip2015/propositional_Okay.smt2\nmodules/tip-benchmarks/benchmarks/tip2015/regexp_RecSeq.smt2\nmodules/tip-benchmarks/benchmarks/tip2015/relaxedprefix_correct.smt2\nmodules/tip-benchmarks/benchmarks/tip2015/propositional_AndIdempotent.smt2\nmodules/tip-benchmarks/benchmarks/tip2015/propositional_AndImplication.smt2"]
            [q (run-pipeline/out `(echo ,f) '(./qual_all.rkt))]
@@ -815,8 +827,8 @@
                                           '(grep -Fx "or2-sentinel")))
                  "or2 symbol is qualified")
 
-      #;(let* ([d (run-pipeline/out `(echo ,f) '(./mk_defs.rkt))]
-             [s (run-pipeline/out `(echo ,d) '(./symbols_of_theorems.rkt))]
+      #;(let* ([d (pipe f mk-defs)]
+             [s (pipe d (symbols-of-theorems))]
              [result (run-pipeline/out `(echo ,s) '(grep -F "or2-sentinel"))])
         (check-true (string? result) "Found 'or2' symbol"))))
 
@@ -1207,3 +1219,41 @@
     (filter acceptable-theorem (theorem-files)))
 
   (displayln (format-symbols (acceptable-theorems))))
+
+(define (replace-strings file)
+  (replace-strings-s (port->string (current-input-port))
+                     (file->lines file)))
+
+(define (replace-strings-s str reps)
+  ;; Replace strings in stdio. Takes a file of replacements to make, one
+  ;; replacement per line, with original and replacement separated by tabs.
+  ;;
+  ;; For example, with files:
+  ;;
+  ;; DATA:
+  ;;
+  ;; foo
+  ;; bar
+  ;; foobar
+  ;;
+  ;; REPS:
+  ;;
+  ;; foo	BAZ
+  ;; bar	qUUx
+  ;;
+  ;; The command './replace_strings.rkt <(cat REPS) < DATA' will give:
+  ;;
+  ;; BAZ
+  ;; qUUx
+  ;; BAZqUUx
+  (foldl (lambda (line so-far)
+           (match (string-split line "\t")
+             [(list src dst) (string-replace so-far src dst)]
+             [_              so-far]))
+         str
+         reps))
+
+(module+ test
+  (check-equal? (replace-strings-s "hello mellow yellow fellow"
+                                   '("lo\tLO" "el\t{{el}}"))
+                "h{{el}}LO m{{el}}LOw y{{el}}LOw f{{el}}LOw"))
