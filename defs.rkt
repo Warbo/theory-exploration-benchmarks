@@ -636,7 +636,10 @@
            (qualify (first name-content) (second name-content)))
          given-contents))
 
-  (show (apply append qualified-contents)))
+  (define result
+    (trim (write-s (apply append qualified-contents))))
+
+  (displayln result))
 
 (require shell/pipeline)
 
@@ -770,18 +773,6 @@
 
   (write (string-join (map write-s (find-sub-exprs f benchmarks)) "\n")))
 
-;echo "$INPUT" | grep -F "(define-fun $1 "
-;echo "$INPUT" | grep    "(define-fun (par ([^)]*) ($1 "
-;echo "$INPUT" | grep -F "(define-fun-rec $1 "
-;echo "$INPUT" | grep    "(define-fun-rec (par ([^)]*) ($1 "
-;echo "$INPUT" | grep    "(define-funs-rec" | while read -r REC_LINE
-;do
-;    if echo "$REC_LINE" | ./rec_names.rkt | grep -Fx "$1" > /dev/null
-;    then
-;        echo "$REC_LINE"
-;    fi
-;done
-
 (define (as-str x)
   (if (string? x)
       x
@@ -803,13 +794,99 @@
          ('message "Can get function definition"))
       (check-eq? count 1)))
 
-  (let ((defs (run `(echo ,(path "tip2015/sort_StoogeSort2IsSort.smt2"))
-                   '(./mk_defs.sh))))
-    (have-def defs "tip2015/sort_StoogeSort2IsSort.smt2sort2"        "plain")
-    (have-def defs "tip2015/sort_StoogeSort2IsSort.smt2insert2"      "recursive")
-    (have-def defs "tip2015/sort_StoogeSort2IsSort.smt2zsplitAt"     "parameterised")
-    (have-def defs "tip2015/sort_StoogeSort2IsSort.smt2ztake"        "parameterised recursive")
-    (have-def defs "tip2015/sort_StoogeSort2IsSort.smt2stooge2sort2" "mutually recursive")))
+  (test-case "Function declaration syntax"
+    (let ((defs (run `(echo ,(path "tip2015/sort_StoogeSort2IsSort.smt2"))
+                     '(./mk_defs.sh))))
+      (have-def defs "tip2015/sort_StoogeSort2IsSort.smt2sort2"        "plain")
+      (have-def defs "tip2015/sort_StoogeSort2IsSort.smt2insert2"      "recursive")
+      (have-def defs "tip2015/sort_StoogeSort2IsSort.smt2zsplitAt"     "parameterised")
+      (have-def defs "tip2015/sort_StoogeSort2IsSort.smt2ztake"        "parameterised recursive")
+      (have-def defs "tip2015/sort_StoogeSort2IsSort.smt2stooge2sort2" "mutually recursive")))
+
+  (test-case "Real files"
+    (let* ([f "modules/tip-benchmarks/benchmarks/tip2015/propositional_AndCommutative.smt2\nmodules/tip-benchmarks/benchmarks/tip2015/propositional_Sound.smt2\nmodules/tip-benchmarks/benchmarks/tip2015/propositional_Okay.smt2\nmodules/tip-benchmarks/benchmarks/tip2015/regexp_RecSeq.smt2\nmodules/tip-benchmarks/benchmarks/tip2015/relaxedprefix_correct.smt2\nmodules/tip-benchmarks/benchmarks/tip2015/propositional_AndIdempotent.smt2\nmodules/tip-benchmarks/benchmarks/tip2015/propositional_AndImplication.smt2"]
+           [q (run-pipeline/out `(echo ,f) '(./qual_all.sh))]
+           [s (run-pipeline/out `(echo ,q) '(./symbols_of_theorems.sh))])
+
+      (check-true (let ([result (run-pipeline/out `(echo ,s)
+                                                  '(grep -F "or2-sentinel"))])
+                    #t)
+                  "Found an or2 symbol")
+
+      (check-exn exn? (lambda ()
+                        (run-pipeline/out `(echo ,s)
+                                          '(grep -Fx "or2-sentinel")))
+                 "or2 symbol is qualified")
+
+      (let* ([d (run-pipeline/out `(echo ,f) '(./mk_defs.sh))]
+             [s (run-pipeline/out `(echo ,d) '(./symbols_of_theorems.sh))]
+             [result (run-pipeline/out `(echo ,s) '(grep -F "or2-sentinel"))])
+        (check-true (string? result) "Found 'or2' symbol")))
+
+    (let* ([files "modules/tip-benchmarks/benchmarks/grammars/simp_expr_unambig1.smt2\nmodules/tip-benchmarks/benchmarks/grammars/simp_expr_unambig4.smt2\nmodules/tip-benchmarks/benchmarks/tip2015/sort_StoogeSort2IsSort.smt2"]
+           [qual (run-pipeline/out `(echo ,files) '(./qual_all.sh))]
+           [syms (run-pipeline/out `(echo ,qual)  '(./symbols_of_theorems.sh))])
+      (for-each (lambda (sym)
+                  (check-exn exn? (lambda ()
+                                    (run-pipeline/out `(echo ,syms)
+                                                      `(grep -Fx ,sym)))
+                             (string-append "Native symbol " sym " was stripped")))
+                '("true-sentinel" "false-sentinel" "ite-sentinel" "or-sentinel"))
+
+      (let* ([subset (string-split "grammars/simp_expr_unambig1.smt2append-sentinel
+grammars/simp_expr_unambig1.smt2lin-sentinel
+grammars/simp_expr_unambig4.smt2nil-sentinel
+grammars/simp_expr_unambig4.smt2cons-sentinel
+grammars/simp_expr_unambig4.smt2C-sentinel
+grammars/simp_expr_unambig4.smt2D-sentinel
+grammars/simp_expr_unambig4.smt2X-sentinel
+grammars/simp_expr_unambig4.smt2Y-sentinel
+grammars/simp_expr_unambig4.smt2Pl-sentinel
+grammars/simp_expr_unambig4.smt2Plus-sentinel
+grammars/simp_expr_unambig4.smt2EX-sentinel
+grammars/simp_expr_unambig4.smt2EY-sentinel
+grammars/simp_expr_unambig4.smt2head-sentinel
+grammars/simp_expr_unambig4.smt2tail-sentinel
+grammars/simp_expr_unambig4.smt2Plus_0-sentinel
+grammars/simp_expr_unambig4.smt2Plus_1-sentinel
+grammars/simp_expr_unambig4.smt2append-sentinel
+grammars/simp_expr_unambig4.smt2linTerm-sentinel
+grammars/simp_expr_unambig4.smt2lin-sentinel
+tip2015/sort_StoogeSort2IsSort.smt2nil-sentinel
+tip2015/sort_StoogeSort2IsSort.smt2cons-sentinel
+tip2015/sort_StoogeSort2IsSort.smt2sort2-sentinel
+tip2015/sort_StoogeSort2IsSort.smt2insert2-sentinel
+tip2015/sort_StoogeSort2IsSort.smt2zsplitAt-sentinel
+tip2015/sort_StoogeSort2IsSort.smt2ztake-sentinel
+tip2015/sort_StoogeSort2IsSort.smt2stooge2sort2-sentinel" "\n")])
+        (for-each (lambda (sym)
+                    (check-true (string? (run-pipeline/out `(echo ,syms)
+                                                           `(grep -Fx ,sym)))
+                                (string-append "Found symbol for " sym)))
+                  subset))
+
+      (let* ([defs (run-pipeline/out `(echo ,files) '(./mk_defs.sh))]
+             [syms (string-split (run-pipeline/out `(echo defs)
+                                                   '(./symbols_of_theorems.sh)
+                                                   '(grep "^."))
+                                 "\n")])
+        (for-each (lambda (sym)
+                    (with-check-info
+                     (('sym sym)
+                      ('defs defs)
+                      ('message (string-append "Symbol " sym " is qualified")))
+                     (check-true (string? (run-pipeline/out `(echo ,sym)
+                                                            '(grep "\\.smt2")))
+                                 (string-append "Qualified symbol " sym)))
+
+                    (with-check-info
+                     (('sym  sym)
+                      ('defs defs)
+                      ('message (string-append "Symbol " sym " has suffix")))
+                     (check-true (string? (run-pipeline/out `(echo ,sym)
+                                                            '(grep -- "-sentinel$")))
+                                 (string-append "Suffixed symbol " sym))))
+                  syms)))))
 
 (define (rec-names)
   (define given-defs
