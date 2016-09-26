@@ -21,7 +21,7 @@ GIVEN="
 "
 
 DEFS=$(echo "$GIVEN" | ./norm_defs.sh "example")
-SYMS=$(echo "$DEFS"  | ./symbols_of_theorems.sh)
+SYMS=$(echo "$DEFS"  | ./symbols_of_theorems.rkt)
 
 MINS=0
 echo "$SYMS" | grep "min1" > /dev/null && MINS=$(( MINS + 1 ))
@@ -38,7 +38,7 @@ GIVEN="
 "
 
 DEFS=$(echo "$GIVEN" | ./norm_defs.sh "example")
-SYMS=$(echo "$DEFS"  | grep "fun3" | ./symbols_of_theorems.sh)
+SYMS=$(echo "$DEFS"  | grep "fun3" | ./symbols_of_theorems.rkt)
 
 echo "$SYMS" | grep "min1" > /dev/null
 report "$?" "References to discarded duplicates are replaced"

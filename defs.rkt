@@ -803,7 +803,7 @@
   (test-case "Real symbols qualified"
     (let* ([f "modules/tip-benchmarks/benchmarks/tip2015/propositional_AndCommutative.smt2\nmodules/tip-benchmarks/benchmarks/tip2015/propositional_Sound.smt2\nmodules/tip-benchmarks/benchmarks/tip2015/propositional_Okay.smt2\nmodules/tip-benchmarks/benchmarks/tip2015/regexp_RecSeq.smt2\nmodules/tip-benchmarks/benchmarks/tip2015/relaxedprefix_correct.smt2\nmodules/tip-benchmarks/benchmarks/tip2015/propositional_AndIdempotent.smt2\nmodules/tip-benchmarks/benchmarks/tip2015/propositional_AndImplication.smt2"]
            [q (run-pipeline/out `(echo ,f) '(./qual_all.rkt))]
-           [s (run-pipeline/out `(echo ,q) '(./symbols_of_theorems.sh))])
+           [s (run-pipeline/out `(echo ,q) '(./symbols_of_theorems.rkt))])
 
       (check-true (let ([result (run-pipeline/out `(echo ,s)
                                                   '(grep -F "or2-sentinel"))])
@@ -816,13 +816,13 @@
                  "or2 symbol is qualified")
 
       #;(let* ([d (run-pipeline/out `(echo ,f) '(./mk_defs.rkt))]
-             [s (run-pipeline/out `(echo ,d) '(./symbols_of_theorems.sh))]
+             [s (run-pipeline/out `(echo ,d) '(./symbols_of_theorems.rkt))]
              [result (run-pipeline/out `(echo ,s) '(grep -F "or2-sentinel"))])
         (check-true (string? result) "Found 'or2' symbol"))))
 
   #;(let* ([files "modules/tip-benchmarks/benchmarks/grammars/simp_expr_unambig1.smt2\nmodules/tip-benchmarks/benchmarks/grammars/simp_expr_unambig4.smt2\nmodules/tip-benchmarks/benchmarks/tip2015/sort_StoogeSort2IsSort.smt2"]
          [qual (run-pipeline/out `(echo ,files) '(./qual_all.rkt))]
-         [syms (run-pipeline/out `(echo ,qual)  '(./symbols_of_theorems.sh))])
+         [syms (run-pipeline/out `(echo ,qual)  '(./symbols_of_theorems.rkt))])
 
     (test-case "Native symbols stripped"
       (for-each (lambda (sym)
@@ -869,7 +869,7 @@
 
       #;(let* ([defs (run-pipeline/out `(echo ,files) '(./mk_defs.rkt))]
              [syms (string-split (run-pipeline/out `(echo defs)
-                                                   '(./symbols_of_theorems.sh)
+                                                   '(./symbols_of_theorems.rkt)
                                                    '(grep "^."))
                                  "\n")])
         (for-each (lambda (sym)
