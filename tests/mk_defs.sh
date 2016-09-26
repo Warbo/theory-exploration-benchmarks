@@ -20,7 +20,7 @@ FILES="modules/tip-benchmarks/benchmarks/grammars/simp_expr_unambig1.smt2
 modules/tip-benchmarks/benchmarks/grammars/simp_expr_unambig4.smt2
 modules/tip-benchmarks/benchmarks/tip2015/sort_StoogeSort2IsSort.smt2"
 
-QUAL=$(echo "$FILES" | ./qual_all.sh)
+QUAL=$(echo "$FILES" | ./qual_all.rkt)
 SYMS=$(echo "$QUAL"  | ./symbols_of_theorems.sh)
 
 ###

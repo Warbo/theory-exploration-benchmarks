@@ -2,4 +2,4 @@
 set -e
 set -o pipefail
 
-./qual_all.sh | ./norm_defs.sh
+./qual_all.rkt | ./norm_defs.sh
