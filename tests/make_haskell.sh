@@ -49,7 +49,7 @@ function testForm {
                    (Not (Not_0 Form))
                    (Var (Var_0 Int)))))"
 
-    PREPARED=$(echo "$FORM" | tr -d '\n' | ./prepare.sh 2> "$DBG")
+    PREPARED=$(echo "$FORM" | tr -d '\n' | ./prepare.rkt 2> "$DBG")
     report "$?" "Can prepare 'Form' input" ||
         cat "$DBG" 1>&2
 
@@ -97,7 +97,7 @@ function testMutualRecursion {
               (models2 q x)
               (models5 q x y))))"
 
-    PREPARED=$(echo "$MUT" | tr -d '\n' | ./prepare.sh 2> "$DBG")
+    PREPARED=$(echo "$MUT" | tr -d '\n' | ./prepare.rkt 2> "$DBG")
     report "$?" "Can prepare mutually-recursive input" ||
         cat "$DBG" 1>&2
 

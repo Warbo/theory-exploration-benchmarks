@@ -647,7 +647,7 @@
   (run-pipeline/out '(./mk_final_defs.sh)))
 
 (define (mk-final-defs-2)
-  (run-pipeline/out '(./mk_defs.sh) '(./prepare.sh)))
+  (run-pipeline/out '(./mk_defs.sh) '(./prepare.rkt)))
 
 (define (mk-defs)
   (run-pipeline/out '(./qual_all.rkt) '(./norm_defs.sh)))
@@ -915,12 +915,64 @@ tip2015/sort_StoogeSort2IsSort.smt2stooge2sort2-sentinel" "\n")])
                 '(stooge1sort2 stoogesort stooge1sort1)))
 
 (define (prepare)
-  (show
-   ;(tag-types
+
+  (define (addCheckSat x)
+    ; Add '(check-sat)' as the last line to appease tip-tools
+    (string-append x "\n(check-sat)"))
+
+  (define (removeSuffices x)
+    ; Removes '-sentinel' suffices. Do this after all other string-based
+    ; transformations, since the sentinels prevent us messing with, say, the
+    ; symbol "plus2", when we only wanted to change the symbol "plus"
+    (string-replace x "-sentinel" ""))
+
+  (define (removePrefices x)
+    ; Removes unambiguous filename prefices
+    (foldl (lambda (rep str)
+             (define src (first  (string-split rep "\t")))
+             (define dst (second (string-split rep "\t")))
+             (string-replace str src dst))
+           x
+           (nameReplacements x)))
+  (define (nameReplacements x)
+    ; Unqualify any names which only have one definition
+    ;
+    ; For example, given:
+    ;
+    ; (define-fun foo.smt2baz-sentinel  ...)
+    ; (define-fun foo.smt2quux-sentinel ...)
+    ; (define-fun bar.smt2quux-sentinel ...)
+    ;
+    ; We can unqualify 'foo.smt2baz-sentinel' to get 'baz', but we can't for
+    ; 'quux' since there are two distinct versions.
+    (define nr-names (run-pipeline/out '(./rec_names.rkt)))
+
+    (foldl (lambda (name rest)
+             (if (string-contains? name ".smt2")
+                 (begin
+                   (define unqual (run-pipeline/out `(echo ,name)
+                                                    '(sed -e "s/.*\.smt2\(.*\)/\1/g")
+                                                    '(sed -e "s/-sentinel//g")))
+                   (define count  (run-pipeline/out `(echo ,nr-names)
+                                                    `(grep -cF (string-append ".smt2" unqual "-sentinel"))))
+                   (if (equal? count "1")
+                       (string-append name "\t" unqual "\n" rest)
+                       rest))
+                 rest))
+           ""
+           (string-split nr-names "\n")))
+
+  ;(tag-types
     ;(tag-constructors
-     ;(add-constructor-funcs
-      (read-benchmark (port->string (current-input-port)))))
-;)))
+      ;(add-constructor-funcs
+  (show
+   (addCheckSat
+    (removeSuffices
+     (removePrefices
+      (write-s
+       (read-benchmark
+        (port->string
+         (current-input-port)))))))))
 
 (define (all-names)
   (define given-defs
