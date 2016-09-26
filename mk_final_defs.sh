@@ -2,4 +2,4 @@
 set -o pipefail
 set -e
 
-./mk_defs.sh | ./prepare.rkt
+./mk_defs.rkt | ./prepare.rkt

@@ -52,7 +52,7 @@ tip2015/sort_StoogeSort2IsSort.smt2zsplitAt-sentinel
 tip2015/sort_StoogeSort2IsSort.smt2ztake-sentinel
 tip2015/sort_StoogeSort2IsSort.smt2stooge2sort2-sentinel"
 
-DEFS=$(echo "$FILES" | ./mk_defs.sh)
+DEFS=$(echo "$FILES" | ./mk_defs.rkt)
 
 ###
 
