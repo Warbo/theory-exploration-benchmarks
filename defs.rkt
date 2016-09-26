@@ -1042,7 +1042,14 @@
   (define (format-benchmark-symbols)
     (format-symbols (benchmark-symbols (port->string (current-input-port)))))
 
-  (displayln (format-benchmark-symbols)))
+  (displayln (string-join (filter (lambda (s)
+                                    (not (member s '("true-sentinel"
+                                                     "false-sentinel"
+                                                     "or-sentinel"
+                                                     "ite-sentinel"))))
+                                  (string-split (format-benchmark-symbols)
+                                                "\n"))
+                          "\n")))
 
 (define (canonical-functions)
   (define given-functions
