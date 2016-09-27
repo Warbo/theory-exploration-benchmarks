@@ -239,6 +239,14 @@
 (define (show x)
   (displayln (format-symbols x)))
 
+(define (zip xs ys)
+  (if (empty? xs)
+      null
+      (if (empty? ys)
+          null
+          (cons (list (car xs) (car ys))
+                (zip  (cdr xs) (cdr ys))))))
+
 (define (theorem-files)
   (filter (lambda (x) (string-suffix? (path->string x) ".smt2"))
           (sequence->list (in-directory "modules/tip-benchmarks/benchmarks"))))
@@ -1006,16 +1014,15 @@
   (show (apply append (map names-in given-defs))))
 
 (define (find-redundancies)
-  (show (find-redundancies-s (port->string (current-input-port)))))
+  (show (map (lambda (x)
+               (format "~a\t~a" (first x) (second x)))
+             (find-redundancies-s (map read-benchmark
+                                       (filter non-empty-string?
+                                               (port->lines (current-input-port))))))))
 
-(define (find-redundancies-s s)
-  (define given-lines
-    (filter (lambda (x) (not (equal? 0 (string-length x))))
-            (string-split s "\n")))
-
-  (define (mk-output line so-far name-replacements)
-    (let* ([expr      (read-benchmark line)]
-           [norm-line (norm     expr)]
+(define (find-redundancies-s exprs)
+  (define (mk-output expr so-far name-replacements)
+    (let* ([norm-line (norm     expr)]
            [names     (names-in expr)]
            [existing  (filter (lambda (x)
                                 (equal? norm-line (second x)))
@@ -1027,45 +1034,36 @@
                 (append (zip names (first (car existing)))
                         name-replacements)))))
 
-  (define (remove-redundancies lines so-far name-replacements)
-    (if (empty? lines)
-        (list so-far name-replacements)
-        (let* ([result (mk-output (car lines) so-far name-replacements)]
+  (define (remove-redundancies exprs so-far name-replacements)
+    (if (empty? exprs)
+        name-replacements
+        (let* ([result (mk-output (first exprs) so-far name-replacements)]
                [new-sf (first  result)]
                [new-nr (second result)])
-          (remove-redundancies (cdr lines)
-                               new-sf
-                               new-nr))))
+          (remove-redundancies (cdr exprs) new-sf new-nr))))
 
-  (define (zip xs ys)
-    (if (empty? xs)
-        null
-        (if (empty? ys)
-            null
-            (cons (list (car xs) (car ys))
-                  (zip  (cdr xs) (cdr ys))))))
+  (remove-redundancies exprs null null))
 
-  (define output
-    (let* ([results           (remove-redundancies given-lines null null)]
-           [name-replacements (second results)])
-      (map (lambda (x)
-             (format "~a\t~a" (first x) (second x)))
-           name-replacements)))
-
-  output)
+(define (set-equal? x y p)
+  (equal? (sort x p) (sort y p)))
 
 (module+ test
-  (define redundancies (pipe (format-symbols `(,constructorZ
-                                               ,constructorS
-                                               (define-fun redundantZ1 () Nat Z)
-                                               (define-fun redundantZ2 () Nat Z)
-                                               (define-fun redundantZ3 () Nat Z)))
-                             find-redundancies))
-  (check-equal? (sort (string-split (string-trim redundancies) "\n") string<?)
-                (sort '("redundantZ1\tconstructorZ"
-                        "redundantZ2\tconstructorZ"
-                        "redundantZ3\tconstructorZ")
-                      string<?)))
+  (define redundancies `(,constructorZ
+                         ,constructorS
+                         (define-fun redundantZ1 () Nat Z)
+                         (define-fun redundantZ2 () Nat Z)
+                         (define-fun redundantZ3 () Nat Z)))
+  (check-equal? (list->set (string-split (string-trim (pipe (format-symbols redundancies)
+                                                            find-redundancies))
+                                         "\n"))
+                (list->set '("redundantZ1\tconstructorZ"
+                             "redundantZ2\tconstructorZ"
+                             "redundantZ3\tconstructorZ")))
+
+  (check-equal? (list->set (find-redundancies-s redundancies))
+                (list->set '((redundantZ1 constructorZ)
+                             (redundantZ2 constructorZ)
+                             (redundantZ3 constructorZ)))))
 
 (define (symbols-of-theorems)
   (define (format-benchmark-symbols)
