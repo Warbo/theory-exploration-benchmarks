@@ -15,6 +15,7 @@
 (provide get-con-def)
 (provide qualify)
 (provide theorems-from-symbols)
+(provide strip-redundancies)
 
 (module+ test
   (require rackunit))
@@ -1269,20 +1270,25 @@
 
 (define (strip-redundancies-s exprs)
   ; Remove alpha-equivalent expressions from exprs, according to reps
-  (define replacements (map first (find-redundancies-s exprs)))
+  (define redundancies (find-redundancies-s exprs))
+  (define replacements (map first redundancies))
 
-  (foldl (lambda (expr result)
-           (let ([keep      #t]
-                 [def-names (names-in expr)])
-             (for-each (lambda (def-name)
-                         (when (member def-name replacements)
-                           (set! keep #f)))
-                       def-names)
-             (if keep
-               (append result (list expr))
-               result)))
-         '()
-         exprs))
+  (define stripped
+    (foldl (lambda (expr result)
+             (let ([keep      #t]
+                   [def-names (names-in expr)])
+               (for-each (lambda (def-name)
+                           (when (member def-name replacements)
+                             (set! keep #f)))
+                         def-names)
+               (if keep
+                   (append result (list expr))
+                   result)))
+           '()
+           exprs))
+
+  (read-benchmark (replace-strings-s (format-symbols stripped)
+                                     (map (curry map ~a) redundancies))))
 
 (define (strip-redundancies)
   (show (strip-redundancies-s (read-benchmark (port->string (current-input-port))))))
