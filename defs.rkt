@@ -741,7 +741,7 @@
         (#t
          (equal? x y))))
 
-#;(module+ test
+(module+ test
   (check-true  (ss-eq? 'foo  'foo))
   (check-true  (ss-eq? 'foo  "foo"))
   (check-true  (ss-eq? "foo" 'foo))
@@ -773,7 +773,7 @@
                                                (find-sub-exprs f t))    ]
     [_                                 '()                              ]))
 
-#;(module+ test
+(module+ test
   (check-equal? (find-sub-exprs "constructorZ"
                                 `(,nat-def ,constructorZ ,constructorS))
                 (list constructorZ)))
@@ -794,7 +794,7 @@
       x
       (symbol->string x)))
 
-#;(module+ test
+(module+ test
   (define (have-def defs name kind)
     (define def
       (pipe defs (lambda ()
@@ -820,7 +820,7 @@
       (have-def defs "tip2015/sort_StoogeSort2IsSort.smt2ztake"        "parameterised recursive")
       (have-def defs "tip2015/sort_StoogeSort2IsSort.smt2stooge2sort2" "mutually recursive"))))
 
-#;(module+ test
+(module+ test
   (test-case "Real symbols qualified"
     (let* ([f "modules/tip-benchmarks/benchmarks/tip2015/propositional_AndCommutative.smt2\nmodules/tip-benchmarks/benchmarks/tip2015/propositional_Sound.smt2\nmodules/tip-benchmarks/benchmarks/tip2015/propositional_Okay.smt2\nmodules/tip-benchmarks/benchmarks/tip2015/regexp_RecSeq.smt2\nmodules/tip-benchmarks/benchmarks/tip2015/relaxedprefix_correct.smt2\nmodules/tip-benchmarks/benchmarks/tip2015/propositional_AndIdempotent.smt2\nmodules/tip-benchmarks/benchmarks/tip2015/propositional_AndImplication.smt2"]
            [q (run-pipeline/out `(echo ,f) '(./qual_all.rkt))]
@@ -917,7 +917,7 @@
 (define (rec-names-s exprs)
   (apply append (map names-in exprs)))
 
-#;(module+ test
+(module+ test
   (check-equal? (names-in '(fee fi fo fum))
                 '())
   (check-equal? (names-in '(define-funs-rec
@@ -1167,7 +1167,7 @@
     (f))
   (get-output-string o))
 
-#;(module+ test
+(module+ test
   (define (checkNormal kind def expected)
     (define canon (pipe def canonical-functions))
 
