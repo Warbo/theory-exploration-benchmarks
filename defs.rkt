@@ -1267,27 +1267,30 @@
     (check-equal? (list->set defs)
                   (list->set `(,constructorZ ,constructorS)))))
 
-(define (strip-redundancies exprs reps)
+(define (strip-redundancies-s exprs)
   ; Remove alpha-equivalent expressions from exprs, according to reps
-  (define replacements (map first reps))
+  (define replacements (map first (find-redundancies-s exprs)))
 
-  (foldl (lambda (line-defs result)
+  (foldl (lambda (expr result)
            (let ([keep      #t]
-                 [line      (first  line-defs)]
-                 [def-names (second line-defs)])
+                 [def-names (names-in expr)])
              (for-each (lambda (def-name)
                          (when (member def-name replacements)
                            (set! keep #f)))
                        def-names)
              (if keep
-               (append result (list line))
+               (append result (list expr))
                result)))
          '()
-         (zip exprs (all-names-s exprs))))
+         exprs))
+
+(define (strip-redundancies)
+  (show (strip-redundancies-s (read-benchmark (port->string (current-input-port))))))
 
 (module+ test
-  (check-equal? (list->set (strip-redundancies redundancies
-                                               '((redundantZ1 constructorZ)
-                                                 (redundantZ2 constructorZ)
-                                                 (redundantZ3 constructorZ))))
+  (check-equal? (list->set (strip-redundancies-s redundancies))
+                (list->set (list constructorZ constructorS)))
+
+  (check-equal? (list->set (read-benchmark (pipe (format-symbols redundancies)
+                                                 strip-redundancies)))
                 (list->set (list constructorZ constructorS))))
