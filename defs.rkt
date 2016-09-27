@@ -7,7 +7,6 @@
 (provide rec-names)
 (provide prepare)
 (provide mk-defs)
-(provide all-names)
 (provide replace-strings)
 (provide find-redundancies)
 (provide symbols-of-theorems)
@@ -685,40 +684,38 @@
                                (string->lines s)))
                "\n"))
 
-#;(module+ test
+(module+ test
   (check-equal? (trim "hello")                      "hello")
   (check-equal? (trim "foo\n(assert-not bar)\nbaz") "foo\nbaz")
   (check-equal? (trim "foo\n(check-sat)\nbar")      "foo\nbar"))
 
 ; Combine all definitions in files given on stdin
 
-#;(module+ test
+(define (non-empty? x)
+  (not (empty? x)))
+
+(module+ test
   (define f
     "modules/tip-benchmarks/benchmarks/grammars/simp_expr_unambig3.smt2")
 
   (define one-liners
-    (run-pipeline/out `(echo ,f)
-                      '(./qual_all.rkt)))
+    (qual-all-s (string-split f "\n")))
 
   (define result
-    (map (lambda (line)
-           (define names
-             (run-pipeline/out `(echo ,line)
-                               '(./rec_names.rkt)
-                               '(tr "\n" " ")))
-           (run-pipeline/out `(echo ,names)
-                             '(grep "^.")
-                             '(sed -e "s/[ ]*$//g")))
-         (string-split one-liners "\n")))
+    (filter non-empty?
+            (map (lambda (expr)
+                   (filter non-empty? (rec-names-s (list expr))))
+                 one-liners)))
 
   (define all-result
-    (run-pipeline/out `(echo ,one-liners)
-                      '(./all_names.rkt)
-                      '(grep "^.")))
-  (check-equal? (filter non-empty-string?
-                        (string-split all-result "\n"))
-                (filter non-empty-string?
-                        (string-split (string-join result "\n") "\n"))))
+    (filter non-empty? (all-names-s one-liners)))
+
+  (with-check-info
+   (('f          f)
+    ('one-liners one-liners)
+    ('result     result)
+    ('all-result all-result))
+   (check-equal? all-result result)))
 
 ; Check each function declaration syntax
 
@@ -915,10 +912,10 @@
                   syms))))
 
 (define (rec-names)
-  (define given-defs
-    (map read-benchmark (port->lines (current-input-port))))
+  (show (rec-names-s (read-benchmark (port->string (current-input-port))))))
 
-  (show (apply append (map names-in given-defs))))
+(define (rec-names-s exprs)
+  (apply append (map names-in exprs)))
 
 #;(module+ test
   (check-equal? (names-in '(fee fi fo fum))
@@ -1003,18 +1000,10 @@
          (current-input-port)))))))))
 
 (define (all-names)
-  (define given-defs
-    (map read-benchmark (port->lines (current-input-port))))
-
-  (define found-names
-    (map (lambda (d)
-           (join-spaces (names-in d)))
-         given-defs))
-
-  (show found-names)
-
-  (exit)
-  (show (apply append (map names-in given-defs))))
+  (show (map (lambda (line)
+               (join-spaces (names-in (read-benchmark line))))
+             (port->lines (current-input-port)))))
+#;(show (apply append (map names-in given-defs)))
 
 (define (all-names-s exprs)
   (map names-in exprs))
