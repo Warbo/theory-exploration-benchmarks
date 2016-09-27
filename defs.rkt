@@ -298,7 +298,10 @@
   (remove-duplicates (symbols-in (expression-types (read-benchmark x)))))
 
 (define (benchmark-symbols x)
-  (remove-duplicates (expression-symbols (read-benchmark x))))
+  (benchmark-symbols-expr (read-benchmark x)))
+
+(define (benchmark-symbols-expr expr)
+  (remove-duplicates (expression-symbols expr)))
 
 (define (defs-of-src src given)
   (foldl (lambda (str rest)
@@ -1070,17 +1073,18 @@
                              (redundantZ2 constructorZ)
                              (redundantZ3 constructorZ)))))
 
-(define (symbols-of-theorems)
-  (define (format-benchmark-symbols)
-    (format-symbols (benchmark-symbols (port->string (current-input-port)))))
+(define (symbols-of-theorems-s expr)
+  (filter (lambda (s)
+            (not (member s '(true-sentinel
+                             false-sentinel
+                             or-sentinel
+                             ite-sentinel))))
+          (benchmark-symbols-expr expr)))
 
-  (displayln (string-join (filter (lambda (s)
-                                    (not (member s '("true-sentinel"
-                                                     "false-sentinel"
-                                                     "or-sentinel"
-                                                     "ite-sentinel"))))
-                                  (string-split (format-benchmark-symbols)
-                                                "\n"))
+(define (symbols-of-theorems)
+  (displayln (string-join (map ~a (symbols-of-theorems-s
+                                   (read-benchmark
+                                    (port->string (current-input-port)))))
                           "\n")))
 
 (define (canonical-functions)
@@ -1310,3 +1314,33 @@
     (if (equal? exprs norm)
         norm
         (norm-defs-s norm))))
+
+(module+ test
+  (let* ([given '((define-fun min1 ((x Int) (y Int)) Int (ite (<= x y) x y))
+                  (define-fun min2 ((a Int) (b Int)) Int (ite (<= a b) a b)))]
+         [defs  (norm-defs-s given)]
+         [syms  (symbols-of-theorems-s defs)]
+         [min1  (member 'min1 syms)]
+         [min2  (member 'min2 syms)])
+    (with-check-info
+     (('defs    defs)
+      ('syms    syms)
+      ('min1    min1)
+      ('min2    min2)
+      ('message "Simple redundant functions deduped"))
+     (check-true (or (and min1 (not min2))
+                     (and min2 (not min1))))))
+
+  (let* ([given '((define-fun min1 ((x Int) (y Int)) Int (ite (<= x y) x y))
+                  (define-fun min2 ((a Int) (b Int)) Int (ite (<= a b) a b))
+                  (define-fun fun3 ((x Int)) Int (min2 x x)))]
+         [defs  (norm-defs-s given)]
+         [syms  (symbols-of-theorems-s
+                 (filter (lambda (expr)
+                           (member 'fun3 expr))
+                         defs))])
+    (with-check-info
+     (('defs    defs)
+      ('syms    syms)
+      ('message "References to discarded duplicates are replaced"))
+     (check-not-equal? (member 'min1 syms) #f))))
