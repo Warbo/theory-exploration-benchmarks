@@ -1013,6 +1013,9 @@
   (exit)
   (show (apply append (map names-in given-defs))))
 
+(define (all-names-s exprs)
+  (map names-in exprs))
+
 (define (find-redundancies)
   (show (map (lambda (x)
                (format "~a\t~a" (first x) (second x)))
@@ -1237,45 +1240,54 @@
 
 (define (replace-strings file)
   (replace-strings-s (port->string (current-input-port))
-                     (file->lines file)))
+                     (map (lambda (line)
+                            (string-split line "\t"))
+                          (filter non-empty-string?
+                                  (file->lines file)))))
 
 (define (replace-strings-s str reps)
-  ;; Replace strings in stdio. Takes a file of replacements to make, one
-  ;; replacement per line, with original and replacement separated by tabs.
-  ;;
-  ;; For example, with files:
-  ;;
-  ;; DATA:
-  ;;
-  ;; foo
-  ;; bar
-  ;; foobar
-  ;;
-  ;; REPS:
-  ;;
-  ;; foo	BAZ
-  ;; bar	qUUx
-  ;;
-  ;; The command './replace_strings.rkt <(cat REPS) < DATA' will give:
-  ;;
-  ;; BAZ
-  ;; qUUx
-  ;; BAZqUUx
-  (foldl (lambda (line so-far)
-           (match (string-split line "\t")
-             [(list src dst) (string-replace so-far src dst)]
-             [_              so-far]))
+  ; For each (src dst) in reps, replaces src with dst in str
+  (foldl (lambda (pair so-far)
+             (string-replace so-far (first pair) (second pair)))
          str
          reps))
 
-#;(module+ test
+(module+ test
   (check-equal? (replace-strings-s "hello mellow yellow fellow"
-                                   '("lo\tLO" "el\t{{el}}"))
-                "h{{el}}LO m{{el}}LOw y{{el}}LOw f{{el}}LOw"))
+                                   '(("lo" "LO") ("el" "{{el}}")))
+                "h{{el}}LO m{{el}}LOw y{{el}}LOw f{{el}}LOw")
 
+  (let* ([formatted (format-symbols redundancies)]
+         [reps      (pipe formatted find-redundancies)]
+         [replaced  (replace-strings-s formatted (map (lambda (line)
+                                                        (string-split line "\t"))
+                                                      (filter non-empty-string?
+                                                              (string-split reps "\n"))))]
+         [defs      (read-benchmark replaced)])
+    (check-equal? (list->set defs)
+                  (list->set `(,constructorZ ,constructorS)))))
 
-#;(module+ test
-  (define redundancies (pipe (format "~a" `(,constructorZ
-                                            ,constructorS))
-                             find-redundancies))
-  redundancies)
+(define (strip-redundancies exprs reps)
+  ; Remove alpha-equivalent expressions from exprs, according to reps
+  (define replacements (map first reps))
+
+  (foldl (lambda (line-defs result)
+           (let ([keep      #t]
+                 [line      (first  line-defs)]
+                 [def-names (second line-defs)])
+             (for-each (lambda (def-name)
+                         (when (member def-name replacements)
+                           (set! keep #f)))
+                       def-names)
+             (if keep
+               (append result (list line))
+               result)))
+         '()
+         (zip exprs (all-names-s exprs))))
+
+(module+ test
+  (check-equal? (list->set (strip-redundancies redundancies
+                                               '((redundantZ1 constructorZ)
+                                                 (redundantZ2 constructorZ)
+                                                 (redundantZ3 constructorZ))))
+                (list->set (list constructorZ constructorS))))
