@@ -20,7 +20,7 @@ GIVEN="
 (define-fun min2 ((a Int) (b Int)) Int (ite (<= a b) a b))
 "
 
-DEFS=$(echo "$GIVEN" | ./norm_defs.sh "example")
+DEFS=$(echo "$GIVEN" | ./norm_defs.rkt)
 SYMS=$(echo "$DEFS"  | ./symbols_of_theorems.rkt)
 
 MINS=0
@@ -37,7 +37,7 @@ GIVEN="
 (define-fun fun3 ((x Int)) Int (min2 x x))
 "
 
-DEFS=$(echo "$GIVEN" | ./norm_defs.sh "example")
+DEFS=$(echo "$GIVEN" | ./norm_defs.rkt)
 SYMS=$(echo "$DEFS"  | grep "fun3" | ./symbols_of_theorems.rkt)
 
 echo "$SYMS" | grep "min1" > /dev/null

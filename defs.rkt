@@ -16,6 +16,7 @@
 (provide qualify)
 (provide theorems-from-symbols)
 (provide strip-redundancies)
+(provide norm-defs)
 
 (module+ test
   (require rackunit))
@@ -661,10 +662,10 @@
   (run-pipeline/out '(./mk_defs.rkt) '(./prepare.rkt)))
 
 (define (mk-defs)
-  (run-pipeline/out '(./qual_all.rkt) '(./norm_defs.sh)))
+  (run-pipeline/out '(./qual_all.rkt) '(./norm_defs.rkt)))
 
 (define (mk-defs-s s)
-  (pipe s (lambda () (run-pipeline '(./qual_all.rkt) '(./norm_defs.sh)))))
+  (pipe s (lambda () (run-pipeline '(./qual_all.rkt) '(./norm_defs.rkt)))))
 
 #;(module+ test
   (for-each (lambda (f)
@@ -1300,3 +1301,12 @@
   (check-equal? (list->set (read-benchmark (pipe (format-symbols redundancies)
                                                  strip-redundancies)))
                 (list->set (list constructorZ constructorS))))
+
+(define (norm-defs)
+  (show (norm-defs-s (read-benchmark (port->string (current-input-port))))))
+
+(define (norm-defs-s exprs)
+  (let ([norm (strip-redundancies-s exprs)])
+    (if (equal? exprs norm)
+        norm
+        (norm-defs-s norm))))
