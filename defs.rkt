@@ -635,7 +635,7 @@
   (reverse (take (reverse lst) n)))
 
 (define (qual-all)
-  (displayln (trim (write-s (qual-all-s (port->lines (current-input-port)))))))
+  (displayln (trim (~a (qual-all-s (port->lines (current-input-port)))))))
 
 (define (qual-all-s given-files)
   (define given-contents
@@ -771,16 +771,11 @@
                                 `(,nat-def ,constructorZ ,constructorS))
                 (list constructorZ)))
 
-(define (write-s x)
-  (define o (open-output-string))
-  (write x o)
-  (get-output-string o))
-
 (define (get-fun-def f)
   (define benchmarks
     (read-benchmark (port->string (current-input-port))))
 
-  (write (string-join (map write-s (find-sub-exprs f benchmarks)) "\n")))
+  (write (string-join (map ~a (find-sub-exprs f benchmarks)) "\n")))
 
 (define (as-str x)
   (if (string? x)
@@ -829,74 +824,71 @@
          (check-true (string-contains? s "or2-sentinel")
                      "Found 'or2' symbol"))))
 
-  #;(let* ([files "modules/tip-benchmarks/benchmarks/grammars/simp_expr_unambig1.smt2\nmodules/tip-benchmarks/benchmarks/grammars/simp_expr_unambig4.smt2\nmodules/tip-benchmarks/benchmarks/tip2015/sort_StoogeSort2IsSort.smt2"]
-         [qual (run-pipeline/out `(echo ,files) '(./qual_all.rkt))]
-         [syms (run-pipeline/out `(echo ,qual)  '(./symbols_of_theorems.rkt))])
+  (let* ([files (string-join (map (curry string-append
+                                         "modules/tip-benchmarks/benchmarks/")
+                                  '("grammars/simp_expr_unambig1.smt2"
+                                    "grammars/simp_expr_unambig4.smt2"
+                                    "tip2015/sort_StoogeSort2IsSort.smt2"))
+                             "\n")]
+         [qual (pipe files qual-all)]
+         [syms (pipe qual  symbols-of-theorems)])
 
-    (test-case "Native symbols stripped"
-      (for-each (lambda (sym)
-                  (check-exn exn? (lambda ()
-                                    (run-pipeline/out `(echo ,syms)
-                                                      `(grep -Fx ,sym)))
-                             (string-append "Native symbol " sym " was stripped")))
-                '("true-sentinel" "false-sentinel" "ite-sentinel" "or-sentinel")))
+    (for-each (lambda (sym)
+                (with-check-info
+                 (('sym     sym)
+                  ('message "Native symbol was stripped"))
+                 (check-false (member sym (string-split syms "\n")))))
+              '("true-sentinel" "false-sentinel" "ite-sentinel" "or-sentinel"))
 
-    #;(test-case "Real symbols found"
-               (for-each
-                (lambda (sym)
-                  (with-check-info
-                   (('sym sym)
-                    ('message (string-append "Found symbol for " sym)))
-                   (check-true (string? (run-pipeline/out `(echo ,syms)
-                                                          `(grep -Fx ,sym))))))
-                '("grammars/simp_expr_unambig1.smt2append-sentinel"
-                  "grammars/simp_expr_unambig1.smt2lin-sentinel"
-                  "grammars/simp_expr_unambig4.smt2nil-sentinel"
-                  "grammars/simp_expr_unambig4.smt2cons-sentinel"
-                  "grammars/simp_expr_unambig4.smt2C-sentinel"
-                  "grammars/simp_expr_unambig4.smt2D-sentinel"
-                  "grammars/simp_expr_unambig4.smt2X-sentinel"
-                  "grammars/simp_expr_unambig4.smt2Y-sentinel"
-                  "grammars/simp_expr_unambig4.smt2Pl-sentinel"
-                  "grammars/simp_expr_unambig4.smt2Plus-sentinel"
-                  "grammars/simp_expr_unambig4.smt2EX-sentinel"
-                  "grammars/simp_expr_unambig4.smt2EY-sentinel"
-                  "grammars/simp_expr_unambig4.smt2head-sentinel"
-                  "grammars/simp_expr_unambig4.smt2tail-sentinel"
-                  "grammars/simp_expr_unambig4.smt2Plus_0-sentinel"
-                  "grammars/simp_expr_unambig4.smt2Plus_1-sentinel"
-                  "grammars/simp_expr_unambig4.smt2append-sentinel"
-                  "grammars/simp_expr_unambig4.smt2linTerm-sentinel"
-                  "grammars/simp_expr_unambig4.smt2lin-sentinel"
-                  "tip2015/sort_StoogeSort2IsSort.smt2nil-sentinel"
-                  "tip2015/sort_StoogeSort2IsSort.smt2cons-sentinel"
-                  "tip2015/sort_StoogeSort2IsSort.smt2sort2-sentinel"
-                  "tip2015/sort_StoogeSort2IsSort.smt2insert2-sentinel"
-                  "tip2015/sort_StoogeSort2IsSort.smt2zsplitAt-sentinel"
-                  "tip2015/sort_StoogeSort2IsSort.smt2ztake-sentinel"
-                  "tip2015/sort_StoogeSort2IsSort.smt2stooge2sort2-sentinel")))
+    (for-each (lambda (sym)
+                (with-check-info
+                 (('sym     sym)
+                  ('syms    syms)
+                  ('message "Found symbol"))
+                 (check-not-equal? (member sym (string-split syms "\n"))
+                                   #f)))
+              '("grammars/simp_expr_unambig1.smt2append-sentinel"
+                "grammars/simp_expr_unambig1.smt2lin-sentinel"
+                "grammars/simp_expr_unambig4.smt2nil-sentinel"
+                "grammars/simp_expr_unambig4.smt2cons-sentinel"
+                "grammars/simp_expr_unambig4.smt2C-sentinel"
+                "grammars/simp_expr_unambig4.smt2D-sentinel"
+                "grammars/simp_expr_unambig4.smt2X-sentinel"
+                "grammars/simp_expr_unambig4.smt2Y-sentinel"
+                "grammars/simp_expr_unambig4.smt2Pl-sentinel"
+                "grammars/simp_expr_unambig4.smt2Plus-sentinel"
+                "grammars/simp_expr_unambig4.smt2EX-sentinel"
+                "grammars/simp_expr_unambig4.smt2EY-sentinel"
+                "grammars/simp_expr_unambig4.smt2head-sentinel"
+                "grammars/simp_expr_unambig4.smt2tail-sentinel"
+                "grammars/simp_expr_unambig4.smt2Plus_0-sentinel"
+                "grammars/simp_expr_unambig4.smt2Plus_1-sentinel"
+                "grammars/simp_expr_unambig4.smt2append-sentinel"
+                "grammars/simp_expr_unambig4.smt2linTerm-sentinel"
+                "grammars/simp_expr_unambig4.smt2lin-sentinel"
+                "tip2015/sort_StoogeSort2IsSort.smt2nil-sentinel"
+                "tip2015/sort_StoogeSort2IsSort.smt2cons-sentinel"
+                "tip2015/sort_StoogeSort2IsSort.smt2sort2-sentinel"
+                "tip2015/sort_StoogeSort2IsSort.smt2insert2-sentinel"
+                "tip2015/sort_StoogeSort2IsSort.smt2zsplitAt-sentinel"
+                "tip2015/sort_StoogeSort2IsSort.smt2ztake-sentinel"
+                "tip2015/sort_StoogeSort2IsSort.smt2stooge2sort2-sentinel"))
 
-      #;(let* ([defs (run-pipeline/out `(echo ,files) '(./mk_defs.rkt))]
-             [syms (string-split (run-pipeline/out `(echo defs)
-                                                   '(./symbols_of_theorems.rkt)
-                                                   '(grep "^."))
+      (let* ([defs (pipe files mk-defs)]
+             [syms (string-split (pipe defs symbols-of-theorems)
                                  "\n")])
         (for-each (lambda (sym)
                     (with-check-info
-                     (('sym sym)
-                      ('defs defs)
-                      ('message (string-append "Symbol " sym " is qualified")))
-                     (check-true (string? (run-pipeline/out `(echo ,sym)
-                                                            '(grep "\\.smt2")))
-                                 (string-append "Qualified symbol " sym)))
+                     (('sym     sym)
+                      ('defs    defs)
+                      ('message "Symbol is qualified"))
+                     (check-true (string-contains? sym ".smt2")))
 
                     (with-check-info
-                     (('sym  sym)
-                      ('defs defs)
-                      ('message (string-append "Symbol " sym " has suffix")))
-                     (check-true (string? (run-pipeline/out `(echo ,sym)
-                                                            '(grep -- "-sentinel$")))
-                                 (string-append "Suffixed symbol " sym))))
+                     (('sym     sym)
+                      ('defs    defs)
+                      ('message "Symbol has suffix"))
+                     (check-true (string-contains? sym "-sentinel"))))
                   syms))))
 
 (define (rec-names)
@@ -982,7 +974,7 @@
    (addCheckSat
     (removeSuffices
      (removePrefices
-      (write-s
+      (~a
        (read-benchmark
         (port->string
          (current-input-port)))))))))
