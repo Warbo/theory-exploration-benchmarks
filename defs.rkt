@@ -823,23 +823,19 @@
 (module+ test
   (test-case "Real symbols qualified"
     (let* ([f "modules/tip-benchmarks/benchmarks/tip2015/propositional_AndCommutative.smt2\nmodules/tip-benchmarks/benchmarks/tip2015/propositional_Sound.smt2\nmodules/tip-benchmarks/benchmarks/tip2015/propositional_Okay.smt2\nmodules/tip-benchmarks/benchmarks/tip2015/regexp_RecSeq.smt2\nmodules/tip-benchmarks/benchmarks/tip2015/relaxedprefix_correct.smt2\nmodules/tip-benchmarks/benchmarks/tip2015/propositional_AndIdempotent.smt2\nmodules/tip-benchmarks/benchmarks/tip2015/propositional_AndImplication.smt2"]
-           [q (run-pipeline/out `(echo ,f) '(./qual_all.rkt))]
-           [s (run-pipeline/out `(echo ,q) '(./symbols_of_theorems.rkt))])
+           [q (pipe f qual-all)]
+           [s (pipe q symbols-of-theorems)])
 
-      (check-true (let ([result (run-pipeline/out `(echo ,s)
-                                                  '(grep -F "or2-sentinel"))])
-                    #t)
+      (check-true (string-contains? s "or2-sentinel")
                   "Found an or2 symbol")
 
-      (check-exn exn? (lambda ()
-                        (run-pipeline/out `(echo ,s)
-                                          '(grep -Fx "or2-sentinel")))
-                 "or2 symbol is qualified")
+      (check-false (member "or2-sentinel" (string-split s "\n"))
+                   "or2 symbol is qualified")
 
-      #;(let* ([d (pipe f mk-defs)]
-             [s (pipe d (symbols-of-theorems))]
-             [result (run-pipeline/out `(echo ,s) '(grep -F "or2-sentinel"))])
-        (check-true (string? result) "Found 'or2' symbol"))))
+      (let* ([d (pipe f mk-defs)]
+             [s (pipe d symbols-of-theorems)])
+         (check-true (string-contains? s "or2-sentinel")
+                     "Found 'or2' symbol"))))
 
   #;(let* ([files "modules/tip-benchmarks/benchmarks/grammars/simp_expr_unambig1.smt2\nmodules/tip-benchmarks/benchmarks/grammars/simp_expr_unambig4.smt2\nmodules/tip-benchmarks/benchmarks/tip2015/sort_StoogeSort2IsSort.smt2"]
          [qual (run-pipeline/out `(echo ,files) '(./qual_all.rkt))]
