@@ -16,7 +16,6 @@
 (provide qualify)
 (provide theorems-from-symbols)
 (provide strip-redundancies)
-(provide norm-defs)
 
 (module+ test
   (require rackunit))
@@ -633,16 +632,18 @@
   (check-equal? (add-constructor-funcs (list nat-def))
                 `(,nat-def ,constructorZ ,constructorS)))
 
-(define (qual-all)
-  (define given-files
-    (port->lines (current-input-port)))
+(define (take-from-end n lst)
+  (reverse (take (reverse lst) n)))
 
+(define (qual-all)
+  (displayln (trim (write-s (qual-all-s (port->lines (current-input-port)))))))
+
+(define (qual-all-s given-files)
   (define given-contents
     (map (lambda (pth)
-           (list (string-replace
-                  (string-join
-                   (reverse (take (reverse (string-split pth "/")) 2))
-                   "/") "'" "_tick_")
+           (list (string-replace (string-join (take-from-end 2 (string-split pth "/"))
+                                              "/")
+                                 "'" "_tick_")
                  (read-benchmark (file->string pth))))
          given-files))
 
@@ -651,10 +652,7 @@
            (qualify (first name-content) (second name-content)))
          given-contents))
 
-  (define result
-    (trim (write-s (apply append qualified-contents))))
-
-  (displayln result))
+  (apply append qualified-contents))
 
 (require shell/pipeline)
 
@@ -665,10 +663,10 @@
   (run-pipeline/out '(./mk_defs.rkt) '(./prepare.rkt)))
 
 (define (mk-defs)
-  (run-pipeline/out '(./qual_all.rkt) '(./norm_defs.rkt)))
+  (show (mk-defs-s (port->lines (current-input-port)))))
 
-(define (mk-defs-s s)
-  (pipe s (lambda () (run-pipeline '(./qual_all.rkt) '(./norm_defs.rkt)))))
+(define (mk-defs-s given-files)
+  (norm-defs-s (qual-all-s given-files)))
 
 #;(module+ test
   (for-each (lambda (f)
