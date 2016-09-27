@@ -726,13 +726,6 @@
               "modules/tip-benchmarks/benchmarks"
               p))
 
-(define (string->nonempties x)
-  (filter (lambda (l) (not (equal? "" (string-trim l))))
-          (string->lines x)))
-
-(define (count-nonempties x)
-  (length (string->nonempties x)))
-
 (define (ss-eq? x y)
   (cond ([symbol? x]
          (ss-eq? (symbol->string x) y))
@@ -795,30 +788,29 @@
       (symbol->string x)))
 
 (module+ test
-  (define (have-def defs name kind)
-    (define def
-      (pipe defs (lambda ()
-                   (get-fun-def (string-append (as-str name) "-sentinel")))))
+  (let ([defs (pipe (path->string (path "tip2015/sort_StoogeSort2IsSort.smt2"))
+                    mk-defs)])
+    (for-each (lambda (data)
+                (define name (first  data))
+                (define kind (second data))
+                (define def (pipe defs
+                                  (lambda ()
+                                    (get-fun-def (string-append (as-str name)
+                                                                "-sentinel")))))
 
-    (define count
-      (count-nonempties def))
-
-    (with-check-info
-        (('defs    defs)
-         ('def     def )
-         ('kind    kind)
-         ('message "Can get function definition"))
-      (check-eq? count 1)))
-
-  (test-case "Function declaration syntax"
-    (let ((defs (run-pipeline/out
-                 `(echo ,(path "tip2015/sort_StoogeSort2IsSort.smt2"))
-                 '(./mk_defs.rkt))))
-      (have-def defs "tip2015/sort_StoogeSort2IsSort.smt2sort2"        "plain")
-      (have-def defs "tip2015/sort_StoogeSort2IsSort.smt2insert2"      "recursive")
-      (have-def defs "tip2015/sort_StoogeSort2IsSort.smt2zsplitAt"     "parameterised")
-      (have-def defs "tip2015/sort_StoogeSort2IsSort.smt2ztake"        "parameterised recursive")
-      (have-def defs "tip2015/sort_StoogeSort2IsSort.smt2stooge2sort2" "mutually recursive"))))
+                (with-check-info
+                 (('defs    defs)
+                  ('def     def )
+                  ('kind    kind)
+                  ('message "Can get function definition"))
+                 (check-equal? (length (filter non-empty-string?
+                                               (string-split def "\n")))
+                               1)))
+              '(("tip2015/sort_StoogeSort2IsSort.smt2sort2"        "plain")
+                ("tip2015/sort_StoogeSort2IsSort.smt2insert2"      "recursive")
+                ("tip2015/sort_StoogeSort2IsSort.smt2zsplitAt"     "parameterised")
+                ("tip2015/sort_StoogeSort2IsSort.smt2ztake"        "parameterised recursive")
+                ("tip2015/sort_StoogeSort2IsSort.smt2stooge2sort2" "mutually recursive")))))
 
 (module+ test
   (test-case "Real symbols qualified"
