@@ -42,7 +42,7 @@
                                               (symbols-in b))]
       [_                              (if (symbol? exp) (list exp) null)]))))
 
-#;(module+ test
+(module+ test
   (check-equal? (symbols-in '(lambda ((local1 Nat) (local2 (List Nat)))
                                (free1 local1)))
                 '(free1)))
@@ -601,7 +601,7 @@
 (define (concat-map f xs)
   (apply append (map f xs)))
 
-#;(module+ test
+(module+ test
   (check-equal? (concat-map (lambda (x) (list x x x))
                             '(fee fi fo fum))
                 '(fee fee fee fi fi fi fo fo fo fum fum fum)))
@@ -668,10 +668,10 @@
 (define (mk-defs-s given-files)
   (norm-defs-s (qual-all-s given-files)))
 
-#;(module+ test
+(module+ test
   (for-each (lambda (f)
-              (check-equal? (string-trim (mk-defs-s f))
-                            (string-trim (pipe f mk-defs))))
+              (check-equal? (map ~a (mk-defs-s (string-split f "\n")))
+                            (string-split (string-trim (pipe f mk-defs)) "\n")))
             '("modules/tip-benchmarks/benchmarks/grammars/simp_expr_unambig1.smt2"
               "modules/tip-benchmarks/benchmarks/grammars/simp_expr_unambig4.smt2"
               "modules/tip-benchmarks/benchmarks/tip2015/sort_StoogeSort2IsSort.smt2")))
