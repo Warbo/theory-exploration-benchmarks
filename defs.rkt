@@ -658,9 +658,6 @@
 (define (mk-final-defs)
   (run-pipeline/out '(./mk_final_defs.sh)))
 
-(define (mk-final-defs-2)
-  (run-pipeline/out '(./mk_defs.rkt) '(./prepare.rkt)))
-
 (define (mk-defs)
   (show (mk-defs-s (port->lines (current-input-port)))))
 
@@ -920,60 +917,78 @@
                                 (case (Pair2 ys zs) (append ys (stoogesort zs)))))))
                 '(stooge1sort2 stoogesort stooge1sort1)))
 
+(define (add-check-sat x)
+  ; Add '(check-sat)' as the last line to appease tip-tools
+  (string-append x "\n(check-sat)"))
+
+(define (remove-suffices x)
+  ; Removes '-sentinel' suffices. Do this after all other string-based
+  ; transformations, since the sentinels prevent us messing with, say, the
+  ; symbol "plus2", when we only wanted to change the symbol "plus"
+  (string-replace x "-sentinel" ""))
+
+(define (remove-prefices x)
+  ; Removes unambiguous filename prefices
+  (foldl (lambda (rep str)
+           (define src (first  (string-split rep "\t")))
+           (define dst (second (string-split rep "\t")))
+           (string-replace str src dst))
+         x
+         (name-replacements x)))
+
+(define (name-replacements x)
+  ; Unqualify any names which only have one definition
+  ;
+  ; For example, given:
+  ;
+  ; (define-fun foo.smt2baz-sentinel  ...)
+  ; (define-fun foo.smt2quux-sentinel ...)
+  ; (define-fun bar.smt2quux-sentinel ...)
+  ;
+  ; We can unqualify 'foo.smt2baz-sentinel' to get 'baz', but we can't for
+  ; 'quux' since there are two distinct versions.
+  (define nr-names (pipe (~a x) rec-names))
+
+  (foldl (lambda (name rest)
+           (if (string-contains? name ".smt2")
+               (let* ([unsent (substring name
+                                         0
+                                         (- (string-length name)
+                                            (string-length "-sentinel")))]
+                      [unqual (string-join (cdr (string-split unsent ".smt2"))
+                                           ".smt2")]
+                      [count  (- (length (string-split nr-names
+                                                       (string-append ".smt2"
+                                                                      unqual
+                                                                      "-sentinel")))
+                                 1)])
+                 (if (equal? count 1)
+                     (string-append name "\t" unqual "\n" rest)
+                     rest))
+               rest))
+         ""
+         (string-split nr-names "\n")))
+
+(module+ test
+  (check-equal? (name-replacements (~a '((define-fun (par (a b)
+                                           (foo.smt2baz-sentinel  ((x Nat)) Nat
+                                             X)))
+                                         (define-fun
+                                            foo.smt2quux-sentinel ()        Bool
+                                             (hello world))
+                                         (define-fun-rec (par (a)
+                                           (bar.smt2quux-sentinel ()        Foo
+                                                                  (foo bar)))))))
+                "foo.smt2baz-sentinel\tbaz\n"))
+
 (define (prepare)
-
-  (define (addCheckSat x)
-    ; Add '(check-sat)' as the last line to appease tip-tools
-    (string-append x "\n(check-sat)"))
-
-  (define (removeSuffices x)
-    ; Removes '-sentinel' suffices. Do this after all other string-based
-    ; transformations, since the sentinels prevent us messing with, say, the
-    ; symbol "plus2", when we only wanted to change the symbol "plus"
-    (string-replace x "-sentinel" ""))
-
-  (define (removePrefices x)
-    ; Removes unambiguous filename prefices
-    (foldl (lambda (rep str)
-             (define src (first  (string-split rep "\t")))
-             (define dst (second (string-split rep "\t")))
-             (string-replace str src dst))
-           x
-           (nameReplacements x)))
-  (define (nameReplacements x)
-    ; Unqualify any names which only have one definition
-    ;
-    ; For example, given:
-    ;
-    ; (define-fun foo.smt2baz-sentinel  ...)
-    ; (define-fun foo.smt2quux-sentinel ...)
-    ; (define-fun bar.smt2quux-sentinel ...)
-    ;
-    ; We can unqualify 'foo.smt2baz-sentinel' to get 'baz', but we can't for
-    ; 'quux' since there are two distinct versions.
-    (define nr-names (run-pipeline/out '(./rec_names.rkt)))
-
-    (foldl (lambda (name rest)
-             (if (string-contains? name ".smt2")
-                 (let ([unqual (run-pipeline/out `(echo ,name)
-                                                 '(sed -e "s/.*\\.smt2\\(.*\\)/\\1/g")
-                                                 '(sed -e "s/-sentinel//g"))]
-                       [count  (run-pipeline/out `(echo ,nr-names)
-                                                 `(grep -cF (string-append ".smt2" unqual "-sentinel")))])
-                   (if (equal? count "1")
-                       (string-append name "\t" unqual "\n" rest)
-                       rest))
-                 rest))
-           ""
-           (string-split nr-names "\n")))
-
   ;(tag-types
     ;(tag-constructors
       ;(add-constructor-funcs
   (show
-   (addCheckSat
-    (removeSuffices
-     (removePrefices
+   (add-check-sat
+    (remove-suffices
+     (remove-prefices
       (~a
        (read-benchmark
         (port->string
@@ -983,7 +998,6 @@
   (show (map (lambda (line)
                (join-spaces (names-in (read-benchmark line))))
              (port->lines (current-input-port)))))
-#;(show (apply append (map names-in given-defs)))
 
 (define (all-names-s exprs)
   (map names-in exprs))
