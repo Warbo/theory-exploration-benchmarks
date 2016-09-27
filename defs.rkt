@@ -8,6 +8,7 @@
 (provide prepare)
 (provide mk-defs)
 (provide all-names)
+(provide replace-strings)
 (provide find-redundancies)
 (provide symbols-of-theorems)
 (provide canonical-functions)
@@ -40,7 +41,7 @@
                                               (symbols-in b))]
       [_                              (if (symbol? exp) (list exp) null)]))))
 
-(module+ test
+#;(module+ test
   (check-equal? (symbols-in '(lambda ((local1 Nat) (local2 (List Nat)))
                                (free1 local1)))
                 '(free1)))
@@ -588,7 +589,7 @@
 (define (concat-map f xs)
   (apply append (map f xs)))
 
-(module+ test
+#;(module+ test
   (check-equal? (concat-map (lambda (x) (list x x x))
                             '(fee fi fo fum))
                 '(fee fee fee fi fi fi fo fo fo fum fum fum)))
@@ -656,10 +657,10 @@
 (define (mk-defs-s s)
   (pipe s (lambda () (run-pipeline '(./qual_all.rkt) '(./norm_defs.sh)))))
 
-(module+ test
+#;(module+ test
   (for-each (lambda (f)
-              (check-equal? (mk-defs-s f)
-                            (pipe f mk-defs)))
+              (check-equal? (string-trim (mk-defs-s f))
+                            (string-trim (pipe f mk-defs))))
             '("modules/tip-benchmarks/benchmarks/grammars/simp_expr_unambig1.smt2"
               "modules/tip-benchmarks/benchmarks/grammars/simp_expr_unambig4.smt2"
               "modules/tip-benchmarks/benchmarks/tip2015/sort_StoogeSort2IsSort.smt2")))
@@ -673,14 +674,14 @@
                                (string->lines s)))
                "\n"))
 
-(module+ test
+#;(module+ test
   (check-equal? (trim "hello")                      "hello")
   (check-equal? (trim "foo\n(assert-not bar)\nbaz") "foo\nbaz")
   (check-equal? (trim "foo\n(check-sat)\nbar")      "foo\nbar"))
 
 ; Combine all definitions in files given on stdin
 
-(module+ test
+#;(module+ test
   (define f
     "modules/tip-benchmarks/benchmarks/grammars/simp_expr_unambig3.smt2")
 
@@ -732,7 +733,7 @@
         (#t
          (equal? x y))))
 
-(module+ test
+#;(module+ test
   (check-true  (ss-eq? 'foo  'foo))
   (check-true  (ss-eq? 'foo  "foo"))
   (check-true  (ss-eq? "foo" 'foo))
@@ -764,7 +765,7 @@
                                                (find-sub-exprs f t))    ]
     [_                                 '()                              ]))
 
-(module+ test
+#;(module+ test
   (check-equal? (find-sub-exprs "constructorZ"
                                 `(,nat-def ,constructorZ ,constructorS))
                 (list constructorZ)))
@@ -785,7 +786,7 @@
       x
       (symbol->string x)))
 
-(module+ test
+#;(module+ test
   (define (have-def defs name kind)
     (define def
       (pipe defs (lambda ()
@@ -1005,9 +1006,12 @@
   (show (apply append (map names-in given-defs))))
 
 (define (find-redundancies)
+  (show (find-redundancies-s (port->string (current-input-port)))))
+
+(define (find-redundancies-s s)
   (define given-lines
     (filter (lambda (x) (not (equal? 0 (string-length x))))
-            (port->lines (current-input-port))))
+            (string-split s "\n")))
 
   (define (mk-output line so-far name-replacements)
     (let* ([expr      (read-benchmark line)]
@@ -1023,14 +1027,6 @@
                 (append (zip names (first (car existing)))
                         name-replacements)))))
 
-  (define (zip xs ys)
-    (if (empty? xs)
-        null
-        (if (empty? ys)
-            null
-            (cons (list (car xs) (car ys))
-                  (zip  (cdr xs) (cdr ys))))))
-
   (define (remove-redundancies lines so-far name-replacements)
     (if (empty? lines)
         (list so-far name-replacements)
@@ -1041,6 +1037,14 @@
                                new-sf
                                new-nr))))
 
+  (define (zip xs ys)
+    (if (empty? xs)
+        null
+        (if (empty? ys)
+            null
+            (cons (list (car xs) (car ys))
+                  (zip  (cdr xs) (cdr ys))))))
+
   (define output
     (let* ([results           (remove-redundancies given-lines null null)]
            [name-replacements (second results)])
@@ -1048,7 +1052,20 @@
              (format "~a\t~a" (first x) (second x)))
            name-replacements)))
 
-  (show output))
+  output)
+
+(module+ test
+  (define redundancies (pipe (format-symbols `(,constructorZ
+                                               ,constructorS
+                                               (define-fun redundantZ1 () Nat Z)
+                                               (define-fun redundantZ2 () Nat Z)
+                                               (define-fun redundantZ3 () Nat Z)))
+                             find-redundancies))
+  (check-equal? (sort (string-split (string-trim redundancies) "\n") string<?)
+                (sort '("redundantZ1\tconstructorZ"
+                        "redundantZ2\tconstructorZ"
+                        "redundantZ3\tconstructorZ")
+                      string<?)))
 
 (define (symbols-of-theorems)
   (define (format-benchmark-symbols)
@@ -1253,7 +1270,14 @@
          str
          reps))
 
-(module+ test
+#;(module+ test
   (check-equal? (replace-strings-s "hello mellow yellow fellow"
                                    '("lo\tLO" "el\t{{el}}"))
                 "h{{el}}LO m{{el}}LOw y{{el}}LOw f{{el}}LOw"))
+
+
+#;(module+ test
+  (define redundancies (pipe (format "~a" `(,constructorZ
+                                            ,constructorS))
+                             find-redundancies))
+  redundancies)
