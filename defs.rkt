@@ -3,6 +3,7 @@
 (require racket/match)
 (require racket/trace)
 
+(provide all-symbols)
 (provide qual-all)
 (provide rec-names)
 (provide prepare)
@@ -1361,3 +1362,11 @@
       ('syms    syms)
       ('message "References to discarded duplicates are replaced"))
      (check-not-equal? (member 'min1 syms) #f))))
+
+(define (all-symbols)
+  (show (sort (filter non-empty?
+                      (foldl (lambda (path rest)
+                               (append (symbols-of-theorem path) rest))
+                             '()
+                             (theorem-files)))
+              (lambda (x y) (string<? (~a x) (~a y))))))
