@@ -12,12 +12,25 @@
 (provide symbols-of-theorems)
 (provide canonical-functions)
 (provide get-con-def)
+(provide get-fun-def)
 (provide qualify)
 (provide theorems-from-symbols)
 (provide strip-redundancies)
 
 (module+ test
-  (require rackunit))
+  (require rackunit)
+
+  (define nat-def      '(declare-datatypes () ((Nat (Z) (S (p Nat))))))
+
+  (define constructorZ '(define-fun constructorZ ()              Nat Z))
+
+  (define constructorS '(define-fun constructorS ((local-p Nat)) Nat (S local-p)))
+
+  (define redundancies `(,constructorZ
+                         ,constructorS
+                         (define-fun redundantZ1 () Nat Z)
+                         (define-fun redundantZ2 () Nat Z)
+                         (define-fun redundantZ3 () Nat Z))))
 
 (define (symbols-in exp)
   (let ((case-symbols (lambda (c)
@@ -625,9 +638,6 @@
     (append x (map (curry func-for x) consts))))
 
 (module+ test
-  (define nat-def      '(declare-datatypes () ((Nat (Z) (S (p Nat))))))
-  (define constructorZ '(define-fun constructorZ ()              Nat Z))
-  (define constructorS '(define-fun constructorS ((local-p Nat)) Nat (S local-p)))
   (check-equal? (add-constructor-funcs (list nat-def))
                 `(,nat-def ,constructorZ ,constructorS)))
 
@@ -716,9 +726,9 @@
 (define (path p)
   ; Prefix our argument with the benchmarks directory, to save us typing it
   ; over and over
-  (build-path (current-directory)
-              "modules/tip-benchmarks/benchmarks"
-              p))
+  (path->string (build-path (current-directory)
+                            "modules/tip-benchmarks/benchmarks"
+                            p)))
 
 (define (ss-eq? x y)
   (cond ([symbol? x]
@@ -744,7 +754,7 @@
     [(list 'define-fun name _ _ _)                          (if (ss-eq? name f)
                                                                 (list x)
                                                                 '())]
-    [(list 'define'fun (list 'par _ (list name _ _ _)))     (if (ss-eq? name f)
+    [(list 'define-fun (list 'par _ (list name _ _ _)))     (if (ss-eq? name f)
                                                                 (list x)
                                                                 '())]
     [(list 'define-fun-rec   name _ _ _)                    (if (ss-eq? name f)
@@ -763,13 +773,30 @@
 (module+ test
   (check-equal? (find-sub-exprs "constructorZ"
                                 `(,nat-def ,constructorZ ,constructorS))
-                (list constructorZ)))
+                (list constructorZ))
+
+  (let* ([file "tip2015/sort_StoogeSort2IsSort.smt2"]
+         [defs (mk-defs-s (list (path file)))])
+    (for-each (lambda (data)
+                (define def
+                  (find-sub-exprs (string-append file (first data) "-sentinel")
+                                  defs))
+
+                (with-check-info
+                 (('defs    defs)
+                  ('def     def )
+                  ('name    (first  data))
+                  ('kind    (second data))
+                  ('message "Can get function definition"))
+                 (check-equal? (length def) 1)))
+              '(("sort2"        "plain")
+                ("insert2"      "recursive")
+                ("zsplitAt"     "parameterised")
+                ("ztake"        "parameterised recursive")
+                ("stooge2sort2" "mutually recursive")))))
 
 (define (get-fun-def f)
-  (define benchmarks
-    (read-benchmark (port->string (current-input-port))))
-
-  (write (string-join (map ~a (find-sub-exprs f benchmarks)) "\n")))
+  (show (find-sub-exprs f (read-benchmark (port->string (current-input-port))))))
 
 (define (as-str x)
   (if (string? x)
@@ -777,31 +804,17 @@
       (symbol->string x)))
 
 (module+ test
-  (let ([defs (pipe (path->string (path "tip2015/sort_StoogeSort2IsSort.smt2"))
-                    mk-defs)])
-    (for-each (lambda (data)
-                (define name (first  data))
-                (define kind (second data))
-                (define def (pipe defs
-                                  (lambda ()
-                                    (get-fun-def (string-append (as-str name)
-                                                                "-sentinel")))))
+  (define test-files
+    (string-join (map (curry string-append
+                             "modules/tip-benchmarks/benchmarks/")
+                      '("grammars/simp_expr_unambig1.smt2"
+                        "grammars/simp_expr_unambig4.smt2"
+                        "tip2015/sort_StoogeSort2IsSort.smt2"))
+                 "\n"))
 
-                (with-check-info
-                 (('defs    defs)
-                  ('def     def )
-                  ('kind    kind)
-                  ('message "Can get function definition"))
-                 (check-equal? (length (filter non-empty-string?
-                                               (string-split def "\n")))
-                               1)))
-              '(("tip2015/sort_StoogeSort2IsSort.smt2sort2"        "plain")
-                ("tip2015/sort_StoogeSort2IsSort.smt2insert2"      "recursive")
-                ("tip2015/sort_StoogeSort2IsSort.smt2zsplitAt"     "parameterised")
-                ("tip2015/sort_StoogeSort2IsSort.smt2ztake"        "parameterised recursive")
-                ("tip2015/sort_StoogeSort2IsSort.smt2stooge2sort2" "mutually recursive")))))
+  (define test-defs
+    (pipe test-files mk-defs))
 
-(module+ test
   (test-case "Real symbols qualified"
     (let* ([f "modules/tip-benchmarks/benchmarks/tip2015/propositional_AndCommutative.smt2\nmodules/tip-benchmarks/benchmarks/tip2015/propositional_Sound.smt2\nmodules/tip-benchmarks/benchmarks/tip2015/propositional_Okay.smt2\nmodules/tip-benchmarks/benchmarks/tip2015/regexp_RecSeq.smt2\nmodules/tip-benchmarks/benchmarks/tip2015/relaxedprefix_correct.smt2\nmodules/tip-benchmarks/benchmarks/tip2015/propositional_AndIdempotent.smt2\nmodules/tip-benchmarks/benchmarks/tip2015/propositional_AndImplication.smt2"]
            [q (pipe f qual-all)]
@@ -818,14 +831,8 @@
          (check-true (string-contains? s "or2-sentinel")
                      "Found 'or2' symbol"))))
 
-  (let* ([files (string-join (map (curry string-append
-                                         "modules/tip-benchmarks/benchmarks/")
-                                  '("grammars/simp_expr_unambig1.smt2"
-                                    "grammars/simp_expr_unambig4.smt2"
-                                    "tip2015/sort_StoogeSort2IsSort.smt2"))
-                             "\n")]
-         [qual (pipe files qual-all)]
-         [syms (pipe qual  symbols-of-theorems)])
+  (let* ([qual (pipe test-files qual-all)]
+         [syms (pipe qual       symbols-of-theorems)])
 
     (for-each (lambda (sym)
                 (with-check-info
@@ -868,22 +875,37 @@
                 "tip2015/sort_StoogeSort2IsSort.smt2ztake-sentinel"
                 "tip2015/sort_StoogeSort2IsSort.smt2stooge2sort2-sentinel"))
 
-      (let* ([defs (pipe files mk-defs)]
-             [syms (string-split (pipe defs symbols-of-theorems)
+      (let* (
+             [syms (string-split (pipe test-defs symbols-of-theorems)
                                  "\n")])
         (for-each (lambda (sym)
                     (with-check-info
-                     (('sym     sym)
-                      ('defs    defs)
-                      ('message "Symbol is qualified"))
+                     (('sym       sym)
+                      ('test-defs test-defs)
+                      ('message   "Symbol is qualified"))
                      (check-true (string-contains? sym ".smt2")))
 
                     (with-check-info
-                     (('sym     sym)
-                      ('defs    defs)
-                      ('message "Symbol has suffix"))
+                     (('sym       sym)
+                      ('test-defs test-defs)
+                      ('message   "Symbol has suffix"))
                      (check-true (string-contains? sym "-sentinel"))))
-                  syms))))
+                  syms)))
+
+  (test-case "No alpha-equivalent duplicates in result"
+    (let* ([normalised (pipe test-defs canonical-functions)])
+      (for-each (lambda (norm)
+                  (define norms
+                    (filter (curry equal? norm)
+                            (read-benchmark normalised)))
+                  (unless (equal? norm '(check-sat))
+                    (with-check-info
+                     (('norms      norms)
+                      ('norm       norm)
+                      ('normalised normalised)
+                      ('message    "Duplicate normalised forms!"))
+                     (check-equal? norms (list norm)))))
+                  (read-benchmark normalised)))))
 
 (define (rec-names)
   (show (rec-names-s (read-benchmark (port->string (current-input-port))))))
@@ -1056,11 +1078,6 @@
   (equal? (sort x p) (sort y p)))
 
 (module+ test
-  (define redundancies `(,constructorZ
-                         ,constructorS
-                         (define-fun redundantZ1 () Nat Z)
-                         (define-fun redundantZ2 () Nat Z)
-                         (define-fun redundantZ3 () Nat Z)))
   (check-equal? (list->set (string-split (string-trim (pipe (format-symbols redundancies)
                                                             find-redundancies))
                                          "\n"))
@@ -1088,14 +1105,9 @@
                           "\n")))
 
 (define (canonical-functions)
-  (define given-functions
-    (filter (lambda (x)
-              (not (eof-object? x)))
-            (map (lambda (line)
-                   (with-input-from-string line
-                     read))
-                 (port->lines (current-input-port)))))
+  (show (canonical-functions-s (port->lines (current-input-port)))))
 
+(define (canonical-functions-s x)
   (define (normalise def)
     (match def
       [(list 'define-fun
@@ -1171,7 +1183,12 @@
                                          (get-normal-args rest (+ 1 n)))]
       [_                           null]))
 
-  (show (map norm given-functions)))
+  (map norm (filter (lambda (x)
+                      (not (eof-object? x)))
+                    (map (lambda (line)
+                           (with-input-from-string line
+                             read))
+                         x))))
 
 (define (pipe s f)
   (define o (open-output-string))

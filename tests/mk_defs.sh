@@ -56,20 +56,6 @@ DEFS=$(echo "$FILES" | ./mk_defs.rkt)
 
 ###
 
-DUPES=0
-NORMALISED=$(echo "$DEFS" | ./canonical_functions.rkt)
-while read -r NORM
-do
-    COUNT=$(echo "$NORMALISED" | grep -cF "$NORM")
-    [[ "$COUNT" -eq 1 ]] || {
-        DUPES=1
-        echo -e "Duplicate normalised forms!\nCOUNT: $COUNT\nNORM:$NORM" 1>&2
-    }
-done < <(echo "$NORMALISED")
-
-[[ "$DUPES" -eq 0 ]]
-report "$?" "No alpha-equivalent duplicates in result"
-
 TOTAL=$(echo "$SUBSET" | wc -l)
 INDEX=1
 
