@@ -919,37 +919,45 @@
 
 (define (add-check-sat x)
   ; Add '(check-sat)' as the last line to appease tip-tools
-  (string-append x "\n(check-sat)"))
+  (append x '((check-sat))))
 
 (define (remove-suffices x)
   ; Removes '-sentinel' suffices. Do this after all other string-based
   ; transformations, since the sentinels prevent us messing with, say, the
   ; symbol "plus2", when we only wanted to change the symbol "plus"
-  (string-replace x "-sentinel" ""))
+  (read-benchmark (string-replace (format-symbols x)
+                                  "-sentinel"
+                                  "")))
 
-(define (remove-prefices x)
-  ; Removes unambiguous filename prefices
-  (foldl (lambda (rep str)
-           (define src (first  (string-split rep "\t")))
-           (define dst (second (string-split rep "\t")))
-           (string-replace str src dst))
-         x
-         (name-replacements x)))
+(module+ test
+  (define qualified-example
+    '((define-fun (par (a b)
+        (foo.smt2baz-sentinel  ((x Nat)) Nat
+          X)))
+      (define-fun
+         foo.smt2quux-sentinel ()        Bool
+          (hello world))
+      (define-fun-rec (par (a)
+        (bar.smt2quux-sentinel ()        Foo
+          (foo bar))))))
 
-(define (name-replacements x)
+  (check-equal? (remove-suffices qualified-example)
+                '((define-fun (par (a b)
+                    (foo.smt2baz  ((x Nat)) Nat
+                      X)))
+                  (define-fun
+                     foo.smt2quux ()        Bool
+                      (hello world))
+                  (define-fun-rec (par (a)
+                    (bar.smt2quux ()        Foo
+                      (foo bar)))))))
+
+(define (name-replacements-for x)
   ; Unqualify any names which only have one definition
-  ;
-  ; For example, given:
-  ;
-  ; (define-fun foo.smt2baz-sentinel  ...)
-  ; (define-fun foo.smt2quux-sentinel ...)
-  ; (define-fun bar.smt2quux-sentinel ...)
-  ;
-  ; We can unqualify 'foo.smt2baz-sentinel' to get 'baz', but we can't for
-  ; 'quux' since there are two distinct versions.
-  (define nr-names (pipe (~a x) rec-names))
+  (define nr-names (rec-names-s x))
 
-  (foldl (lambda (name rest)
+  (foldl (lambda (sym rest)
+           (define name (~a sym))
            (if (string-contains? name ".smt2")
                (let* ([unsent (substring name
                                          0
@@ -957,42 +965,56 @@
                                             (string-length "-sentinel")))]
                       [unqual (string-join (cdr (string-split unsent ".smt2"))
                                            ".smt2")]
-                      [count  (- (length (string-split nr-names
+                      [count  (- (length (string-split (format-symbols nr-names)
                                                        (string-append ".smt2"
                                                                       unqual
                                                                       "-sentinel")))
                                  1)])
                  (if (equal? count 1)
-                     (string-append name "\t" unqual "\n" rest)
+                     (cons (list name unqual) rest)
                      rest))
                rest))
-         ""
-         (string-split nr-names "\n")))
+         '()
+         nr-names))
 
 (module+ test
-  (check-equal? (name-replacements (~a '((define-fun (par (a b)
-                                           (foo.smt2baz-sentinel  ((x Nat)) Nat
-                                             X)))
-                                         (define-fun
-                                            foo.smt2quux-sentinel ()        Bool
-                                             (hello world))
-                                         (define-fun-rec (par (a)
-                                           (bar.smt2quux-sentinel ()        Foo
-                                                                  (foo bar)))))))
-                "foo.smt2baz-sentinel\tbaz\n"))
+  (check-equal? (map (curry map ~a)
+                     (name-replacements-for qualified-example))
+                '(("foo.smt2baz-sentinel" "baz"))))
 
-(define (prepare)
+(define (remove-prefices x)
+  ; Removes unambiguous filename prefices
+  (read-benchmark (foldl (lambda (rep str)
+                           (string-replace str (first rep) (second rep)))
+                         (format-symbols x)
+                         (name-replacements-for x))))
+
+(module+ test
+  (check-equal? (remove-prefices qualified-example)
+                (cons '(define-fun (par (a b) (baz ((x Nat)) Nat X)))
+                      (cdr qualified-example))))
+
+(define (prepare-s x)
   ;(tag-types
     ;(tag-constructors
       ;(add-constructor-funcs
-  (show
-   (add-check-sat
-    (remove-suffices
-     (remove-prefices
-      (~a
-       (read-benchmark
-        (port->string
-         (current-input-port)))))))))
+  (add-check-sat (remove-suffices (remove-prefices x))))
+
+(define (prepare)
+  (show (prepare-s (read-benchmark (port->string (current-input-port))))))
+
+(module+ test
+  (check-equal? (prepare-s qualified-example)
+                '((define-fun (par (a b)
+                    (baz  ((x Nat)) Nat
+                      X)))
+                  (define-fun
+                     foo.smt2quux ()        Bool
+                      (hello world))
+                  (define-fun-rec (par (a)
+                    (bar.smt2quux ()        Foo
+                      (foo bar))))
+                  (check-sat))))
 
 (define (all-names)
   (show (map (lambda (line)
