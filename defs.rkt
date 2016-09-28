@@ -655,9 +655,6 @@
 
 (require shell/pipeline)
 
-(define (mk-final-defs)
-  (run-pipeline/out '(./mk_final_defs.sh)))
-
 (define (mk-defs)
   (show (mk-defs-s (port->lines (current-input-port)))))
 
