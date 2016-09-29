@@ -1388,7 +1388,7 @@
       result))
 
   (define (string-to-haskell val)
-    ; mk_final_defs.rkt takes in filenames, so it can qualify names. This makes
+    ; mk-final-defs takes in filenames, so it can qualify names. This makes
     ; and cleans up temporary files for testing.
 
     ; Note: We make a file in a directory, to avoid problems if tmpdir begins
@@ -1539,9 +1539,7 @@
 
 (define (mk-final-defs)
   (let ([input (port->string (current-input-port))])
-    (display (run-pipeline/out `(echo ,input)
-                               '(./mk_defs.rkt)
-                               '(./prepare.rkt)))))
+    (display (pipe (pipe input mk-defs) prepare))))
 
 (define (with-temp-file data proc)
   (let* ([f      (make-temporary-file "te-benchmark-temp-~a")]
