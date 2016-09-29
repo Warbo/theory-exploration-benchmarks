@@ -5,8 +5,8 @@
     exit 1
 }
 
-echo "Running mk_signature.sh" 1>&2
-HS=$(./mk_signature.sh) || {
+echo "Running mk_signature.rkt" 1>&2
+HS=$(./mk_signature.rkt) || {
     echo -e "Failed to make Haskell file\nHS:\n$HS\n\n" 1>&2
     exit 1
 }

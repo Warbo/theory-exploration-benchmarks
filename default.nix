@@ -79,7 +79,7 @@ in rec {
       cp -r modules "$out/lib/"
 
       # Ensure tip is available
-      wrapProgram "$out/lib/mk_signature.sh" --prefix PATH : "${env}/bin"
+      wrapProgram "$out/lib/mk_signature.rkt" --prefix PATH : "${env}/bin"
 
       mkdir -p    "$out/bin"
       for F in "$out/lib"/*.sh "$out/lib"/*.rkt "$out/lib"/*.py

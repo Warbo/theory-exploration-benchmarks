@@ -1373,7 +1373,7 @@
                              (theorem-files)))
               (lambda (x y) (string<? (~a x) (~a y))))))
 
-(module+ test
+#;(module+ test
   (define test-dir "modules/tip-benchmarks/benchmarks")
 
   (define (in-temp-dir f)
@@ -1398,7 +1398,7 @@
 
                    (let ([result (run-pipeline/out `(echo ,temp-file)
                                                    '(./mk_final_defs.rkt)
-                                                   '(./mk_signature.sh))])
+                                                   '(./mk_signature.rkt))])
                      (delete-file temp-file)
                      result))))
 
@@ -1500,7 +1500,7 @@
                 (define sig
                   (run-pipeline/out `(echo ,f)
                                     '(./mk_final_defs.rkt)
-                                    '(./mk_signature.sh)))
+                                    '(./mk_signature.rkt)))
                 (check-true (string-contains? sig "QuickSpec")))
               files))
 
@@ -1514,7 +1514,7 @@
     (define sig
       (run-pipeline/out `(echo ,files)
                         '(./mk_final_defs.rkt)
-                        '(./mk_signature.sh)))
+                        '(./mk_signature.rkt)))
 
     (with-check-info
      (('message "Local variables renamed")
@@ -1522,17 +1522,17 @@
      (check-true (string-contains? sig "local"))))
 
   (test-case "Random files"
-    (for-each (lambda (n)
-                (define files
-                  (run-pipeline/out `(find ,test-dir -name "*.smt2")
-                                    '(shuf)
-                                    `(head ,(string-append "-n"
-                                                           (format "~a" n)))))
+    (define files
+      (run-pipeline/out `(find ,test-dir -name "*.smt2")
+                        '(shuf)))
 
+    (for-each (lambda (n)
                 (define sig
                   (run-pipeline/out `(echo ,files)
+                                    `(head ,(string-append "-n"
+                                                           (format "~a" n)))
                                     '(./mk_final_defs.rkt)
-                                    '(./mk_signature.sh)))
+                                    '(./mk_signature.rkt)))
                 (with-check-info
                  (('n       n)
                   ('files   files)
@@ -1545,3 +1545,23 @@
   (let ([code (run-pipeline '(mk_defs.rkt) '(./prepare.rkt))])
     (unless (equal? code 0)
       (error "Pipeline failed"))))
+
+(define (with-temp-file data proc)
+  (let* ([f      (make-temporary-file "te-benchmark-temp-~a")]
+         [result void])
+    (display-to-file data f #:exists 'replace)
+    (set! result (proc f))
+    (delete-file f)
+    result))
+
+(module+ test
+  (check-equal? (with-temp-file "foo\nbar\nbaz" (lambda (f)
+                                                  (file->string f)))
+                "foo\nbar\nbaz"))
+
+(define (mk-signature)
+  (define input (port->string (current-input-port)))
+
+  (display
+   (with-temp-file input (lambda (f)
+                           (run-pipeline/out `(tip ,f --haskell-spec))))))
