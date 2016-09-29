@@ -1502,7 +1502,24 @@
                                     '(./mk_final_defs.rkt)
                                     '(./mk_signature.sh)))
                 (check-true (string-contains? sig "QuickSpec")))
-              files)))
+              files))
+
+  (test-case "Multiple files"
+    (define files
+      (string-join (map (curry string-append test-dir "/")
+                        '("tip2015/tree_SwapAB.smt2"
+                          "tip2015/list_z_count_nub.smt2"))
+                   "\n"))
+
+    (define sig
+      (run-pipeline/out `(echo ,files)
+                        '(./mk_final_defs.rkt)
+                        '(./mk_signature.sh)))
+
+    (with-check-info
+     (('message "Local variables renamed")
+      ('sig     sig))
+     (check-true (string-contains? sig "local")))))
 
 (define (mk-final-defs)
   (let ([code (run-pipeline '(mk_defs.rkt) '(./prepare.rkt))])

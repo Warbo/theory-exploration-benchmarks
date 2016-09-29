@@ -43,22 +43,6 @@ function stringToHaskell {
     return "$STH_CODE"
 }
 
-function testMultipleFiles {
-    FILES="$DIR/tip2015/tree_SwapAB.smt2
-$DIR/tip2015/list_z_count_nub.smt2"
-
-    SIG=$(echo "$FILES" | ./mk_final_defs.rkt | ./mk_signature.sh 2> "$DBG")
-    report "$?" "No conflicting locals/globals" || {
-        cat "$DBG"
-    }
-
-    echo "$SIG" | grep "local" > /dev/null
-    report "$?" "Local variables renamed" || {
-        echo -e "SIG:\n$SIG\n\n" 1>&2
-        cat "$DBG"
-    }
-}
-
 function testRandomFiles {
     for N in 1 2 4 8
     do
