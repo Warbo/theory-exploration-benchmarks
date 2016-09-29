@@ -33,7 +33,7 @@ do
     export OUT_DIR
 
     THESE=$(echo "$FILES" | head -n "$N")
-    echo "$THESE" |./mk_final_defs.sh | ./full_haskell_package.sh
+    echo "$THESE" |./mk_final_defs.rkt | ./full_haskell_package.sh
     report "$?" "Made Haskell from $N files" || {
         echo -e "THESE:\n$THESE\n" 1>&2
     }

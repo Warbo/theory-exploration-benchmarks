@@ -123,7 +123,7 @@ in rec {
       cd "$teBenchmark/lib"
 
       find modules/tip-benchmarks/benchmarks -name "*.smt2" |
-        ./mk_final_defs.sh > "$out"
+        ./mk_final_defs.rkt > "$out"
     '';
   };
 
@@ -144,7 +144,7 @@ in rec {
       # Create Haskell package
       cd "$teBenchmark/lib"
       find modules/tip-benchmarks/benchmarks/ -name "*.smt2" |
-        ./mk_final_defs.sh | ./full_haskell_package.sh
+        ./mk_final_defs.rkt | ./full_haskell_package.sh
     '';
   };
 }

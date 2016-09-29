@@ -15,8 +15,10 @@
 (provide get-con-def)
 (provide get-fun-def)
 (provide qualify)
+(provide qualify-given)
 (provide theorems-from-symbols)
 (provide strip-redundancies)
+(provide mk-final-defs)
 
 (module+ test
   (require rackunit)
@@ -645,8 +647,14 @@
 (define (take-from-end n lst)
   (reverse (take (reverse lst) n)))
 
+(define (trim lst)
+  (filter (lambda (x)
+            (and (not (equal? (first x) 'assert-not))
+                 (not (equal? x '(check-sat)))))
+          lst))
+
 (define (qual-all)
-  (displayln (trim (~a (qual-all-s (port->lines (current-input-port)))))))
+  (show (qual-all-s (port->lines (current-input-port)))))
 
 (define (qual-all-s given-files)
   (define given-contents
@@ -662,7 +670,7 @@
            (qualify (first name-content) (second name-content)))
          given-contents))
 
-  (apply append qualified-contents))
+  (trim (apply append qualified-contents)))
 
 (require shell/pipeline)
 
@@ -683,16 +691,10 @@
 (define (string->lines s)
   (string-split s "\n" #:trim? #f))
 
-(define (trim s)
-  (string-join (filter (lambda (x) (not (string-prefix? x "(assert-not ")))
-                       (filter (lambda (x) (not (string-prefix? x "(check-sat)")))
-                               (string->lines s)))
-               "\n"))
-
 (module+ test
-  (check-equal? (trim "hello")                      "hello")
-  (check-equal? (trim "foo\n(assert-not bar)\nbaz") "foo\nbaz")
-  (check-equal? (trim "foo\n(check-sat)\nbar")      "foo\nbar"))
+  (check-equal? (trim '((hello)))                      '((hello)))
+  (check-equal? (trim '((foo) (assert-not bar) (baz))) '((foo) (baz)))
+  (check-equal? (trim '((foo) (check-sat) (bar)))      '((foo) (bar))))
 
 ; Combine all definitions in files given on stdin
 
@@ -1370,3 +1372,139 @@
                              '()
                              (theorem-files)))
               (lambda (x y) (string<? (~a x) (~a y))))))
+
+(module+ test
+  (define test-dir "modules/tip-benchmarks/benchmarks")
+
+  (define (in-temp-dir f)
+    (let* ([dir    (make-temporary-file "te-benchmark-temp-test-data-~a"
+                                        'directory)]
+           [result (f dir)])
+      (delete-directory dir)
+      result))
+
+  (define (string-to-haskell val)
+    ; mk_final_defs.rkt takes in filenames, so it can qualify names. This makes
+    ; and cleans up temporary files for testing.
+
+    ; Note: We make a file in a directory, to avoid problems if tmpdir begins
+    ; with a number (e.g. '/var/run/user/1000'); otherwise qualified variable
+    ; names would be invalid
+    (in-temp-dir (lambda (dir)
+                   (define temp-file (string-append (path->string dir)
+                                                    "/test.smt2"))
+
+                   (display-to-file val temp-file)
+
+                   (let ([result (run-pipeline/out `(echo ,temp-file)
+                                                   '(./mk_final_defs.rkt)
+                                                   '(./mk_signature.sh))])
+                     (delete-file temp-file)
+                     result))))
+
+  (define (count-substrings str sub)
+    (- (length (string-split str sub)) 1))
+
+  (test-case "Form"
+    (define form
+      '(declare-datatypes ()
+         ((Form (& (&_0 Form) (&_1 Form))
+                (Not (Not_0 Form))
+                (Var (Var_0 Int))))))
+
+    (define prepared
+      (prepare-s form))
+
+    (with-check-info
+     (('prepared prepared)
+      ('message  "Prepared 'Form' input defines a datatype"))
+     (check-not-equal? #f
+                       (member 'declare-datatypes (flatten prepared))))
+
+    (define sig (string-to-haskell form))
+
+    (define data-count (length (filter (lambda (line)
+                                         (string-prefix? line "data "))
+                                       (string-split sig "\n"))))
+
+    (with-check-info
+     (('data-count data-count)
+      ('sig        sig)
+      ('message    "'Form' datatype appears in signature"))
+     (check-equal? data-count 1)))
+
+  (test-case "Mutual recursion"
+    (define mut '(define-funs-rec
+                   ((models  ((x Bool)
+                              (y Int))
+                             Bool)
+                    (models2 ((q Bool)
+                              (x Int))
+                             Bool)
+                    (models5 ((q Bool)
+                              (x Int)
+                              (y Int))
+                             Bool))
+
+                   ((ite x
+                         (models2 (models x y) y)
+                         (models5 (models x y) y y))
+
+                    (ite q
+                         (models5 (models q x) x x)
+                         (models2 (models q x) x))
+
+                    (ite q
+                         (models2 q x)
+                         (models5 q x y)))))
+
+    (define prepared (prepare-s mut))
+
+    (with-check-info
+     (('prepared prepared)
+      ('message "Mutually-recursive function definitions survive preparation"))
+    (check-not-equal? #f
+                      (member 'define-funs-rec (flatten prepared)))
+
+    (define sig (string-to-haskell mut))
+
+    (for-each (lambda (fun)
+                (define def-count (length (filter (lambda (line)
+                                                    (string-prefix? line fun))
+                                                  (string-split sig "\n"))))
+
+                (with-check-info
+                 (('fun       fun)
+                  ('def-count def-count)
+                  ('sig       sig)
+                  ('message   "Function defined in signature"))
+                 (check-true (> def-count 0))))
+              (list "models" "models2" "models5"))))
+
+  (test-case "Single files"
+    (define files (map (lambda (suf)
+                         (string-append test-dir "/" suf))
+                       '("isaplanner/prop_54.smt2"
+                         "tip2015/propositional_AndIdempotent.smt2"
+                         "tip2015/propositional_AndCommutative.smt2"
+                         "tip2015/mccarthy91_M2.smt2"
+                         "isaplanner/prop_36.smt2"
+                         "tip2015/sort_MSortTDPermutes.smt2"
+                         "tip2015/tree_sort_SortPermutes'.smt2"
+                         "tip2015/sort_StoogeSort2Permutes.smt2"
+                         "tip2015/sort_StoogeSortPermutes.smt2"
+                         "tip2015/polyrec_seq_index.smt2"
+                         "tip2015/sort_QSortPermutes.smt2")))
+
+    (for-each (lambda (f)
+                (define sig
+                  (run-pipeline/out `(echo ,f)
+                                    '(./mk_final_defs.rkt)
+                                    '(./mk_signature.sh)))
+                (check-true (string-contains? sig "QuickSpec")))
+              files)))
+
+(define (mk-final-defs)
+  (let ([code (run-pipeline '(mk_defs.rkt) '(./prepare.rkt))])
+    (unless (equal? code 0)
+      (error "Pipeline failed"))))
