@@ -19,6 +19,7 @@
 (provide theorems-from-symbols)
 (provide strip-redundancies)
 (provide mk-final-defs)
+(provide mk-signature)
 
 (module+ test
   (require rackunit)
@@ -1373,7 +1374,10 @@
                              (theorem-files)))
               (lambda (x y) (string<? (~a x) (~a y))))))
 
-#;(module+ test
+(define (defs-to-sig x)
+  (pipe (pipe x mk-final-defs) mk-signature))
+
+(module+ test
   (define test-dir "modules/tip-benchmarks/benchmarks")
 
   (define (in-temp-dir f)
@@ -1396,9 +1400,7 @@
 
                    (display-to-file val temp-file)
 
-                   (let ([result (run-pipeline/out `(echo ,temp-file)
-                                                   '(./mk_final_defs.rkt)
-                                                   '(./mk_signature.rkt))])
+                   (let* ([result (defs-to-sig temp-file)])
                      (delete-file temp-file)
                      result))))
 
@@ -1498,9 +1500,7 @@
 
     (for-each (lambda (f)
                 (define sig
-                  (run-pipeline/out `(echo ,f)
-                                    '(./mk_final_defs.rkt)
-                                    '(./mk_signature.rkt)))
+                  (defs-to-sig f))
                 (check-true (string-contains? sig "QuickSpec")))
               files))
 
@@ -1512,9 +1512,7 @@
                    "\n"))
 
     (define sig
-      (run-pipeline/out `(echo ,files)
-                        '(./mk_final_defs.rkt)
-                        '(./mk_signature.rkt)))
+      (defs-to-sig files))
 
     (with-check-info
      (('message "Local variables renamed")
@@ -1528,11 +1526,9 @@
 
     (for-each (lambda (n)
                 (define sig
-                  (run-pipeline/out `(echo ,files)
-                                    `(head ,(string-append "-n"
-                                                           (format "~a" n)))
-                                    '(./mk_final_defs.rkt)
-                                    '(./mk_signature.rkt)))
+                  (defs-to-sig (string-join (take (string-split files "\n") n)
+                                            "\n")))
+
                 (with-check-info
                  (('n       n)
                   ('files   files)
@@ -1542,9 +1538,10 @@
               '(1 2 4 8))))
 
 (define (mk-final-defs)
-  (let ([code (run-pipeline '(mk_defs.rkt) '(./prepare.rkt))])
-    (unless (equal? code 0)
-      (error "Pipeline failed"))))
+  (let ([input (port->string (current-input-port))])
+    (display (run-pipeline/out `(echo ,input)
+                               '(./mk_defs.rkt)
+                               '(./prepare.rkt)))))
 
 (define (with-temp-file data proc)
   (let* ([f      (make-temporary-file "te-benchmark-temp-~a")]
@@ -1555,9 +1552,11 @@
     result))
 
 (module+ test
-  (check-equal? (with-temp-file "foo\nbar\nbaz" (lambda (f)
-                                                  (file->string f)))
+  (check-equal? (with-temp-file "foo\nbar\nbaz"
+                                file->string)
                 "foo\nbar\nbaz"))
+
+(define (dump x) (write x (current-error-port)))
 
 (define (mk-signature)
   (define input (port->string (current-input-port)))
