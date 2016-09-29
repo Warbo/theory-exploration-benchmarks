@@ -1519,7 +1519,27 @@
     (with-check-info
      (('message "Local variables renamed")
       ('sig     sig))
-     (check-true (string-contains? sig "local")))))
+     (check-true (string-contains? sig "local"))))
+
+  (test-case "Random files"
+    (for-each (lambda (n)
+                (define files
+                  (run-pipeline/out `(find ,test-dir -name "*.smt2")
+                                    '(shuf)
+                                    `(head ,(string-append "-n"
+                                                           (format "~a" n)))))
+
+                (define sig
+                  (run-pipeline/out `(echo ,files)
+                                    '(./mk_final_defs.rkt)
+                                    '(./mk_signature.sh)))
+                (with-check-info
+                 (('n       n)
+                  ('files   files)
+                  ('sig     sig)
+                  ('message "Made Haskell for random files"))
+                 (check-true (string-contains? sig "QuickSpec"))))
+              '(1 2 4 8))))
 
 (define (mk-final-defs)
   (let ([code (run-pipeline '(mk_defs.rkt) '(./prepare.rkt))])

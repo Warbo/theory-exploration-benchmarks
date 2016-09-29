@@ -43,22 +43,4 @@ function stringToHaskell {
     return "$STH_CODE"
 }
 
-function testRandomFiles {
-    for N in 1 2 4 8
-    do
-        FILES=$(find "$DIR" -name "*.smt2" | shuf | head -n$N)
-
-        SIG=$(echo "$FILES" | ./mk_final_defs.rkt | ./mk_signature.sh 2> "$DBG")
-        report "$?" "Made Haskell for $N files" || {
-            echo -e "FILES:\n$FILES\n\nSIG:\n$SIG\n\nstderr:" 1>&2
-            cat "$DBG" 1>&2
-            break  # Not worth trying larger samples
-        }
-    done
-}
-
-testSingleFiles
-
-testMultipleFiles
-
 exit "$ERR"
