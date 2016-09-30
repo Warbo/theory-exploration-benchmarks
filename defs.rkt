@@ -36,6 +36,8 @@
                          (define-fun redundantZ2 () Nat Z)
                          (define-fun redundantZ3 () Nat Z))))
 
+(define benchmark-dir "modules/tip-benchmarks/benchmarks")
+
 (define (symbols-in exp)
   (let ((case-symbols (lambda (c)
                         (match c
@@ -266,7 +268,7 @@
 
 (define (theorem-files)
   (filter (lambda (x) (string-suffix? (path->string x) ".smt2"))
-          (sequence->list (in-directory "modules/tip-benchmarks/benchmarks"))))
+          (sequence->list (in-directory benchmark-dir))))
 
 (define (types-of-theorem path)
   (benchmark-types (file->string path)))
@@ -731,7 +733,7 @@
   ; Prefix our argument with the benchmarks directory, to save us typing it
   ; over and over
   (path->string (build-path (current-directory)
-                            "modules/tip-benchmarks/benchmarks"
+                            benchmark-dir
                             p)))
 
 (define (ss-eq? x y)
@@ -809,11 +811,10 @@
 
 (module+ test
   (define test-files
-    (string-join (map (curry string-append
-                             "modules/tip-benchmarks/benchmarks/")
-                      '("grammars/simp_expr_unambig1.smt2"
-                        "grammars/simp_expr_unambig4.smt2"
-                        "tip2015/sort_StoogeSort2IsSort.smt2"))
+    (string-join (map (curry string-append benchmark-dir)
+                      '("/grammars/simp_expr_unambig1.smt2"
+                        "/grammars/simp_expr_unambig4.smt2"
+                        "/tip2015/sort_StoogeSort2IsSort.smt2"))
                  "\n"))
 
   (define test-defs
@@ -1430,7 +1431,6 @@
   (pipe (pipe x mk-final-defs) mk-signature))
 
 (module+ test
-  (define test-dir "modules/tip-benchmarks/benchmarks")
 
   (define (in-temp-dir f)
     (let* ([dir    (make-temporary-file "te-benchmark-temp-test-data-~a"
@@ -1537,7 +1537,7 @@
 
   (test-case "Single files"
     (define files (map (lambda (suf)
-                         (string-append test-dir "/" suf))
+                         (string-append benchmark-dir "/" suf))
                        '("isaplanner/prop_54.smt2"
                          "tip2015/propositional_AndIdempotent.smt2"
                          "tip2015/propositional_AndCommutative.smt2"
@@ -1558,7 +1558,7 @@
 
   (test-case "Multiple files"
     (define files
-      (string-join (map (curry string-append test-dir "/")
+      (string-join (map (curry string-append benchmark-dir "/")
                         '("tip2015/tree_SwapAB.smt2"
                           "tip2015/list_z_count_nub.smt2"))
                    "\n"))
@@ -1573,7 +1573,7 @@
 
   (define benchmark-files
     (string-split (run-pipeline/out
-                   '(find modules/tip-benchmarks/benchmarks/ -name "*.smt2")
+                   `(find ,benchmark-dir -name "*.smt2")
                    '(shuf))
                   "\n"))
 
@@ -1690,6 +1690,32 @@
                 ('message "Module imported successfully"))
                (check-false (string-contains? out "class Functor")))))))))
       '(1 3 5))))
+
+(module+ test
+  (define fresh (take benchmark-files 10))
+
+  (define regressions (map (curry string-append benchmark-dir)
+                           '("/tip2015/list_elem_map.smt2"
+                             "/tip2015/propositional_AndCommutative.smt2")))
+
+  (for-each (lambda (file)
+    (define name  (last (string-split file "/")))
+    (define name2 (string-replace name "'" "_tick_"))
+    (define syms  (symbols-of-theorems-s
+                   (qualify name2
+                            (read-benchmark (file->string file)))))
+
+    (with-check-info
+     (('file    file)
+      ('name2   name2)
+      ('syms    syms)
+      ('message "Symbols qualified"))
+     (check-equal? '()
+                   (filter (lambda (sym)
+                             (and (not (empty? sym))
+                                  (not (string-contains? (~a sym) name2))))
+                           syms))))
+    (append regressions fresh)))
 
 (module+ test
   (for-each (lambda (t)
