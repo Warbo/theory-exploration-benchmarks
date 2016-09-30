@@ -1757,8 +1757,7 @@
 
 (module+ test
   (define (names-match src data expect)
-    (define names (run-pipeline/out `(echo ,data)
-                                    `(./rec_names.rkt)))
+    (define names (pipe data rec-names))
 
     (with-check-info
      (('src     src)
