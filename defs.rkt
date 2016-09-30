@@ -1718,6 +1718,44 @@
     (append regressions fresh)))
 
 (module+ test
+  (for-each (lambda (n)
+    (define files (take benchmark-files n))
+
+    (in-temp-dir (lambda (out-dir)
+      (parameterize-env `([#"FILES"   ,(string->bytes/utf-8
+                                        (string-join files "\n"))]
+                          [#"OUT_DIR" ,(string->bytes/utf-8
+                                        (path->string out-dir))]
+                          [#"HOME"    ,(string->bytes/utf-8
+                                        (path->string out-dir))])
+                        (lambda ()
+
+        (run-pipeline/out `(echo ,(pipe (string-join files "\n")
+                                        mk-final-defs))
+                          '(./full_haskell_package.sh))
+
+        (parameterize ([current-directory out-dir])
+
+          (check-true (directory-exists? "src"))
+
+          (check-true (file-exists? "src/A.hs"))
+
+          (check-true (file-exists? "tip-benchmark-sig.cabal"))
+
+          (check-true (file-exists? "LICENSE"))
+
+          (run-pipeline/out '(cabal configure))
+
+          (define out
+            (run-pipeline/out '(echo -e "import A\n:browse")
+                              '(cabal repl -v0)))
+
+          ; If the import fails, we're stuck with the Prelude, which contains
+          ; classes
+          (check-false (string-contains? out "class Functor"))))))))
+    '(1 3 5)))
+
+(module+ test
   (for-each (lambda (t)
               (test-case (string-append "Test script " t)
                 (in-temp-dir (lambda (d)
