@@ -1384,7 +1384,7 @@
     (let* ([dir    (make-temporary-file "te-benchmark-temp-test-data-~a"
                                         'directory)]
            [result (f dir)])
-      (delete-directory dir)
+      (delete-directory/files dir)
       result))
 
   (define (string-to-haskell val)
@@ -1562,3 +1562,90 @@
   (display
    (with-temp-file input (lambda (f)
                            (run-pipeline/out `(tip ,f --haskell-spec))))))
+
+(define (parameterize-env vars body)
+  (let* ([old-env (environment-variables-copy (current-environment-variables))]
+         [new-env (foldl (lambda (nv env)
+                           (environment-variables-set! env (first  nv)
+                                                           (second nv))
+                           env)
+                         old-env
+                        vars)])
+    (parameterize ([current-environment-variables new-env])
+      (body))))
+
+(module+ test
+  (let ([a (getenv "HOME")]
+        [b (parameterize-env '([#"HOME" #"foo"])
+                             (lambda () (getenv "HOME")))]
+        [c (getenv "HOME")])
+    (check-equal? a c)
+    (check-equal? b "foo")))
+
+(module+ test
+  (test-case "Module tests"
+    (for-each (lambda (n)
+      (define files
+        (run-pipeline/out '(find modules/tip-benchmarks/benchmarks/ -name "*.smt2")
+                          '(shuf)
+                          `(head ,(string-append "-n" (~a n)))))
+      (in-temp-dir (lambda (dir)
+        (define out-dir (path->string dir))
+        (parameterize-env `([#"FILES"   ,(string->bytes/utf-8 files)]
+                            [#"OUT_DIR" ,(string->bytes/utf-8 out-dir)])
+          (lambda ()
+            (define these
+              (string-join (take (string-split files "\n")
+                                 n)
+                           "\n"))
+
+            (run-pipeline/out `(echo ,these)
+                              '(./mk_final_defs.rkt)
+                              '(./full_haskell_package.sh))
+
+            (with-check-info
+             (('n       n)
+              ('these   these)
+              ('files   files)
+              ('message "Made Haskell package"))
+             (check-true (directory-exists? out-dir)))))
+
+        (with-check-info
+         (('message "Made src directory"))
+         (check-true (directory-exists? (string-append out-dir "/src"))))
+
+        (for-each (lambda (f)
+                    (with-check-info
+                     (('f       f)
+                      ('message "Made package file"))
+                     (check-true (file-exists? (string-append out-dir f)))))
+                  '("/src/A.hs" "/tip-benchmark-sig.cabal" "/LICENSE"))
+
+        (parameterize-env `([#"HOME" ,(string->bytes/utf-8 out-dir)])
+          (lambda ()
+            (parameterize ([current-directory out-dir])
+              (run-pipeline/out '(cabal configure))
+
+              (define out
+                (run-pipeline/out '(echo -e "import A\n:browse")
+                                  '(cabal repl -v0)))
+
+              ; If the import fails, we're stuck with the Prelude, which contains classes
+              (with-check-info
+               (('out     out)
+                ('message "Module imported successfully"))
+               (check-false (string-contains? out "class Functor")))))))))
+      '(1 3 5))))
+
+(module+ test
+  (for-each (lambda (t)
+              (test-case (string-append "Test script " t)
+                (in-temp-dir (lambda (d)
+                  (parameterize-env `([#"HOME" ,(string->bytes/utf-8 (path->string d))])
+                    (lambda ()
+                      (let ([result (run-pipeline/out
+                                     `(,(string->symbol
+                                         (string-append "./" t))))])
+                        (check-true  (string-contains? result "ok -"))
+                        (check-false (string-contains? result "not ok")))))))))
+            (map path->string (sequence->list (in-directory "tests")))))
