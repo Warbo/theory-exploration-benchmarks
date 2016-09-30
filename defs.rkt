@@ -1792,14 +1792,78 @@
                "stooge2sort2\nstoogesort2\nstooge2sort1"))
 
 (module+ test
-  (for-each (lambda (t)
-              (test-case (string-append "Test script " t)
-                (in-temp-dir (lambda (d)
-                  (parameterize-env `([#"HOME" ,(string->bytes/utf-8 (path->string d))])
-                    (lambda ()
-                      (let ([result (run-pipeline/out
-                                     `(,(string->symbol
-                                         (string-append "./" t))))])
-                        (check-true  (string-contains? result "ok -"))
-                        (check-false (string-contains? result "not ok")))))))))
-            (map path->string (sequence->list (in-directory "tests")))))
+  (define (contains str line)
+    (not (empty? (filter (curry equal? line)
+                         (string-split str "\n")))))
+
+  (define (should-have syms kind xs)
+    (for-each (lambda (sym)
+                (with-check-info
+                 (('sym  sym)
+                  ('syms syms)
+                  ('kind kind))
+                 (check-true (contains syms sym))))
+              xs))
+
+  (define (should-not-have syms kind xs)
+    (for-each (lambda (sym)
+                (with-check-info
+                 (('sym  sym)
+                  ('syms syms)
+                  ('kind kind))
+                 (check-false (contains syms sym))))
+              xs))
+
+  (let* ([f    "modules/tip-benchmarks/benchmarks/tip2015/int_right_distrib.smt2"]
+         [syms (run-pipeline/out `(echo ,(file->string f))
+                                 '(./symbols_of_theorems.rkt))])
+
+    (should-have syms 'constructor '("Pos" "Neg" "Z" "S" "P" "N"))
+
+    (should-have syms 'destructor  '("p" "P_0" "N_0"))
+
+    (should-have syms 'function '("toInteger" "sign" "plus2" "opposite"
+                                  "timesSign" "mult" "minus" "plus" "absVal"
+                                  "times"))
+
+    (should-not-have syms 'type '("Nat"     "Nat-sentinel"
+                                  "Sign"    "Sign-sentinel"
+                                  "Integer" "Integer-sentinel"
+                                  "=>"      "=>-sentinel"))
+
+    (should-not-have syms 'variable '("x"  "x-sentinel"
+                                      "y"  "y-sentinel"
+                                      "z"  "z-sentinel"
+                                      "m"  "m-sentinel"
+                                      "m2" "m2-sentinel"
+                                      "n"  "n-sentinel"
+                                      "n2" "n2-sentinel"
+                                      "n3" "n3-sentinel"
+                                      "o"  "o-sentinel"))
+
+    (should-not-have syms 'keyword  '("match"             "match-sentinel"
+                                      "case"              "case-sentinel"
+                                      "define-fun"        "define-fun-sentinel"
+                                      "declare-datatypes" "declare-datatypes-sentinel"
+                                      "assert-not"        "assert-not-sentinel"
+                                      "forall"            "forall-sentinel"
+                                      "="                 "=-sentinel"
+                                      "check-sat"         "check-sat-sentinel"))
+
+    (define theorems (run-pipeline/out `(echo ,syms)
+                                       '(./theorems_from_symbols.rkt)))
+
+    (with-check-info
+     (('theorems theorems)
+      ('f        f)
+      ('syms     syms)
+      ('message  "Theorem allowed by its own symbols"))
+     (check-true (contains theorems f))))
+
+  (let* ([f    "modules/tip-benchmarks/benchmarks/tip2015/list_PairEvens.smt2"]
+         [syms (pipe (file->string f) symbols-of-theorems)])
+    (should-not-have syms 'higher-order-type '("=>" "=>-sentinel")))
+
+  (let* ([f    "modules/tip-benchmarks/benchmarks/tip2015/propositional_AndCommutative.smt2"]
+         [syms (pipe (file->string f) symbols-of-theorems)])
+    (should-have syms 'function '("or2"))))
