@@ -1815,8 +1815,7 @@
               xs))
 
   (let* ([f    "modules/tip-benchmarks/benchmarks/tip2015/int_right_distrib.smt2"]
-         [syms (run-pipeline/out `(echo ,(file->string f))
-                                 '(./symbols_of_theorems.rkt))])
+         [syms (pipe (file->string f) symbols-of-theorems)])
 
     (should-have syms 'constructor '("Pos" "Neg" "Z" "S" "P" "N"))
 
@@ -1850,8 +1849,8 @@
                                       "="                 "=-sentinel"
                                       "check-sat"         "check-sat-sentinel"))
 
-    (define theorems (run-pipeline/out `(echo ,syms)
-                                       '(./theorems_from_symbols.rkt)))
+    (define theorems
+      (pipe syms theorems-from-symbols))
 
     (with-check-info
      (('theorems theorems)
