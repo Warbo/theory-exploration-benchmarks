@@ -916,8 +916,7 @@
                 (read-benchmark normalised))))
 
   (for-each (lambda (sym)
-    (define def (run-pipeline/out `(echo ,qual)
-                                  `(./get_def.rkt ,sym)))
+    (define def (format-symbols (get-def-s sym qual)))
     (define count
       (length (filter non-empty-string?
                       (string-split def "\n"))))
@@ -928,8 +927,7 @@
       ('message "Symbol got qualified"))
      (check-equal? count 1))
 
-    (define norm-def (run-pipeline/out `(echo ,test-defs)
-                                       `(./get_def.rkt ,sym)))
+    (define norm-def (format-symbols (get-def-s sym test-defs)))
     (define norm-count
       (length (filter non-empty-string?
                       (string-split norm-def "\n"))))
