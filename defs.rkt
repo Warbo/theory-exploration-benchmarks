@@ -835,8 +835,36 @@
          (check-true (string-contains? s "or2-sentinel")
                      "Found 'or2' symbol"))))
 
-  (let* ([qual (pipe test-files qual-all)]
-         [syms (pipe qual       symbols-of-theorems)])
+  (define subset '("grammars/simp_expr_unambig1.smt2append-sentinel"
+                   "grammars/simp_expr_unambig1.smt2lin-sentinel"
+                   "grammars/simp_expr_unambig4.smt2nil-sentinel"
+                   "grammars/simp_expr_unambig4.smt2cons-sentinel"
+                   "grammars/simp_expr_unambig4.smt2C-sentinel"
+                   "grammars/simp_expr_unambig4.smt2D-sentinel"
+                   "grammars/simp_expr_unambig4.smt2X-sentinel"
+                   "grammars/simp_expr_unambig4.smt2Y-sentinel"
+                   "grammars/simp_expr_unambig4.smt2Pl-sentinel"
+                   "grammars/simp_expr_unambig4.smt2Plus-sentinel"
+                   "grammars/simp_expr_unambig4.smt2EX-sentinel"
+                   "grammars/simp_expr_unambig4.smt2EY-sentinel"
+                   "grammars/simp_expr_unambig4.smt2head-sentinel"
+                   "grammars/simp_expr_unambig4.smt2tail-sentinel"
+                   "grammars/simp_expr_unambig4.smt2Plus_0-sentinel"
+                   "grammars/simp_expr_unambig4.smt2Plus_1-sentinel"
+                   "grammars/simp_expr_unambig4.smt2append-sentinel"
+                   "grammars/simp_expr_unambig4.smt2linTerm-sentinel"
+                   "grammars/simp_expr_unambig4.smt2lin-sentinel"
+                   "tip2015/sort_StoogeSort2IsSort.smt2nil-sentinel"
+                   "tip2015/sort_StoogeSort2IsSort.smt2cons-sentinel"
+                   "tip2015/sort_StoogeSort2IsSort.smt2sort2-sentinel"
+                   "tip2015/sort_StoogeSort2IsSort.smt2insert2-sentinel"
+                   "tip2015/sort_StoogeSort2IsSort.smt2zsplitAt-sentinel"
+                   "tip2015/sort_StoogeSort2IsSort.smt2ztake-sentinel"
+                   "tip2015/sort_StoogeSort2IsSort.smt2stooge2sort2-sentinel"))
+
+  (define qual (pipe test-files qual-all))
+
+  (let* ([syms (pipe qual symbols-of-theorems)])
 
     (for-each (lambda (sym)
                 (with-check-info
@@ -852,35 +880,9 @@
                   ('message "Found symbol"))
                  (check-not-equal? (member sym (string-split syms "\n"))
                                    #f)))
-              '("grammars/simp_expr_unambig1.smt2append-sentinel"
-                "grammars/simp_expr_unambig1.smt2lin-sentinel"
-                "grammars/simp_expr_unambig4.smt2nil-sentinel"
-                "grammars/simp_expr_unambig4.smt2cons-sentinel"
-                "grammars/simp_expr_unambig4.smt2C-sentinel"
-                "grammars/simp_expr_unambig4.smt2D-sentinel"
-                "grammars/simp_expr_unambig4.smt2X-sentinel"
-                "grammars/simp_expr_unambig4.smt2Y-sentinel"
-                "grammars/simp_expr_unambig4.smt2Pl-sentinel"
-                "grammars/simp_expr_unambig4.smt2Plus-sentinel"
-                "grammars/simp_expr_unambig4.smt2EX-sentinel"
-                "grammars/simp_expr_unambig4.smt2EY-sentinel"
-                "grammars/simp_expr_unambig4.smt2head-sentinel"
-                "grammars/simp_expr_unambig4.smt2tail-sentinel"
-                "grammars/simp_expr_unambig4.smt2Plus_0-sentinel"
-                "grammars/simp_expr_unambig4.smt2Plus_1-sentinel"
-                "grammars/simp_expr_unambig4.smt2append-sentinel"
-                "grammars/simp_expr_unambig4.smt2linTerm-sentinel"
-                "grammars/simp_expr_unambig4.smt2lin-sentinel"
-                "tip2015/sort_StoogeSort2IsSort.smt2nil-sentinel"
-                "tip2015/sort_StoogeSort2IsSort.smt2cons-sentinel"
-                "tip2015/sort_StoogeSort2IsSort.smt2sort2-sentinel"
-                "tip2015/sort_StoogeSort2IsSort.smt2insert2-sentinel"
-                "tip2015/sort_StoogeSort2IsSort.smt2zsplitAt-sentinel"
-                "tip2015/sort_StoogeSort2IsSort.smt2ztake-sentinel"
-                "tip2015/sort_StoogeSort2IsSort.smt2stooge2sort2-sentinel"))
+              subset)
 
-      (let* (
-             [syms (string-split (pipe test-defs symbols-of-theorems)
+      (let* ([syms (string-split (pipe test-defs symbols-of-theorems)
                                  "\n")])
         (for-each (lambda (sym)
                     (with-check-info
@@ -909,7 +911,57 @@
                       ('normalised normalised)
                       ('message    "Duplicate normalised forms!"))
                      (check-equal? norms (list norm)))))
-                  (read-benchmark normalised)))))
+                (read-benchmark normalised))))
+
+  (for-each (lambda (sym)
+    (define def (run-pipeline/out `(echo ,qual)
+                                  `(./get_def.sh ,sym)))
+    (define count
+      (length (filter non-empty-string?
+                      (string-split def "\n"))))
+
+    (with-check-info
+     (('sym     sym)
+      ('def     def)
+      ('message "Symbol got qualified"))
+     (check-equal? count 1))
+
+    (define norm-def (run-pipeline/out `(echo ,test-defs)
+                                       `(./get_def.sh ,sym)))
+    (define norm-count
+      (length (filter non-empty-string?
+                      (string-split norm-def "\n"))))
+
+    (with-check-info
+     (('sym      sym)
+      ('norm-def norm-def)
+      ('message  "Got single definition"))
+     (check-true (< norm-count 2)))
+
+    (when (equal? norm-count 1)
+      ; The symbols in norm-def may be replacements, so we can't compare
+      ; directly. Instead, we just infer the structure:
+      (define (strip-non-paren s)
+        (list->string (foldr (lambda (c str)
+                               (if (or (equal? c #\()
+                                       (equal? c #\)))
+                                   (cons c str)
+                                   str))
+                             '()
+                             (string->list s))))
+
+      (define def-shape (strip-non-paren def))
+
+      (define norm-shape (strip-non-paren norm-def))
+
+      (with-check-info
+       (('def        def)
+        ('norm-def   norm-def)
+        ('def-shape  def-shape)
+        ('norm-shape norm-shape)
+        ('message    "Duplicate removal kept definition intact"))
+       (check-equal? def-shape norm-shape))))
+    (take (shuffle subset) 5)))
 
 (define (rec-names)
   (show (rec-names-s (read-benchmark (port->string (current-input-port))))))
@@ -1519,15 +1571,19 @@
       ('sig     sig))
      (check-true (string-contains? sig "local"))))
 
+  (define benchmark-files
+    (string-split (run-pipeline/out
+                   '(find modules/tip-benchmarks/benchmarks/ -name "*.smt2")
+                   '(shuf))
+                  "\n"))
+
   (test-case "Random files"
-    (define files
-      (run-pipeline/out `(find ,test-dir -name "*.smt2")
-                        '(shuf)))
+    (define (files n)
+      (string-join (take benchmark-files n) "\n"))
 
     (for-each (lambda (n)
                 (define sig
-                  (defs-to-sig (string-join (take (string-split files "\n") n)
-                                            "\n")))
+                  (defs-to-sig (files n)))
 
                 (with-check-info
                  (('n       n)
@@ -1586,9 +1642,8 @@
   (test-case "Module tests"
     (for-each (lambda (n)
       (define files
-        (run-pipeline/out '(find modules/tip-benchmarks/benchmarks/ -name "*.smt2")
-                          '(shuf)
-                          `(head ,(string-append "-n" (~a n)))))
+        (string-join (take benchmark-files n) "\n"))
+
       (in-temp-dir (lambda (dir)
         (define out-dir (path->string dir))
         (parameterize-env `([#"FILES"   ,(string->bytes/utf-8 files)]
@@ -1599,8 +1654,7 @@
                                  n)
                            "\n"))
 
-            (run-pipeline/out `(echo ,these)
-                              '(./mk_final_defs.rkt)
+            (run-pipeline/out `(echo ,(pipe these mk-final-defs))
                               '(./full_haskell_package.sh))
 
             (with-check-info
