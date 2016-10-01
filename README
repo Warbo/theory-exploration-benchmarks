@@ -36,6 +36,15 @@ Combining all of these theories into one causes a few problems. In particular:
  - To ease automation, we add an extra function for each constructor and
    destructor, prefixed with "c" and "d" instead of "f".
 
+## Dependencies ##
+
+Be sure to fetch the `modules/tip-benchmarks` sub-module. You'll also need
+Racket, the `shell-pipeline` Racket package and the `tip` command from the
+`tip-lib` Haskell package. The `cabal` command is required for testing.
+
+The repository contains definitions for the Nix package manager, so you can get
+all of these dependencies by running `nix-shell`.
+
 ## Usage ##
 
 To generate a benchmark from all TIP files, use the `mk_all_defs.sh` script.
