@@ -1,0 +1,75 @@
+# Theory Exploration Benchmarks #
+
+This repository contains scripts to create large(ish) benchmarks for theory
+exploration systems. It's based on the Tons of Inductive Problems (TIP) problem
+set, but whilst TIP focuses on depth (proving a given theorem from minimal
+premises), we focus on breadth (presenting many theorems from many premises).
+
+We use Racket, since it's well suited to manipulating the s-expressions defined
+by TIP.
+
+## How it Works ##
+
+The TIP benchmark repository is included as a git submodule, in the
+`modules/tip-benchmarks` directory. The benchmarks are stored in paths with the
+suffix `.smt2` in the directory `modules/tip-benchmarks/benchmarks`.
+
+Each TIP benchmark defines datatypes, functions and a single (negated) theorem
+statement. We combine the datatypes and functions from all of these benchmarks
+together, and ignore all of the theorem statements.
+
+The result is a large theory, suitable for exploration by tools like QuickSpec
+and IsaCoSy.
+
+Combining all of these theories into one causes a few problems. In particular:
+
+ - Multiple files may declare functions or datatypes of the same name. To allow
+   for this, we prefix all defined names by the path from which they're taken.
+   We remove the prefix of any names which turns out to be unambiguous.
+ - To disambiguate names and ease automation, we give function names the prefix
+   "f", constructors the prefix "C" and types the prefix "T" (the case is
+   important when translating to Haskell).
+ - Different files may contain (alpha-)equivalent definitions. We remove these
+   by comparing each definition to those before it, and removing if it's
+   appeared before. We update all references to use the prior version, then
+   compare everything again, until no more removals are possible.
+ - To ease automation, we add an extra function for each constructor and
+   destructor, prefixed with "c" and "d" instead of "f".
+
+## Usage ##
+
+To generate a benchmark from all TIP files, use the `mk_all_defs.sh` script.
+This will send s-expressions to stdout.
+
+To generate a Haskell package from a benchmark, pipe it into
+`full_haskell_package.sh`. Make sure to set the `OUT_DIR` variable to the path
+in which you want the package to be created.
+
+To test, use Racket's `raco` command:
+
+    raco test defs.rkt
+
+Alternatively you can use other interfaces like Dr Racket.
+
+## Other Uses ##
+
+Besides benchmarking theory exploration systems based on their resource usage,
+we can also use the theorem statements from TIP problems as a ground truth for
+measuring the effectiveness of each exploration. For example, if we only
+compared systems based on the number of theorems they discover, it would be
+trivial to score highly by generating "uninteresting" theorems such as:
+
+    (=       Z         Z  )
+    (=    (S Z)     (S Z) )
+    (= (S (S Z)) (S (S Z)))
+    ...
+
+Such theorems are too dull to bother writing into a benchmark. In comparison,
+more interesting properties like commutativity *are* found in benchmarks, such
+as this from `modules/tip-benchmarks/benchmarks/tip2015/int_add_comm.smt2`:
+
+    (= (plus x y) (plus y x))
+
+Hence a theorem can be deemed interesting if it appears in a benchmark. Whilst
+far from comprehensive, the set of benchmarks is easy to extend as new cases
+arise.
