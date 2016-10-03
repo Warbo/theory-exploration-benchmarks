@@ -1235,9 +1235,7 @@
 
   (map norm (filter (lambda (x)
                       (not (eof-object? x)))
-                    (map (lambda (line)
-                           (with-input-from-string line read))
-                         (string-split x "\n")))))
+                    (read-benchmark x))))
 
 (define (pipe s f)
   (define o (open-output-string))
