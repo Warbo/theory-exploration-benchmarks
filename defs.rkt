@@ -1315,7 +1315,8 @@
 (define (replace-strings-s str reps)
   ; For each (src dst) in reps, replaces src with dst in str
   (foldl (lambda (pair so-far)
-             (string-replace so-far (first pair) (second pair)))
+           (string-replace so-far (as-str (first  pair))
+                                  (as-str (second pair))))
          str
          reps))
 
@@ -1332,11 +1333,8 @@
                 "h{{el}}LO m{{el}}LOw y{{el}}LOw f{{el}}LOw")
 
   (let* ([formatted (format-symbols redundancies)]
-         [reps      (pipe formatted find-redundancies)]
-         [replaced  (replace-strings-s formatted (map (lambda (line)
-                                                        (string-split line "\t"))
-                                                      (filter non-empty-string?
-                                                              (string-split reps "\n"))))]
+         [reps      (find-redundancies-s redundancies)]
+         [replaced  (replace-strings-s formatted reps)]
          [defs      (read-benchmark replaced)])
     (check-equal? (list->set defs)
                   (list->set `(,constructorZ ,constructorS)))))
