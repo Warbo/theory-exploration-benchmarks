@@ -970,7 +970,7 @@
   (show (rec-names-s (read-benchmark (port->string (current-input-port))))))
 
 (define (rec-names-s exprs)
-  (apply append (map names-in exprs)))
+  (names-in exprs))
 
 (module+ test
   (check-equal? (names-in '(fee fi fo fum))
@@ -1534,11 +1534,10 @@
                             [#"OUT_DIR" ,(string->bytes/utf-8 out-dir)])
           (lambda ()
             (define these
-              (string-join (take (string-split files "\n")
-                                 n)
-                           "\n"))
+              (take (string-split files "\n") n))
 
-            (full-haskell-package-s (pipe these mk-final-defs) out-dir)
+            (full-haskell-package-s (format-symbols (mk-final-defs-s these))
+                                    out-dir)
 
             (with-check-info
              (('n       n)
@@ -1612,9 +1611,8 @@
                                                    (path->string out-dir))])
                                    (lambda ()
 
-                                     (full-haskell-package-s (pipe (string-join files "\n")
-                                                                 mk-final-defs)
-                                                           (path->string out-dir))
+                                     (full-haskell-package-s (format-symbols (mk-final-defs-s files))
+                                                             (path->string out-dir))
 
                                      (parameterize ([current-directory out-dir])
 
@@ -1638,40 +1636,40 @@
                                                                       "class Functor"))))))))
 
 (module+ test
-  (define (names-match src data expect)
-    (define names (pipe data rec-names))
+  (define (names-match src expr expect)
+    (define names (rec-names-s expr))
 
     (with-check-info
      (('src     src)
-      ('data    data)
+      ('expr    expr)
       ('expect  expect)
       ('names   names)
       ('message "Got expected names"))
-    (check-equal? (string-trim names) (string-trim expect))))
+    (check-equal? names expect)))
 
   (names-match "datatype"
-               "(declare-datatypes (a) ((list (nil) (cons (head a) (tail (list a))))))"
-               "list\nnil\ncons\nhead\ntail")
+               '(declare-datatypes (a) ((list (nil) (cons (head a) (tail (list a))))))
+               '(list nil cons head tail))
 
   (names-match "function"
-               "(define-fun sort2 ((x Int) (y Int)) (list Int) (ite (<= x y) (cons x (cons y (as nil (list Int)))) (cons y (cons x (as nil (list Int))))))"
-               "sort2")
+               '(define-fun sort2 ((x Int) (y Int)) (list Int) (ite (<= x y) (cons x (cons y (as nil (list Int)))) (cons y (cons x (as nil (list Int))))))
+               '(sort2))
 
   (names-match "parameterised function"
-               "(define-fun (par (a) (zsplitAt ((x Int) (y (list a))) (Pair (list a) (list a)) (Pair2 (ztake x y) (zdrop x y)))))"
-               "zsplitAt")
+               '(define-fun (par (a) (zsplitAt ((x Int) (y (list a))) (Pair (list a) (list a)) (Pair2 (ztake x y) (zdrop x y)))))
+               '(zsplitAt))
 
   (names-match "recursive function"
-               "(define-fun-rec insert2 ((x Int) (y (list Int))) (list Int) (match y (case nil (cons x (as nil (list Int)))) (case (cons z xs) (ite (<= x z) (cons x y) (cons z (insert2 x xs))))))"
-               "insert2")
+               '(define-fun-rec insert2 ((x Int) (y (list Int))) (list Int) (match y (case nil (cons x (as nil (list Int)))) (case (cons z xs) (ite (<= x z) (cons x y) (cons z (insert2 x xs))))))
+               '(insert2))
 
   (names-match "recursive parameterised function"
-               "(define-fun-rec (par (a) (ztake ((x Int) (y (list a))) (list a) (ite (= x 0) (as nil (list a)) (match y (case nil (as nil (list a))) (case (cons z xs) (cons z (ztake (- x 1) xs))))))))"
-               "ztake")
+               '(define-fun-rec (par (a) (ztake ((x Int) (y (list a))) (list a) (ite (= x 0) (as nil (list a)) (match y (case nil (as nil (list a))) (case (cons z xs) (cons z (ztake (- x 1) xs))))))))
+               '(ztake))
 
   (names-match "mutually recursive functions"
-               "(define-funs-rec ((stooge2sort2 ((x (list Int))) (list Int)) (stoogesort2 ((x (list Int))) (list Int)) (stooge2sort1 ((x (list Int))) (list Int))) ((match (zsplitAt (div (+ (* 2 (zlength x)) 1) 3) x) (case (Pair2 ys zs) (append (stoogesort2 ys) zs))) (match x (case nil (as nil (list Int))) (case (cons y z) (match z (case nil (cons y (as nil (list Int)))) (case (cons y2 x2) (match x2 (case nil (sort2 y y2)) (case (cons x3 x4) (stooge2sort2 (stooge2sort1 (stooge2sort2 x))))))))) (match (zsplitAt (div (zlength x) 3) x) (case (Pair2 ys zs) (append ys (stoogesort2 zs))))))"
-               "stooge2sort2\nstoogesort2\nstooge2sort1"))
+               '(define-funs-rec ((stooge2sort2 ((x (list Int))) (list Int)) (stoogesort2 ((x (list Int))) (list Int)) (stooge2sort1 ((x (list Int))) (list Int))) ((match (zsplitAt (div (+ (* 2 (zlength x)) 1) 3) x) (case (Pair2 ys zs) (append (stoogesort2 ys) zs))) (match x (case nil (as nil (list Int))) (case (cons y z) (match z (case nil (cons y (as nil (list Int)))) (case (cons y2 x2) (match x2 (case nil (sort2 y y2)) (case (cons x3 x4) (stooge2sort2 (stooge2sort1 (stooge2sort2 x))))))))) (match (zsplitAt (div (zlength x) 3) x) (case (Pair2 ys zs) (append ys (stoogesort2 zs))))))
+               '(stooge2sort2 stoogesort2 stooge2sort1)))
 
 (define (symbols-from-file f)
   (symbols-of-theorems-s (read-benchmark (file->string f))))
