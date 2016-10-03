@@ -819,7 +819,7 @@
 
   (test-case "Real symbols qualified"
     (let* ([f "modules/tip-benchmarks/benchmarks/tip2015/propositional_AndCommutative.smt2\nmodules/tip-benchmarks/benchmarks/tip2015/propositional_Sound.smt2\nmodules/tip-benchmarks/benchmarks/tip2015/propositional_Okay.smt2\nmodules/tip-benchmarks/benchmarks/tip2015/regexp_RecSeq.smt2\nmodules/tip-benchmarks/benchmarks/tip2015/relaxedprefix_correct.smt2\nmodules/tip-benchmarks/benchmarks/tip2015/propositional_AndIdempotent.smt2\nmodules/tip-benchmarks/benchmarks/tip2015/propositional_AndImplication.smt2"]
-           [q (pipe f qual-all)]
+           [q (format-symbols (qual-all-s (string-split f "\n")))]
            [s (format-symbols (symbols-of-theorems-s (read-benchmark q)))])
 
       (check-true (string-contains? s "or2-sentinel")
@@ -828,7 +828,7 @@
       (check-false (member "or2-sentinel" (string-split s "\n"))
                    "or2 symbol is qualified")
 
-      (let* ([d (pipe f mk-defs)]
+      (let* ([d (format-symbols (mk-defs-s (string-split f "\n")))]
              [s (format-symbols (symbols-of-theorems-s (read-benchmark d)))])
          (check-true (string-contains? s "or2-sentinel")
                      "Found 'or2' symbol"))))
