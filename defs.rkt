@@ -257,9 +257,16 @@
           (cons (list (car xs) (car ys))
                 (zip  (cdr xs) (cdr ys))))))
 
-(define (theorem-files)
-  (filter (lambda (x) (string-suffix? (path->string x) ".smt2"))
-          (sequence->list (in-directory benchmark-dir))))
+(define theorem-files
+  ; Directory traversal is expensive; if we have to do it, memoise the result
+  (let ([result #f])
+    (lambda ()
+      (when (equal? #f result)
+        (set! result
+              (map path->string
+                   (filter (lambda (x) (string-suffix? (path->string x) ".smt2"))
+                      (sequence->list (in-directory benchmark-dir))))))
+      result)))
 
 (define (types-of-theorem path)
   (benchmark-types (file->string path)))
@@ -1291,25 +1298,15 @@
 
   (show (qualify name given)))
 
-(define (theorems-from-symbols)
-  (define given-symbols
-    (port->lines (current-input-port)))
-
+(define (theorems-from-symbols-s given-symbols)
   (define (acceptable-theorem thm-path)
     (null? (remove* (cons "" given-symbols)
                     (map symbol->string (symbols-of-theorem thm-path)))))
 
-  (define (acceptable-theorems)
-    (filter acceptable-theorem (theorem-files)))
+  (filter acceptable-theorem (theorem-files)))
 
-  (displayln (format-symbols (acceptable-theorems))))
-
-(define (replace-strings file)
-  (replace-strings-s (port->string (current-input-port))
-                     (map (lambda (line)
-                            (string-split line "\t"))
-                          (filter non-empty-string?
-                                  (file->lines file)))))
+(define (theorems-from-symbols)
+  (show (theorems-from-symbols-s (port->lines (current-input-port)))))
 
 (define (replace-strings-s str reps)
   ; For each (src dst) in reps, replaces src with dst in str
@@ -1317,6 +1314,13 @@
              (string-replace so-far (first pair) (second pair)))
          str
          reps))
+
+(define (replace-strings file)
+  (replace-strings-s (port->string (current-input-port))
+                     (map (lambda (line)
+                            (string-split line "\t"))
+                          (filter non-empty-string?
+                                  (file->lines file)))))
 
 (module+ test
   (check-equal? (replace-strings-s "hello mellow yellow fellow"
@@ -1543,10 +1547,7 @@
      (check-true (string-contains? sig "local"))))
 
   (define benchmark-files
-    (string-split (run-pipeline/out
-                   `(find ,benchmark-dir -name "*.smt2")
-                   '(shuf))
-                  "\n"))
+    (shuffle (theorem-files)))
 
   (test-case "Random files"
     (define (files n)
