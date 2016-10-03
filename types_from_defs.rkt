@@ -1,10 +1,5 @@
 #!/usr/bin/env racket
 #lang racket
-(require racket/include)
+(require (file "defs.rkt"))
 
-(include "defs.rkt")
-
-(define (format-benchmark-symbols)
-  (format-symbols (symbols-in (benchmark-types (port->string (current-input-port))))))
-
-(displayln (format-benchmark-symbols))
+(types-from-defs)
