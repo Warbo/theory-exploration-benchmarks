@@ -1332,12 +1332,10 @@
                                    '(("lo" "LO") ("el" "{{el}}")))
                 "h{{el}}LO m{{el}}LOw y{{el}}LOw f{{el}}LOw")
 
-  (let* ([formatted (format-symbols redundancies)]
-         [reps      (find-redundancies-s redundancies)]
-         [replaced  (replace-strings-s formatted reps)]
-         [defs      (read-benchmark replaced)])
-    (check-equal? (list->set defs)
-                  (list->set `(,constructorZ ,constructorS)))))
+  (check-equal? (list->set (read-benchmark
+                            (replace-strings-s (format-symbols      redundancies)
+                                               (find-redundancies-s redundancies))))
+                (list->set `(,constructorZ ,constructorS))))
 
 (define (strip-redundancies-s exprs)
   ; Remove alpha-equivalent expressions from exprs, according to reps
