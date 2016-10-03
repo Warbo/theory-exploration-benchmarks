@@ -1313,7 +1313,7 @@
      (check-not-equal? (member 'min1 syms) #f))))
 
 (define (defs-to-sig x)
-  (pipe (pipe x mk-final-defs) mk-signature))
+  (mk-signature-s (pipe x mk-final-defs)))
 
 (module+ test
 
@@ -1476,8 +1476,10 @@
               '(1 2 4 8))))
 
 (define (mk-final-defs)
-  (let ([input (port->string (current-input-port))])
-    (display (pipe (pipe input mk-defs) prepare))))
+  (show (mk-final-defs-s (port->lines (current-input-port)))))
+
+(define (mk-final-defs-s given-files)
+  (prepare-s (mk-defs-s given-files)))
 
 (define (with-temp-file data proc)
   (let* ([f      (make-temporary-file "te-benchmark-temp-~a")]
