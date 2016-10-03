@@ -905,7 +905,7 @@
 
   (test-case "No alpha-equivalent duplicates in result"
     (let* ([normalised (read-benchmark
-                        (format-symbols (canonical-functions-s test-defs)))])
+                        (format-symbols (canonical-functions-s (read-benchmark test-defs))))])
       (for-each (lambda (norm)
                   (define norms
                     (filter (curry equal? norm) normalised))
@@ -1155,7 +1155,7 @@
                           "\n")))
 
 (define (canonical-functions)
-  (show (canonical-functions-s (port->string (current-input-port)))))
+  (show (canonical-functions-s (read-benchmark (port->string (current-input-port))))))
 
 (define (canonical-functions-s x)
   (define (normalise def)
@@ -1233,9 +1233,7 @@
                                          (get-normal-args rest (+ 1 n)))]
       [_                           null]))
 
-  (map norm (filter (lambda (x)
-                      (not (eof-object? x)))
-                    (read-benchmark x))))
+  (map norm x))
 
 (define (pipe s f)
   (define o (open-output-string))
