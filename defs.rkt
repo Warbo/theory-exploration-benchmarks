@@ -2,6 +2,7 @@
 (require racket/function)
 (require racket/match)
 (require racket/trace)
+(require shell/pipeline)
 
 (provide full-haskell-package)
 (provide mk-defs)
@@ -673,8 +674,6 @@
 
   (trim (apply append qualified-contents)))
 
-(require shell/pipeline)
-
 (define (mk-defs)
   (show (mk-defs-s (port->lines (current-input-port)))))
 
@@ -810,14 +809,13 @@
 
 (module+ test
   (define test-files
-    (string-join (map (curry string-append benchmark-dir)
+    (map (curry string-append benchmark-dir)
                       '("/grammars/simp_expr_unambig1.smt2"
                         "/grammars/simp_expr_unambig4.smt2"
-                        "/tip2015/sort_StoogeSort2IsSort.smt2"))
-                 "\n"))
+                        "/tip2015/sort_StoogeSort2IsSort.smt2")))
 
   (define test-defs
-    (pipe test-files mk-defs))
+    (format-symbols (mk-defs-s test-files)))
 
   (test-case "Real symbols qualified"
     (let* ([f "modules/tip-benchmarks/benchmarks/tip2015/propositional_AndCommutative.smt2\nmodules/tip-benchmarks/benchmarks/tip2015/propositional_Sound.smt2\nmodules/tip-benchmarks/benchmarks/tip2015/propositional_Okay.smt2\nmodules/tip-benchmarks/benchmarks/tip2015/regexp_RecSeq.smt2\nmodules/tip-benchmarks/benchmarks/tip2015/relaxedprefix_correct.smt2\nmodules/tip-benchmarks/benchmarks/tip2015/propositional_AndIdempotent.smt2\nmodules/tip-benchmarks/benchmarks/tip2015/propositional_AndImplication.smt2"]
@@ -862,7 +860,7 @@
                    "tip2015/sort_StoogeSort2IsSort.smt2ztake-sentinel"
                    "tip2015/sort_StoogeSort2IsSort.smt2stooge2sort2-sentinel"))
 
-  (define qual (pipe test-files qual-all))
+  (define qual (format-symbols (qual-all-s test-files)))
 
   (let* ([syms (format-symbols (symbols-of-theorems-s (read-benchmark qual)))])
 
