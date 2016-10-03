@@ -1313,7 +1313,7 @@
      (check-not-equal? (member 'min1 syms) #f))))
 
 (define (defs-to-sig x)
-  (mk-signature-s (pipe x mk-final-defs)))
+  (mk-signature-s (format-symbols (mk-final-defs-s (string-split x "\n")))))
 
 (module+ test
 
