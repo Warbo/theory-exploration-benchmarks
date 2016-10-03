@@ -1654,8 +1654,8 @@
                                  n)
                            "\n"))
 
-            (run-pipeline/out `(echo ,(pipe these mk-final-defs))
-                              '(./full_haskell_package.rkt))
+            (pipe (pipe these mk-final-defs)
+                  full-haskell-package)
 
             (with-check-info
              (('n       n)
@@ -1730,9 +1730,9 @@
                                         (path->string out-dir))])
                         (lambda ()
 
-        (run-pipeline/out `(echo ,(pipe (string-join files "\n")
-                                        mk-final-defs))
-                          '(./full_haskell_package.rkt))
+        (pipe (pipe (string-join files "\n")
+                    mk-final-defs)
+              full-haskell-package)
 
         (parameterize ([current-directory out-dir])
 
@@ -1886,7 +1886,7 @@
 
 (module+ test
   (let ([f "modules/tip-benchmarks/benchmarks/tip2015/nat_alt_mul_comm.smt2"])
-    (check-equal? (pipe (file->string f) types-from-defs)
+    (check-equal? (string-trim (pipe (file->string f) types-from-defs))
                   "Nat")))
 
 (define (full-haskell-package-s str dir)
@@ -1940,4 +1940,5 @@ library
                    (string-append dir "/LICENSE")))
 
 (define (full-haskell-package)
-  (full-haskell-package-s (port->string (current-input-port)) (getenv "OUT_DIR")))
+  (full-haskell-package-s (port->string (current-input-port))
+                          (getenv "OUT_DIR")))
