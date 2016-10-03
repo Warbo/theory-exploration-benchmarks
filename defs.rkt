@@ -1302,8 +1302,8 @@
 
 (define (theorems-from-symbols-s given-symbols)
   (define (acceptable-theorem thm-path)
-    (null? (remove* (cons "" given-symbols)
-                    (map symbol->string (symbols-of-theorem thm-path)))))
+    (null? (remove* given-symbols
+                    (symbols-of-theorem thm-path))))
 
   (filter acceptable-theorem (theorem-files)))
 
@@ -1803,9 +1803,9 @@
   (symbols-of-theorems-s (read-benchmark (file->string f))))
 
 (module+ test
-  (define (contains str line)
-    (not (empty? (filter (curry equal? line)
-                         (string-split str "\n")))))
+  (define (contains lst elem)
+    (not (empty? (filter (curry equal? elem)
+                         lst))))
 
   (define (should-have syms kind xs)
     (for-each (lambda (sym)
@@ -1826,42 +1826,42 @@
               xs))
 
   (let* ([f    "modules/tip-benchmarks/benchmarks/tip2015/int_right_distrib.smt2"]
-         [syms (format-symbols (symbols-from-file f))])
+         [syms (symbols-from-file f)])
 
-    (should-have syms 'constructor '("Pos" "Neg" "Z" "S" "P" "N"))
+    (should-have syms 'constructor '(Pos Neg Z S P N))
 
-    (should-have syms 'destructor  '("p" "P_0" "N_0"))
+    (should-have syms 'destructor  '(p P_0 N_0))
 
-    (should-have syms 'function '("toInteger" "sign" "plus2" "opposite"
-                                  "timesSign" "mult" "minus" "plus" "absVal"
-                                  "times"))
+    (should-have syms 'function '(toInteger sign plus2 opposite
+                                  timesSign mult minus plus absVal
+                                  times))
 
-    (should-not-have syms 'type '("Nat"     "Nat-sentinel"
-                                  "Sign"    "Sign-sentinel"
-                                  "Integer" "Integer-sentinel"
-                                  "=>"      "=>-sentinel"))
+    (should-not-have syms 'type '(Nat     Nat-sentinel
+                                  Sign    Sign-sentinel
+                                  Integer Integer-sentinel
+                                  =>      =>-sentinel))
 
-    (should-not-have syms 'variable '("x"  "x-sentinel"
-                                      "y"  "y-sentinel"
-                                      "z"  "z-sentinel"
-                                      "m"  "m-sentinel"
-                                      "m2" "m2-sentinel"
-                                      "n"  "n-sentinel"
-                                      "n2" "n2-sentinel"
-                                      "n3" "n3-sentinel"
-                                      "o"  "o-sentinel"))
+    (should-not-have syms 'variable '(x  x-sentinel
+                                      y  y-sentinel
+                                      z  z-sentinel
+                                      m  m-sentinel
+                                      m2 m2-sentinel
+                                      n  n-sentinel
+                                      n2 n2-sentinel
+                                      n3 n3-sentinel
+                                      o  o-sentinel))
 
-    (should-not-have syms 'keyword  '("match"             "match-sentinel"
-                                      "case"              "case-sentinel"
-                                      "define-fun"        "define-fun-sentinel"
-                                      "declare-datatypes" "declare-datatypes-sentinel"
-                                      "assert-not"        "assert-not-sentinel"
-                                      "forall"            "forall-sentinel"
-                                      "="                 "=-sentinel"
-                                      "check-sat"         "check-sat-sentinel"))
+    (should-not-have syms 'keyword  '(match             match-sentinel
+                                      case              case-sentinel
+                                      define-fun        define-fun-sentinel
+                                      declare-datatypes declare-datatypes-sentinel
+                                      assert-not        assert-not-sentinel
+                                      forall            forall-sentinel
+                                      =                 =-sentinel
+                                      check-sat         check-sat-sentinel))
 
     (define theorems
-      (pipe syms theorems-from-symbols))
+      (theorems-from-symbols-s syms))
 
     (with-check-info
      (('theorems theorems)
@@ -1871,12 +1871,12 @@
      (check-true (contains theorems f))))
 
   (let* ([f    "modules/tip-benchmarks/benchmarks/tip2015/list_PairEvens.smt2"]
-         [syms (format-symbols (symbols-from-file f))])
-    (should-not-have syms 'higher-order-type '("=>" "=>-sentinel")))
+         [syms (symbols-from-file f)])
+    (should-not-have syms 'higher-order-type '(=> =>-sentinel)))
 
   (let* ([f    "modules/tip-benchmarks/benchmarks/tip2015/propositional_AndCommutative.smt2"]
-         [syms (format-symbols (symbols-from-file f))])
-    (should-have syms 'function '("or2"))))
+         [syms (symbols-from-file f)])
+    (should-have syms 'function '(or2))))
 
 (define (function-name-to-haskell n)
   n)
