@@ -905,8 +905,7 @@
 
   (test-case "No alpha-equivalent duplicates in result"
     (let* ([normalised (read-benchmark
-                        (format-symbols (canonical-functions-s
-                                         (string-split test-defs "\n"))))])
+                        (format-symbols (canonical-functions-s test-defs)))])
       (for-each (lambda (norm)
                   (define norms
                     (filter (curry equal? norm) normalised))
@@ -1136,13 +1135,6 @@
   (equal? (sort x p) (sort y p)))
 
 (module+ test
-  (check-equal? (list->set (string-split (string-trim (pipe (format-symbols redundancies)
-                                                            find-redundancies))
-                                         "\n"))
-                (list->set '("redundantZ1\tconstructorZ"
-                             "redundantZ2\tconstructorZ"
-                             "redundantZ3\tconstructorZ")))
-
   (check-equal? (list->set (find-redundancies-s redundancies))
                 (list->set '((redundantZ1 constructorZ)
                              (redundantZ2 constructorZ)
@@ -1163,7 +1155,7 @@
                           "\n")))
 
 (define (canonical-functions)
-  (show (canonical-functions-s (port->lines (current-input-port)))))
+  (show (canonical-functions-s (port->string (current-input-port)))))
 
 (define (canonical-functions-s x)
   (define (normalise def)
@@ -1244,9 +1236,8 @@
   (map norm (filter (lambda (x)
                       (not (eof-object? x)))
                     (map (lambda (line)
-                           (with-input-from-string line
-                             read))
-                         x))))
+                           (with-input-from-string line read))
+                         (string-split x "\n")))))
 
 (define (pipe s f)
   (define o (open-output-string))
