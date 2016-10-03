@@ -818,8 +818,15 @@
     (format-symbols (mk-defs-s test-files)))
 
   (test-case "Real symbols qualified"
-    (let* ([f "modules/tip-benchmarks/benchmarks/tip2015/propositional_AndCommutative.smt2\nmodules/tip-benchmarks/benchmarks/tip2015/propositional_Sound.smt2\nmodules/tip-benchmarks/benchmarks/tip2015/propositional_Okay.smt2\nmodules/tip-benchmarks/benchmarks/tip2015/regexp_RecSeq.smt2\nmodules/tip-benchmarks/benchmarks/tip2015/relaxedprefix_correct.smt2\nmodules/tip-benchmarks/benchmarks/tip2015/propositional_AndIdempotent.smt2\nmodules/tip-benchmarks/benchmarks/tip2015/propositional_AndImplication.smt2"]
-           [q (format-symbols (qual-all-s (string-split f "\n")))]
+    (let* ([fs (map (curry string-append benchmark-dir "/")
+                    '("tip2015/propositional_AndCommutative.smt2"
+                      "tip2015/propositional_Sound.smt2"
+                      "tip2015/propositional_Okay.smt2"
+                      "tip2015/regexp_RecSeq.smt2"
+                      "tip2015/relaxedprefix_correct.smt2"
+                      "tip2015/propositional_AndIdempotent.smt2"
+                      "tip2015/propositional_AndImplication.smt2"))]
+           [q (format-symbols (qual-all-s fs))]
            [s (format-symbols (symbols-of-theorems-s (read-benchmark q)))])
 
       (check-true (string-contains? s "or2-sentinel")
@@ -828,7 +835,7 @@
       (check-false (member "or2-sentinel" (string-split s "\n"))
                    "or2 symbol is qualified")
 
-      (let* ([d (format-symbols (mk-defs-s (string-split f "\n")))]
+      (let* ([d (format-symbols (mk-defs-s fs))]
              [s (format-symbols (symbols-of-theorems-s (read-benchmark d)))])
          (check-true (string-contains? s "or2-sentinel")
                      "Found 'or2' symbol"))))
@@ -897,11 +904,12 @@
                   syms)))
 
   (test-case "No alpha-equivalent duplicates in result"
-    (let* ([normalised (pipe test-defs canonical-functions)])
+    (let* ([normalised (read-benchmark
+                        (format-symbols (canonical-functions-s
+                                         (string-split test-defs "\n"))))])
       (for-each (lambda (norm)
                   (define norms
-                    (filter (curry equal? norm)
-                            (read-benchmark normalised)))
+                    (filter (curry equal? norm) normalised))
                   (unless (equal? norm '(check-sat))
                     (with-check-info
                      (('norms      norms)
@@ -909,7 +917,7 @@
                       ('normalised normalised)
                       ('message    "Duplicate normalised forms!"))
                      (check-equal? norms (list norm)))))
-                (read-benchmark normalised))))
+                normalised)))
 
   (for-each (lambda (sym)
     (define def (format-symbols (get-def-s sym qual)))
@@ -1098,9 +1106,7 @@
 (define (find-redundancies)
   (show (map (lambda (x)
                (format "~a\t~a" (first x) (second x)))
-             (find-redundancies-s (map read-benchmark
-                                       (filter non-empty-string?
-                                               (port->lines (current-input-port))))))))
+             (find-redundancies-s (read-benchmark (port->string (current-input-port)))))))
 
 (define (find-redundancies-s exprs)
   (define (mk-output expr so-far name-replacements)
