@@ -56,26 +56,6 @@
                                (free1 local1)))
                 '(free1)))
 
-(define (expression-types exp)
-  (match exp
-         [(list 'define-fun-rec
-                (list 'par p
-                      (list name args return body)))   (remove* (symbols-in p)
-                                                                (symbols-in (cons return (map cadr args))))]
-         [(list 'define-fun-rec name args return body) (cons return (map cadr args))]
-         [(list 'define-fun
-                (list 'par p
-                      (list name args return body)))   (remove* (symbols-in p)
-                                                                (symbols-in (cons return (map cadr args))))]
-         [(list 'define-fun     name args return body) (cons return (map cadr args))]
-
-         [(list 'declare-datatypes given decs)         (append (map car decs)
-                                                               (remove* (symbols-in given)
-                                                                        (symbols-in (map (lambda (x) (constructor-types (cdr x))) decs))))]
-         [(cons a b)                                   (append (expression-types a)
-                                                               (expression-types b))]
-         [_                                            null]))
-
 (define (constructor-types defs)
   (let ((con-types (lambda (def)
           ;; Given (Cons (Cons_1 a) (Cons_2 (list a))) we want '(a list)
@@ -157,6 +137,26 @@
 
          [(cons a b)                                   (append (expression-funs a)
                                                                (expression-funs b))]
+         [_                                            null]))
+
+(define (expression-types exp)
+  (match exp
+         [(list 'define-fun-rec
+                (list 'par p
+                      (list name args return body)))   (remove* (symbols-in p)
+                                                                (symbols-in (cons return (map cadr args))))]
+         [(list 'define-fun-rec name args return body) (cons return (map cadr args))]
+         [(list 'define-fun
+                (list 'par p
+                      (list name args return body)))   (remove* (symbols-in p)
+                                                                (symbols-in (cons return (map cadr args))))]
+         [(list 'define-fun     name args return body) (cons return (map cadr args))]
+
+         [(list 'declare-datatypes given decs)         (append (map car decs)
+                                                               (remove* (symbols-in given)
+                                                                        (symbols-in (map (lambda (x) (constructor-types (cdr x))) decs))))]
+         [(cons a b)                                   (append (expression-types a)
+                                                               (expression-types b))]
          [_                                            null]))
 
 (define (expression-symbols exp)
@@ -797,6 +797,10 @@
       x
       (symbol->string x)))
 
+(define (get-def-s x input)
+  (append (find-sub-exprs x (read-benchmark input))
+          (get-con-def-s x input)))
+
 (module+ test
   (define test-files
     (string-join (map (curry string-append benchmark-dir)
@@ -811,7 +815,7 @@
   (test-case "Real symbols qualified"
     (let* ([f "modules/tip-benchmarks/benchmarks/tip2015/propositional_AndCommutative.smt2\nmodules/tip-benchmarks/benchmarks/tip2015/propositional_Sound.smt2\nmodules/tip-benchmarks/benchmarks/tip2015/propositional_Okay.smt2\nmodules/tip-benchmarks/benchmarks/tip2015/regexp_RecSeq.smt2\nmodules/tip-benchmarks/benchmarks/tip2015/relaxedprefix_correct.smt2\nmodules/tip-benchmarks/benchmarks/tip2015/propositional_AndIdempotent.smt2\nmodules/tip-benchmarks/benchmarks/tip2015/propositional_AndImplication.smt2"]
            [q (pipe f qual-all)]
-           [s (pipe q symbols-of-theorems)])
+           [s (format-symbols (symbols-of-theorems-s (read-benchmark q)))])
 
       (check-true (string-contains? s "or2-sentinel")
                   "Found an or2 symbol")
@@ -820,7 +824,7 @@
                    "or2 symbol is qualified")
 
       (let* ([d (pipe f mk-defs)]
-             [s (pipe d symbols-of-theorems)])
+             [s (format-symbols (symbols-of-theorems-s (read-benchmark d)))])
          (check-true (string-contains? s "or2-sentinel")
                      "Found 'or2' symbol"))))
 
@@ -853,7 +857,7 @@
 
   (define qual (pipe test-files qual-all))
 
-  (let* ([syms (pipe qual symbols-of-theorems)])
+  (let* ([syms (format-symbols (symbols-of-theorems-s (read-benchmark qual)))])
 
     (for-each (lambda (sym)
                 (with-check-info
@@ -871,7 +875,7 @@
                                    #f)))
               subset)
 
-      (let* ([syms (string-split (pipe test-defs symbols-of-theorems)
+      (let* ([syms (string-split (format-symbols (symbols-of-theorems-s (read-benchmark test-defs)))
                                  "\n")])
         (for-each (lambda (sym)
                     (with-check-info
@@ -1621,8 +1625,7 @@
                                  n)
                            "\n"))
 
-            (pipe (pipe these mk-final-defs)
-                  full-haskell-package)
+            (full-haskell-package-s (pipe these mk-final-defs) out-dir)
 
             (with-check-info
              (('n       n)
@@ -1696,9 +1699,9 @@
                                                    (path->string out-dir))])
                                    (lambda ()
 
-                                     (pipe (pipe (string-join files "\n")
-                                                 mk-final-defs)
-                                           full-haskell-package)
+                                     (full-haskell-package-s (pipe (string-join files "\n")
+                                                                 mk-final-defs)
+                                                           (path->string out-dir))
 
                                      (parameterize ([current-directory out-dir])
 
@@ -1757,6 +1760,9 @@
                "(define-funs-rec ((stooge2sort2 ((x (list Int))) (list Int)) (stoogesort2 ((x (list Int))) (list Int)) (stooge2sort1 ((x (list Int))) (list Int))) ((match (zsplitAt (div (+ (* 2 (zlength x)) 1) 3) x) (case (Pair2 ys zs) (append (stoogesort2 ys) zs))) (match x (case nil (as nil (list Int))) (case (cons y z) (match z (case nil (cons y (as nil (list Int)))) (case (cons y2 x2) (match x2 (case nil (sort2 y y2)) (case (cons x3 x4) (stooge2sort2 (stooge2sort1 (stooge2sort2 x))))))))) (match (zsplitAt (div (zlength x) 3) x) (case (Pair2 ys zs) (append ys (stoogesort2 zs))))))"
                "stooge2sort2\nstoogesort2\nstooge2sort1"))
 
+(define (symbols-from-file f)
+  (symbols-of-theorems-s (read-benchmark (file->string f))))
+
 (module+ test
   (define (contains str line)
     (not (empty? (filter (curry equal? line)
@@ -1781,7 +1787,7 @@
               xs))
 
   (let* ([f    "modules/tip-benchmarks/benchmarks/tip2015/int_right_distrib.smt2"]
-         [syms (pipe (file->string f) symbols-of-theorems)])
+         [syms (format-symbols (symbols-from-file f))])
 
     (should-have syms 'constructor '("Pos" "Neg" "Z" "S" "P" "N"))
 
@@ -1826,16 +1832,12 @@
      (check-true (contains theorems f))))
 
   (let* ([f    "modules/tip-benchmarks/benchmarks/tip2015/list_PairEvens.smt2"]
-         [syms (pipe (file->string f) symbols-of-theorems)])
+         [syms (format-symbols (symbols-from-file f))])
     (should-not-have syms 'higher-order-type '("=>" "=>-sentinel")))
 
   (let* ([f    "modules/tip-benchmarks/benchmarks/tip2015/propositional_AndCommutative.smt2"]
-         [syms (pipe (file->string f) symbols-of-theorems)])
+         [syms (format-symbols (symbols-from-file f))])
     (should-have syms 'function '("or2"))))
-
-(define (get-def-s x input)
-  (append (find-sub-exprs x (read-benchmark input))
-          (get-con-def-s x input)))
 
 (define (function-name-to-haskell n)
   n)
