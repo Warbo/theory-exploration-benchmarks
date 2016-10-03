@@ -1177,28 +1177,116 @@
       (check-equal? canon expected)))
 
   (checkNormal "function"
-               '(define-fun sort2 ((x Int) (y Int)) (list Int) (ite (<= x y) (cons x (cons y (as nil (list Int)))) (cons y (cons x (as nil (list Int))))))
-               '(define-fun defining-function-1 ((normalise-var-2 Int) (normalise-var-1 Int)) (list Int) (ite (<= normalise-var-2 normalise-var-1) (cons normalise-var-2 (cons normalise-var-1 (as nil (list Int)))) (cons normalise-var-1 (cons normalise-var-2 (as nil (list Int)))))))
+               '(define-fun sort2
+                  ((x Int) (y Int))
+                  (list Int)
+                  (ite (<= x y)
+                       (cons x (cons y
+                                     (as nil (list Int))))
+                       (cons y (cons x
+                                     (as nil (list Int))))))
+               '(define-fun defining-function-1
+                  ((normalise-var-2 Int) (normalise-var-1 Int))
+                  (list Int)
+                  (ite (<= normalise-var-2 normalise-var-1)
+                       (cons normalise-var-2 (cons normalise-var-1
+                                                   (as nil (list Int))))
+                       (cons normalise-var-1 (cons normalise-var-2
+                                                   (as nil (list Int)))))))
 
   (checkNormal "parameterised function"
-               '(define-fun (par (a) (zsplitAt ((x Int) (y (list a))) (Pair (list a) (list a)) (Pair2 (ztake x y) (zdrop x y)))))
-               '(define-fun (par (normalise-var-3) (defining-function-1 ((normalise-var-2 Int) (normalise-var-1 (list normalise-var-3))) (Pair (list normalise-var-3) (list normalise-var-3)) (Pair2 (ztake normalise-var-2 normalise-var-1) (zdrop normalise-var-2 normalise-var-1))))))
+               '(define-fun
+                  (par (a)
+                       (zsplitAt
+                        ((x Int)
+                         (y (list a)))
+                        (Pair (list a) (list a))
+                        (Pair2 (ztake x y)
+                               (zdrop x y)))))
+               '(define-fun
+                  (par (normalise-var-3)
+                       (defining-function-1
+                         ((normalise-var-2 Int)
+                          (normalise-var-1 (list normalise-var-3)))
+                         (Pair (list normalise-var-3) (list normalise-var-3))
+                         (Pair2 (ztake normalise-var-2 normalise-var-1)
+                                (zdrop normalise-var-2 normalise-var-1))))))
 
   (checkNormal "datatype"
-               '(declare-datatypes (a) ((list (nil) (cons (head a) (tail (list a))))))
-               '(declare-datatypes (normalise-var-1) (((defining-type-1 (normalise-constructor-2) (normalise-constructor-1 (normalise-destructor-2 normalise-var-1) (normalise-destructor-1 (defining-type-1 normalise-var-1))))))))
+               '(declare-datatypes
+                 (a)
+                 ((list
+                   (nil)
+                   (cons (head a)
+                         (tail (list a))))))
+               '(declare-datatypes
+                 (normalise-var-1)
+                 (((defining-type-1
+                     (normalise-constructor-2)
+                     (normalise-constructor-1 (normalise-destructor-2 normalise-var-1)
+                                              (normalise-destructor-1 (defining-type-1 normalise-var-1))))))))
 
   (checkNormal "let binding"
-               '(define-fun-rec msorttd ((x (list Int))) (list Int) (let ((k (div (zlength x) 2))) (lmerge (msorttd (ztake k x)) (msorttd (zdrop k x)))))
-               '(define-fun-rec defining-function-1 ((normalise-var-2 (list Int))) (list Int) (let ((normalise-var-1 (div (zlength normalise-var-2) 2))) (lmerge (defining-function-1 (ztake normalise-var-1 normalise-var-2)) (defining-function-1 (zdrop normalise-var-1 normalise-var-2))))))
+               '(define-fun-rec msorttd
+                  ((x (list Int))) (list Int)
+                  (let ((k (div (zlength x) 2)))
+                    (lmerge (msorttd (ztake k
+                                            x))
+                            (msorttd (zdrop k
+                                            x)))))
+               '(define-fun-rec defining-function-1
+                  ((normalise-var-2 (list Int))) (list Int)
+                  (let ((normalise-var-1 (div (zlength normalise-var-2) 2)))
+                    (lmerge (defining-function-1 (ztake normalise-var-1
+                                                        normalise-var-2))
+                            (defining-function-1 (zdrop normalise-var-1
+                                                        normalise-var-2))))))
 
   (checkNormal "pattern match"
-               '(define-fun-rec s ((x Bin)) Bin (match x (case One (ZeroAnd One)) (case (ZeroAnd xs) (OneAnd xs)) (case (OneAnd ys) (ZeroAnd (s ys)))))
-               '(define-fun-rec defining-function-1 ((normalise-var-2 Bin)) Bin (match normalise-var-2 (case One (ZeroAnd One)) (case (ZeroAnd normalise-var-1) (OneAnd normalise-var-1)) (case (OneAnd normalise-var-1) (ZeroAnd (defining-function-1 normalise-var-1))))))
+               '(define-fun-rec s
+                  ((x Bin)) Bin
+                  (match x
+                    (case One (ZeroAnd One))
+                    (case (ZeroAnd xs)
+                      (OneAnd xs))
+                    (case (OneAnd ys)
+                      (ZeroAnd (s ys)))))
+               '(define-fun-rec defining-function-1
+                  ((normalise-var-2 Bin)) Bin
+                  (match normalise-var-2
+                    (case One (ZeroAnd One))
+                    (case (ZeroAnd normalise-var-1)
+                      (OneAnd normalise-var-1))
+                    (case (OneAnd normalise-var-1)
+                      (ZeroAnd (defining-function-1 normalise-var-1))))))
 
   (checkNormal "anonymous function"
-               '(define-fun-rec qsort ((y Int) (xs (list Int))) (list Int) (append (append (qsort (filter (lambda ((z Int)) (<= z y)) xs)) (cons y (as nil (list Int)))) (qsort (filter (lambda ((x2 Int)) (> x2 y)) xs))))
-               '(define-fun-rec defining-function-1 ((normalise-var-3 Int) (normalise-var-2 (list Int))) (list Int) (append (append (defining-function-1 (filter (lambda ((normalise-var-1 Int)) (<= normalise-var-1 normalise-var-3)) normalise-var-2)) (cons normalise-var-3 (as nil (list Int)))) (defining-function-1 (filter (lambda ((normalise-var-1 Int)) (> normalise-var-1 normalise-var-3)) normalise-var-2))))))
+               '(define-fun-rec qsort
+                  ((y Int) (xs (list Int)))
+                  (list Int)
+                  (append (append (qsort
+                                   (filter (lambda ((z Int))
+                                             (<= z
+                                                 y))
+                                           xs))
+                                  (cons y (as nil (list Int))))
+                          (qsort
+                           (filter (lambda ((x2 Int))
+                                     (> x2 y))
+                                   xs))))
+               '(define-fun-rec defining-function-1
+                  ((normalise-var-3 Int) (normalise-var-2 (list Int)))
+                  (list Int)
+                  (append (append (defining-function-1
+                                    (filter (lambda ((normalise-var-1 Int))
+                                              (<= normalise-var-1
+                                                  normalise-var-3))
+                                            normalise-var-2))
+                                  (cons normalise-var-3 (as nil (list Int))))
+                          (defining-function-1
+                            (filter (lambda ((normalise-var-1 Int))
+                                      (> normalise-var-1 normalise-var-3))
+                                    normalise-var-2))))))
 
 (define (get-con-def-s name str)
   (remove-duplicates (defs-of-src (string-split str "\n") name)))
@@ -1648,27 +1736,67 @@
     (check-equal? names expect)))
 
   (names-match "datatype"
-               '(declare-datatypes (a) ((list (nil) (cons (head a) (tail (list a))))))
+               '(declare-datatypes (a) ((list (nil)
+                                              (cons (head a) (tail (list a))))))
                '(list nil cons head tail))
 
   (names-match "function"
-               '(define-fun sort2 ((x Int) (y Int)) (list Int) (ite (<= x y) (cons x (cons y (as nil (list Int)))) (cons y (cons x (as nil (list Int))))))
+               '(define-fun sort2
+                  ((x Int) (y Int)) (list Int)
+                  (ite (<= x y)
+                       (cons x (cons y (as nil (list Int))))
+                       (cons y (cons x (as nil (list Int))))))
                '(sort2))
 
   (names-match "parameterised function"
-               '(define-fun (par (a) (zsplitAt ((x Int) (y (list a))) (Pair (list a) (list a)) (Pair2 (ztake x y) (zdrop x y)))))
+               '(define-fun
+                  (par (a)
+                       (zsplitAt ((x Int) (y (list a))) (Pair (list a) (list a))
+                                 (Pair2 (ztake x y) (zdrop x y)))))
                '(zsplitAt))
 
   (names-match "recursive function"
-               '(define-fun-rec insert2 ((x Int) (y (list Int))) (list Int) (match y (case nil (cons x (as nil (list Int)))) (case (cons z xs) (ite (<= x z) (cons x y) (cons z (insert2 x xs))))))
+               '(define-fun-rec insert2
+                  ((x Int) (y (list Int))) (list Int)
+                  (match y
+                    (case nil (cons x (as nil (list Int))))
+                    (case (cons z xs) (ite (<= x z)
+                                           (cons x y)
+                                           (cons z (insert2 x xs))))))
                '(insert2))
 
   (names-match "recursive parameterised function"
-               '(define-fun-rec (par (a) (ztake ((x Int) (y (list a))) (list a) (ite (= x 0) (as nil (list a)) (match y (case nil (as nil (list a))) (case (cons z xs) (cons z (ztake (- x 1) xs))))))))
+               '(define-fun-rec
+                  (par (a)
+                       (ztake ((x Int) (y (list a))) (list a)
+                              (ite (= x 0)
+                                   (as nil (list a))
+                                   (match y
+                                     (case nil (as nil (list a)))
+                                     (case (cons z xs) (cons z
+                                                             (ztake (- x 1)
+                                                                    xs))))))))
                '(ztake))
 
   (names-match "mutually recursive functions"
-               '(define-funs-rec ((stooge2sort2 ((x (list Int))) (list Int)) (stoogesort2 ((x (list Int))) (list Int)) (stooge2sort1 ((x (list Int))) (list Int))) ((match (zsplitAt (div (+ (* 2 (zlength x)) 1) 3) x) (case (Pair2 ys zs) (append (stoogesort2 ys) zs))) (match x (case nil (as nil (list Int))) (case (cons y z) (match z (case nil (cons y (as nil (list Int)))) (case (cons y2 x2) (match x2 (case nil (sort2 y y2)) (case (cons x3 x4) (stooge2sort2 (stooge2sort1 (stooge2sort2 x))))))))) (match (zsplitAt (div (zlength x) 3) x) (case (Pair2 ys zs) (append ys (stoogesort2 zs))))))
+               '(define-funs-rec
+                  ((stooge2sort2 ((x (list Int))) (list Int))
+                   (stoogesort2  ((x (list Int))) (list Int))
+                   (stooge2sort1 ((x (list Int))) (list Int)))
+                  ((match (zsplitAt (div (+ (* 2 (zlength x)) 1) 3) x)
+                     (case (Pair2 ys zs) (append (stoogesort2 ys) zs)))
+                   (match x
+                     (case nil (as nil (list Int)))
+                     (case (cons y z)
+                       (match z
+                         (case nil (cons y (as nil (list Int))))
+                         (case (cons y2 x2)
+                           (match x2
+                             (case nil (sort2 y y2))
+                             (case (cons x3 x4)
+                               (stooge2sort2 (stooge2sort1 (stooge2sort2 x)))))))))
+                   (match (zsplitAt (div (zlength x) 3) x)
+                     (case (Pair2 ys zs) (append ys (stoogesort2 zs))))))
                '(stooge2sort2 stoogesort2 stooge2sort1)))
 
 (define (symbols-from-file f)
