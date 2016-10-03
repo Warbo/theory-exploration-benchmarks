@@ -3,23 +3,11 @@
 (require racket/match)
 (require racket/trace)
 
-(provide all-symbols)
-(provide canonical-functions)
-(provide find-redundancies)
 (provide full-haskell-package)
-(provide get-con-def)
-(provide get-def)
-(provide get-fun-def)
 (provide mk-defs)
 (provide mk-final-defs)
 (provide mk-signature)
-(provide prepare)
-(provide qual-all)
-(provide qualify)
 (provide qualify-given)
-(provide rec-names)
-(provide replace-strings)
-(provide strip-redundancies)
 (provide symbols-of-theorems)
 (provide theorems-from-symbols)
 (provide types-from-defs)
@@ -804,9 +792,6 @@
                 ("ztake"        "parameterised recursive")
                 ("stooge2sort2" "mutually recursive")))))
 
-(define (get-fun-def f)
-  (show (find-sub-exprs f (read-benchmark (port->string (current-input-port))))))
-
 (define (as-str x)
   (if (string? x)
       x
@@ -1290,9 +1275,6 @@
                "(define-fun-rec qsort ((y Int) (xs (list Int))) (list Int) (append (append (qsort (filter (lambda ((z Int)) (<= z y)) xs)) (cons y (as nil (list Int)))) (qsort (filter (lambda ((x2 Int)) (> x2 y)) xs))))"
                "(define-fun-rec defining-function-1 ((normalise-var-3 Int) (normalise-var-2 (list Int))) (list Int) (append (append (defining-function-1 (filter (lambda ((normalise-var-1 Int)) (<= normalise-var-1 normalise-var-3)) normalise-var-2)) (cons normalise-var-3 (as nil (list Int)))) (defining-function-1 (filter (lambda ((normalise-var-1 Int)) (> normalise-var-1 normalise-var-3)) normalise-var-2))))"))
 
-(define (get-con-def)
-  (show (get-con-def-s (getenv "NAME") (port->string (current-input-port)))))
-
 (define (get-con-def-s name str)
   (remove-duplicates (defs-of-src (string-split str "\n") name)))
 
@@ -1369,15 +1351,8 @@
   (read-benchmark (replace-strings-s (format-symbols stripped)
                                      (map (curry map ~a) redundancies))))
 
-(define (strip-redundancies)
-  (show (strip-redundancies-s (read-benchmark (port->string (current-input-port))))))
-
 (module+ test
   (check-equal? (list->set (strip-redundancies-s redundancies))
-                (list->set (list constructorZ constructorS)))
-
-  (check-equal? (list->set (read-benchmark (pipe (format-symbols redundancies)
-                                                 strip-redundancies)))
                 (list->set (list constructorZ constructorS))))
 
 (define (norm-defs)
@@ -1418,14 +1393,6 @@
       ('syms    syms)
       ('message "References to discarded duplicates are replaced"))
      (check-not-equal? (member 'min1 syms) #f))))
-
-(define (all-symbols)
-  (show (sort (filter non-empty?
-                      (foldl (lambda (path rest)
-                               (append (symbols-of-theorem path) rest))
-                             '()
-                             (theorem-files)))
-              (lambda (x y) (string<? (~a x) (~a y))))))
 
 (define (defs-to-sig x)
   (pipe (pipe x mk-final-defs) mk-signature))
@@ -1869,9 +1836,6 @@
 (define (get-def-s x input)
   (append (find-sub-exprs x (read-benchmark input))
           (get-con-def-s x input)))
-
-(define (get-def x)
-  (show (get-def-s x (port->string (current-input-port)))))
 
 (define (function-name-to-haskell n)
   n)
