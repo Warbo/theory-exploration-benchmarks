@@ -1494,12 +1494,12 @@
 
 (define (dump x) (write x (current-error-port)))
 
-(define (mk-signature)
-  (define input (port->string (current-input-port)))
+(define (mk-signature-s input)
+  (with-temp-file input (lambda (f)
+                          (run-pipeline/out `(tip ,f --haskell-spec)))))
 
-  (display
-   (with-temp-file input (lambda (f)
-                           (run-pipeline/out `(tip ,f --haskell-spec))))))
+(define (mk-signature)
+  (display (mk-signature-s (port->string (current-input-port)))))
 
 (define (parameterize-env vars body)
   (let* ([old-env (environment-variables-copy (current-environment-variables))]
