@@ -31,6 +31,10 @@
 (define benchmark-dir "modules/tip-benchmarks/benchmarks")
 
 (define (symbols-in exp)
+  (define native-symbols
+    (list 'Int 'Bool '* '> 'mod 'and 'or 'xor 'iff 'ite 'true 'false 'not 'implies
+          'distinct '@ '= '<= '- '+ '* 'div '=> 'as))
+
   (let ((case-symbols (lambda (c)
                         (match c
                           ;; Remove the symbols occuring in pat from body. This will remove fresh
@@ -56,15 +60,6 @@
   (check-equal? (symbols-in '(lambda ((local1 Nat) (local2 (List Nat)))
                                (free1 local1)))
                 '(free1)))
-
-(define (constructor-types defs)
-  (let ((con-types (lambda (def)
-          ;; Given (Cons (Cons_1 a) (Cons_2 (list a))) we want '(a list)
-          (concat-map (lambda (x) (symbols-in (cdr x)))
-                      (cdr def)))))
-    (match defs
-      [(cons h t) (append (con-types h) (constructor-types t))]
-      [_          null])))
 
 ; Extract the symbols used by a benchmark expression
 
@@ -107,40 +102,16 @@
                                                     (expression-destructors b))]
       [_                                    null])))
 
-(define (fun-rec-expressions decs defs)
-  (match (list decs defs)
-    [(list (cons (list 'par ps (list name args return)) more-decs)
-           (cons body                                   more-defs))
-     (append (cons name (remove* (append ps (map car args))
-                                 (symbols-in body)))
-             (fun-rec-expressions more-decs more-defs))]
-    [(list (cons (list name args return) more-decs)
-           (cons body                    more-defs)) (append (cons name (remove* (map car args)
-                                                                                 (symbols-in body)))
-                                                             (fun-rec-expressions more-decs more-defs))]
-    [_                                                null]))
-
-(define (expression-funs exp)
-  (match exp
-         [(list 'define-fun-rec
-                (list 'par p
-                      (list name args return body)))   (cons name (remove* (append (map car args)
-                                                                                   (symbols-in p))
-                                                                           (symbols-in body)))]
-         [(list 'define-fun-rec name args return body) (cons name (remove* (map car args) (symbols-in body)))]
-         [(list 'define-funs-rec decs defs)            (fun-rec-expressions decs defs)]
-         [(list 'define-fun
-                (list 'par p
-                      (list name args return body)))   (cons name (remove* (append (map car args)
-                                                                                   (symbols-in p))
-                                                                           (symbols-in body)))]
-         [(list 'define-fun     name args return body) (cons name (remove* (map car args) (symbols-in body)))]
-
-         [(cons a b)                                   (append (expression-funs a)
-                                                               (expression-funs b))]
-         [_                                            null]))
-
 (define (expression-types exp)
+  (define (constructor-types defs)
+    (let ((con-types (lambda (def)
+                       ;; Given (Cons (Cons_1 a) (Cons_2 (list a))) we want '(a list)
+                       (concat-map (lambda (x) (symbols-in (cdr x)))
+                                   (cdr def)))))
+      (match defs
+        [(cons h t) (append (con-types h) (constructor-types t))]
+        [_          null])))
+
   (match exp
          [(list 'define-fun-rec
                 (list 'par p
@@ -161,78 +132,112 @@
          [_                                            null]))
 
 (define (expression-symbols exp)
+  (define (expression-funs exp)
+    (define (fun-rec-expressions decs defs)
+      (match (list decs defs)
+        [(list (cons (list 'par ps (list name args return)) more-decs)
+               (cons body                                   more-defs))
+         (append (cons name (remove* (append ps (map car args))
+                                     (symbols-in body)))
+                 (fun-rec-expressions more-decs more-defs))]
+        [(list (cons (list name args return) more-decs)
+               (cons body                    more-defs)) (append (cons name (remove* (map car args)
+                                                                                     (symbols-in body)))
+                                                                 (fun-rec-expressions more-decs more-defs))]
+        [_                                                null]))
+
+    (match exp
+      [(list 'define-fun-rec
+             (list 'par p
+                   (list name args return body)))   (cons name (remove* (append (map car args)
+                                                                                (symbols-in p))
+                                                                        (symbols-in body)))]
+      [(list 'define-fun-rec name args return body) (cons name (remove* (map car args) (symbols-in body)))]
+      [(list 'define-funs-rec decs defs)            (fun-rec-expressions decs defs)]
+      [(list 'define-fun
+             (list 'par p
+                   (list name args return body)))   (cons name (remove* (append (map car args)
+                                                                                (symbols-in p))
+                                                                        (symbols-in body)))]
+      [(list 'define-fun     name args return body) (cons name (remove* (map car args) (symbols-in body)))]
+
+      [(cons a b)                                   (append (expression-funs a)
+                                                            (expression-funs b))]
+      [_                                            null]))
+
   (remove* (expression-types exp)
            (append (expression-constructors exp)
                    (expression-destructors  exp)
                    (expression-funs         exp))))
 
-(define native-symbols
-  (list 'Int 'Bool '* '> 'mod 'and 'or 'xor 'iff 'ite 'true 'false 'not 'implies
-        'distinct '@ '= '<= '- '+ '* 'div '=> 'as))
-
 (define (qualify name expr)
-  (let* ([syms  (expression-symbols expr)]
-         [types (expression-types   expr)]
-         [all   (symbols-in (append syms types))])
-    (qualify-all name all (prefix-locals expr))))
+  (define (qualify-all name rest x)
+    (if (empty? rest)
+        x
+        (qualify-all name
+                     (cdr rest)
+                     (replace-in (car rest)
+                                 (string-append name
+                                                (as-str (car rest))
+                                                "-sentinel")
+                                 x))))
 
-(define (qualify-all name all expr)
-  (if (empty? all)
-      expr
-      (qualify-all name (cdr all) (replace-in (car all)
-                                              (string-append name (symbol->string (car all)) "-sentinel")
-                                              expr))))
+  (define syms  (expression-symbols expr))
+  (define types (expression-types   expr))
+  (define all   (symbols-in (append syms types)))
 
-(define (locals-in expr)
-  (match expr
-    [(list 'define-fun-rec (list 'par p (list name args return body)))
-     (symbols-in (append p (map first args) (locals-in body)))]
-
-    [(list 'define-fun-rec                    name args return body)
-     (symbols-in (append   (map first args) (locals-in body)))]
-
-    [(list 'define-fun     (list 'par p (list name args return body)))
-     (symbols-in (append p (map first args) (locals-in body)))]
-
-    [(list 'define-fun                        name args return body)
-     (symbols-in (append   (map first args) (locals-in body)))]
-
-    [(list 'declare-datatypes given decs)
-     (symbols-in given)]
-
-    [(list 'case pat body)
-     (symbols-in (append (locals-in body)
-                         (match pat
-                           [(list con)    null]
-                           [(cons con ps) ps]
-                           [_             null])))]
-
-    [(list 'lambda args body)
-     (symbols-in (append (map first args) (locals-in body)))]
-
-    [(list 'let bindings body)
-     (symbols-in (append (map first bindings) (locals-in body)))]
-
-    [(cons a b) (append (locals-in a) (locals-in b))]
-
-    [_ null]))
+  (qualify-all name all (prefix-locals expr)))
 
 (define (prefix-locals expr)
   ;; Turn bindings like (lambda (x Int) (f x)) into
   ;; (lambda (local-x Int) (f local-x)) to prevent conflicts between local and
   ;; global names (e.g. if there's a destructor called x)
+  (define (locals-in expr)
+    (match expr
+      [(list 'define-fun-rec (list 'par p (list name args return body)))
+       (symbols-in (append p (map first args) (locals-in body)))]
+
+      [(list 'define-fun-rec                    name args return body)
+       (symbols-in (append   (map first args) (locals-in body)))]
+
+      [(list 'define-fun     (list 'par p (list name args return body)))
+       (symbols-in (append p (map first args) (locals-in body)))]
+
+      [(list 'define-fun                        name args return body)
+       (symbols-in (append   (map first args) (locals-in body)))]
+
+      [(list 'declare-datatypes given decs)
+       (symbols-in given)]
+
+      [(list 'case pat body)
+       (symbols-in (append (locals-in body)
+                           (match pat
+                             [(list con)    null]
+                             [(cons con ps) ps]
+                             [_             null])))]
+
+      [(list 'lambda args body)
+       (symbols-in (append (map first args) (locals-in body)))]
+
+      [(list 'let bindings body)
+       (symbols-in (append (map first bindings) (locals-in body)))]
+
+      [(cons a b) (append (locals-in a) (locals-in b))]
+
+      [_ null]))
+
+  (define (prefix-all locals expr)
+    (define (prefix-local s)
+      (string->symbol (string-append "local-" (as-str s))))
+
+    (if (empty? locals)
+        expr
+        (prefix-all (cdr locals)
+                    (replace-in (car locals)
+                                (prefix-local (car locals))
+                                expr))))
+
   (prefix-all (locals-in expr) expr))
-
-(define (prefix-all locals expr)
-  (if (empty? locals)
-      expr
-      (prefix-all (cdr locals)
-                  (replace-in (car locals)
-                              (prefix-local (car locals))
-                              expr))))
-
-(define (prefix-local s)
-  (string->symbol (string-append "local-" (symbol->string s))))
 
 (define (replace-in old replacement expr)
   (if (equal? old expr)
@@ -250,14 +255,6 @@
 (define (show x)
   (displayln (format-symbols x)))
 
-(define (zip xs ys)
-  (if (empty? xs)
-      null
-      (if (empty? ys)
-          null
-          (cons (list (car xs) (car ys))
-                (zip  (cdr xs) (cdr ys))))))
-
 (define theorem-files
   ; Directory traversal is expensive; if we have to do it, memoise the result
   (let ([result #f])
@@ -268,9 +265,6 @@
                    (filter (lambda (x) (string-suffix? (path->string x) ".smt2"))
                       (sequence->list (in-directory benchmark-dir))))))
       result)))
-
-(define (types-of-theorem path)
-  (benchmark-types (file->string path)))
 
 (define (symbols-of-theorem path)
   (benchmark-symbols (file->string path)))
@@ -646,9 +640,6 @@
   (check-equal? (add-constructor-funcs (list nat-def))
                 `(,nat-def ,constructorZ ,constructorS)))
 
-(define (take-from-end n lst)
-  (reverse (take (reverse lst) n)))
-
 (define (trim lst)
   (filter (lambda (x)
             (and (not (equal? (first x) 'assert-not))
@@ -659,6 +650,9 @@
   (show (qual-all-s (port->lines (current-input-port)))))
 
 (define (qual-all-s given-files)
+  (define (take-from-end n lst)
+    (reverse (take (reverse lst) n)))
+
   (define given-contents
     (map (lambda (pth)
            (list (string-replace (string-join (take-from-end 2 (string-split pth "/"))
@@ -688,9 +682,6 @@
               "modules/tip-benchmarks/benchmarks/grammars/simp_expr_unambig4.smt2"
               "modules/tip-benchmarks/benchmarks/tip2015/sort_StoogeSort2IsSort.smt2")))
 
-(define (string->lines s)
-  (string-split s "\n" #:trim? #f))
-
 (module+ test
   (check-equal? (trim '((hello)))                      '((hello)))
   (check-equal? (trim '((foo) (assert-not bar) (baz))) '((foo) (baz)))
@@ -714,6 +705,9 @@
                    (filter non-empty? (rec-names-s (list expr))))
                  one-liners)))
 
+  (define (all-names-s exprs)
+    (map names-in exprs))
+
   (define all-result
     (filter non-empty? (all-names-s one-liners)))
 
@@ -725,13 +719,6 @@
    (check-equal? all-result result)))
 
 ; Check each function declaration syntax
-
-(define (path p)
-  ; Prefix our argument with the benchmarks directory, to save us typing it
-  ; over and over
-  (path->string (build-path (current-directory)
-                            benchmark-dir
-                            p)))
 
 (define (ss-eq? x y)
   (cond ([symbol? x]
@@ -779,7 +766,9 @@
                 (list constructorZ))
 
   (let* ([file "tip2015/sort_StoogeSort2IsSort.smt2"]
-         [defs (mk-defs-s (list (path file)))])
+         [defs (mk-defs-s (list (path->string (build-path (current-directory)
+                                                          benchmark-dir
+                                                          file))))])
     (for-each (lambda (data)
                 (define def
                   (find-sub-exprs (string-append file (first data) "-sentinel")
@@ -815,7 +804,7 @@
                         "/tip2015/sort_StoogeSort2IsSort.smt2")))
 
   (define test-defs
-    (format-symbols (mk-defs-s test-files)))
+    (mk-defs-s test-files))
 
   (test-case "Real symbols qualified"
     (let* ([fs (map (curry string-append benchmark-dir "/")
@@ -887,7 +876,7 @@
                                    #f)))
               subset)
 
-      (let* ([syms (string-split (format-symbols (symbols-of-theorems-s (read-benchmark test-defs)))
+      (let* ([syms (string-split (format-symbols (symbols-of-theorems-s test-defs))
                                  "\n")])
         (for-each (lambda (sym)
                     (with-check-info
@@ -905,7 +894,7 @@
 
   (test-case "No alpha-equivalent duplicates in result"
     (let* ([normalised (read-benchmark
-                        (format-symbols (norm (read-benchmark test-defs))))])
+                        (format-symbols (norm test-defs)))])
       (for-each (lambda (norm)
                   (define norms
                     (filter (curry equal? norm) normalised))
@@ -930,7 +919,9 @@
       ('message "Symbol got qualified"))
      (check-equal? count 1))
 
-    (define norm-def (format-symbols (get-def-s sym test-defs)))
+    (define norm-def
+      (format-symbols (get-def-s sym (format-symbols test-defs))))
+
     (define norm-count
       (length (filter non-empty-string?
                       (string-split norm-def "\n"))))
@@ -1099,9 +1090,6 @@
                (join-spaces (names-in (read-benchmark line))))
              (port->lines (current-input-port)))))
 
-(define (all-names-s exprs)
-  (map names-in exprs))
-
 (define (find-redundancies)
   (show (map (lambda (x)
                (format "~a\t~a" (first x) (second x)))
@@ -1109,6 +1097,14 @@
 
 (define (find-redundancies-s exprs)
   (define (mk-output expr so-far name-replacements)
+    (define (zip xs ys)
+      (if (empty? xs)
+          null
+          (if (empty? ys)
+              null
+              (cons (list (car xs) (car ys))
+                    (zip  (cdr xs) (cdr ys))))))
+
     (let* ([norm-line (norm     expr)]
            [names     (names-in expr)]
            [existing  (filter (lambda (x)
