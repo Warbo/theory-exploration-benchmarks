@@ -13,21 +13,6 @@
 (provide theorems-from-symbols)
 (provide types-from-defs)
 
-(module+ test
-  (require rackunit)
-
-  (define nat-def      '(declare-datatypes () ((Nat (Z) (S (p Nat))))))
-
-  (define constructorZ '(define-fun constructorZ ()              Nat Z))
-
-  (define constructorS '(define-fun constructorS ((local-p Nat)) Nat (S local-p)))
-
-  (define redundancies `(,constructorZ
-                         ,constructorS
-                         (define-fun redundantZ1 () Nat Z)
-                         (define-fun redundantZ2 () Nat Z)
-                         (define-fun redundantZ3 () Nat Z))))
-
 (define benchmark-dir "modules/tip-benchmarks/benchmarks")
 
 (define (symbols-in exp)
@@ -55,11 +40,6 @@
       [(cons a b)                     (append (symbols-in a)
                                               (symbols-in b))]
       [_                              (if (symbol? exp) (list exp) null)]))))
-
-(module+ test
-  (check-equal? (symbols-in '(lambda ((local1 Nat) (local2 (List Nat)))
-                               (free1 local1)))
-                '(free1)))
 
 ; Extract the symbols used by a benchmark expression
 
@@ -267,7 +247,7 @@
       result)))
 
 (define (symbols-of-theorem path)
-  (benchmark-symbols (file->string path)))
+  (benchmark-symbols-expr (read-benchmark (file->string path))))
 
 (define (defs-from sym exp)
   (match exp
@@ -304,37 +284,8 @@
     (with-input-from-string content
       read)))
 
-(define (benchmark-types x)
-  (remove-duplicates (symbols-in (expression-types (read-benchmark x)))))
-
-(define (benchmark-symbols x)
-  (benchmark-symbols-expr (read-benchmark x)))
-
 (define (benchmark-symbols-expr expr)
   (remove-duplicates (expression-symbols expr)))
-
-(define (defs-of-src src given)
-  (foldl (lambda (str rest)
-           (append (defs-from given (read-benchmark str))
-                   rest))
-         '()
-         src))
-
-(define (defs-of given)
-  (defs-of-src (map file->string (files-with given)) given))
-
-(define (defs-of-stdin given)
-  (defs-of-src (port->lines (current-input-port)) given))
-
-(define (unique-defs-of given)
-  (remove-duplicates (defs-of given)))
-
-(define (collapse-defs syms)
-  (foldl (lambda (sym rest)
-           (append (unique-defs-of sym)
-                   rest))
-         '()
-         syms))
 
 (define (norm expr)
   (match expr
@@ -612,11 +563,6 @@
 (define (concat-map f xs)
   (apply append (map f xs)))
 
-(module+ test
-  (check-equal? (concat-map (lambda (x) (list x x x))
-                            '(fee fi fo fum))
-                '(fee fee fee fi fi fi fo fo fo fum fum fum)))
-
 (define (func-for x c)
   (let ([arg-apps-for (lambda (c x)
            (map car (car (arg-decs-for c x))))]
@@ -635,10 +581,6 @@
   ;; Adding function for each constructor
   (let* ([consts (expression-constructors x)])
     (append x (map (curry func-for x) consts))))
-
-(module+ test
-  (check-equal? (add-constructor-funcs (list nat-def))
-                `(,nat-def ,constructorZ ,constructorS)))
 
 (define (trim lst)
   (filter (lambda (x)
@@ -674,25 +616,398 @@
 (define (mk-defs-s given-files)
   (norm-defs-s (qual-all-s given-files)))
 
-(module+ test
-  (for-each (lambda (f)
-              (check-equal? (map ~a (mk-defs-s (string-split f "\n")))
-                            (string-split (string-trim (pipe f mk-defs)) "\n")))
-            '("modules/tip-benchmarks/benchmarks/grammars/simp_expr_unambig1.smt2"
-              "modules/tip-benchmarks/benchmarks/grammars/simp_expr_unambig4.smt2"
-              "modules/tip-benchmarks/benchmarks/tip2015/sort_StoogeSort2IsSort.smt2")))
-
-(module+ test
-  (check-equal? (trim '((hello)))                      '((hello)))
-  (check-equal? (trim '((foo) (assert-not bar) (baz))) '((foo) (baz)))
-  (check-equal? (trim '((foo) (check-sat) (bar)))      '((foo) (bar))))
-
 ; Combine all definitions in files given on stdin
 
 (define (non-empty? x)
   (not (empty? x)))
 
+; Check each function declaration syntax
+
+(define (ss-eq? x y)
+  (cond ([symbol? x]
+         (ss-eq? (symbol->string x) y))
+        ([symbol? y]
+         (ss-eq?  x (symbol->string y)))
+        (#t
+         (equal? x y))))
+
+(define (find-sub-exprs f x)
+  (match x
+    [(list 'define-fun name _ _ _)                          (if (ss-eq? name f)
+                                                                (list x)
+                                                                '())]
+    [(list 'define-fun (list 'par _ (list name _ _ _)))     (if (ss-eq? name f)
+                                                                (list x)
+                                                                '())]
+    [(list 'define-fun-rec   name _ _ _)                    (if (ss-eq? name f)
+                                                                (list x)
+                                                                '())]
+    [(list 'define-fun-rec (list 'par _ (list name _ _ _))) (if (ss-eq? name f)
+                                                                (list x)
+                                                                '())]
+    [(list 'define-funs-rec _ _)       (if (member f (names-in x) ss-eq?)
+                                           (list x)
+                                           '())]
+    [(cons h t)                        (append (find-sub-exprs f h)
+                                               (find-sub-exprs f t))    ]
+    [_                                 '()                              ]))
+
+(define (as-str x)
+  (if (string? x)
+      x
+      (symbol->string x)))
+
+(define (get-def-s x input)
+  (define (get-con-def-s name str)
+    (define (defs-of-src src given)
+      (foldl (lambda (str rest)
+               (append (defs-from given (read-benchmark str))
+                       rest))
+             '()
+             src))
+
+    (remove-duplicates (defs-of-src (string-split str "\n") name)))
+
+  (append (find-sub-exprs x (read-benchmark input))
+          (get-con-def-s x input)))
+
+(define (rec-names)
+  (show (rec-names-s (read-benchmark (port->string (current-input-port))))))
+
+(define (rec-names-s exprs)
+  (names-in exprs))
+
+(define (add-check-sat x)
+  ; Add '(check-sat)' as the last line to appease tip-tools
+  (append x '((check-sat))))
+
+(define (remove-suffices x)
+  ; Removes '-sentinel' suffices. Do this after all other string-based
+  ; transformations, since the sentinels prevent us messing with, say, the
+  ; symbol "plus2", when we only wanted to change the symbol "plus"
+  (read-benchmark (string-replace (format-symbols x)
+                                  "-sentinel"
+                                  "")))
+
+(define (name-replacements-for x)
+  ; Unqualify any names which only have one definition
+  (define nr-names (rec-names-s x))
+
+  (foldl (lambda (sym rest)
+           (define name (~a sym))
+           (if (string-contains? name ".smt2")
+               (let* ([unsent (substring name
+                                         0
+                                         (- (string-length name)
+                                            (string-length "-sentinel")))]
+                      [unqual (string-join (cdr (string-split unsent ".smt2"))
+                                           ".smt2")]
+                      [count  (- (length (string-split (format-symbols nr-names)
+                                                       (string-append ".smt2"
+                                                                      unqual
+                                                                      "-sentinel")))
+                                 1)])
+                 (if (equal? count 1)
+                     (cons (list name unqual) rest)
+                     rest))
+               rest))
+         '()
+         nr-names))
+
+(define (remove-prefices x)
+  ; Removes unambiguous filename prefices
+  (read-benchmark (foldl (lambda (rep str)
+                           (string-replace str (first rep) (second rep)))
+                         (format-symbols x)
+                         (name-replacements-for x))))
+
+(define (prepare-s x)
+  ;(tag-types
+    ;(tag-constructors
+      ;(add-constructor-funcs
+  (add-check-sat (remove-suffices (remove-prefices x))))
+
+(define (prepare)
+  (show (prepare-s (read-benchmark (port->string (current-input-port))))))
+
+(define (all-names)
+  (show (map (lambda (line)
+               (join-spaces (names-in (read-benchmark line))))
+             (port->lines (current-input-port)))))
+
+(define (find-redundancies)
+  (show (map (lambda (x)
+               (format "~a\t~a" (first x) (second x)))
+             (find-redundancies-s (read-benchmark (port->string (current-input-port)))))))
+
+(define (find-redundancies-s exprs)
+  (define (mk-output expr so-far name-replacements)
+    (define (zip xs ys)
+      (if (empty? xs)
+          null
+          (if (empty? ys)
+              null
+              (cons (list (car xs) (car ys))
+                    (zip  (cdr xs) (cdr ys))))))
+
+    (let* ([norm-line (norm     expr)]
+           [names     (names-in expr)]
+           [existing  (filter (lambda (x)
+                                (equal? norm-line (second x)))
+                              so-far)])
+      (if (empty? existing)
+          (list (cons (list names norm-line) so-far)
+                name-replacements)
+          (list so-far
+                (append (zip names (first (car existing)))
+                        name-replacements)))))
+
+  (define (remove-redundancies exprs so-far name-replacements)
+    (if (empty? exprs)
+        name-replacements
+        (let* ([result (mk-output (first exprs) so-far name-replacements)]
+               [new-sf (first  result)]
+               [new-nr (second result)])
+          (remove-redundancies (cdr exprs) new-sf new-nr))))
+
+  (remove-redundancies exprs null null))
+
+(define (set-equal? x y p)
+  (equal? (sort x p) (sort y p)))
+
+(define (symbols-of-theorems-s expr)
+  (filter (lambda (s)
+            (not (member s '(true-sentinel
+                             false-sentinel
+                             or-sentinel
+                             ite-sentinel))))
+          (benchmark-symbols-expr expr)))
+
+(define (symbols-of-theorems)
+  (displayln (string-join (map ~a (symbols-of-theorems-s
+                                   (read-benchmark
+                                    (port->string (current-input-port)))))
+                          "\n")))
+
+(define (canonical-functions)
+  (show (norm (read-benchmark (port->string (current-input-port))))))
+
+(define (pipe s f)
+  (define o (open-output-string))
+  (parameterize ([current-input-port  (open-input-string s)]
+                 [current-output-port o])
+    (f))
+  (get-output-string o))
+
+(define (qualify-given)
+  (define given
+    (read-benchmark (port->string (current-input-port))))
+
+  (define name
+    (string-replace (getenv "NAME") "'" "_tick_"))
+
+  (show (qualify name given)))
+
+(define (theorems-from-symbols-s given-symbols)
+  (define (acceptable-theorem thm-path)
+    (null? (remove* given-symbols
+                    (symbols-of-theorem thm-path))))
+
+  (filter acceptable-theorem (theorem-files)))
+
+(define (theorems-from-symbols)
+  (show (theorems-from-symbols-s (port->lines (current-input-port)))))
+
+(define (replace-strings-s str reps)
+  ; For each (src dst) in reps, replaces src with dst in str
+  (foldl (lambda (pair so-far)
+           (string-replace so-far (as-str (first  pair))
+                                  (as-str (second pair))))
+         str
+         reps))
+
+(define (replace-strings file)
+  (replace-strings-s (port->string (current-input-port))
+                     (map (lambda (line)
+                            (string-split line "\t"))
+                          (filter non-empty-string?
+                                  (file->lines file)))))
+
+(define (strip-redundancies-s exprs)
+  ; Remove alpha-equivalent expressions from exprs, according to reps
+  (define redundancies (find-redundancies-s exprs))
+  (define replacements (map first redundancies))
+
+  (define stripped
+    (foldl (lambda (expr result)
+             (let ([keep      #t]
+                   [def-names (names-in expr)])
+               (for-each (lambda (def-name)
+                           (when (member def-name replacements)
+                             (set! keep #f)))
+                         def-names)
+               (if keep
+                   (append result (list expr))
+                   result)))
+           '()
+           exprs))
+
+  (read-benchmark (replace-strings-s (format-symbols stripped)
+                                     (map (curry map ~a) redundancies))))
+
+(define (norm-defs)
+  (show (norm-defs-s (read-benchmark (port->string (current-input-port))))))
+
+(define (norm-defs-s exprs)
+  (let ([norm (strip-redundancies-s exprs)])
+    (if (equal? exprs norm)
+        norm
+        (norm-defs-s norm))))
+
+(define (defs-to-sig x)
+  (mk-signature-s (format-symbols (mk-final-defs-s (string-split x "\n")))))
+
+(define (mk-final-defs)
+  (show (mk-final-defs-s (port->lines (current-input-port)))))
+
+(define (mk-final-defs-s given-files)
+  (prepare-s (mk-defs-s given-files)))
+
+(define (with-temp-file data proc)
+  (let* ([f      (make-temporary-file "te-benchmark-temp-~a")]
+         [result void])
+    (display-to-file data f #:exists 'replace)
+    (set! result (proc f))
+    (delete-file f)
+    result))
+
+(define (dump x) (write x (current-error-port)))
+
+(define (mk-signature-s input)
+  (with-temp-file input (lambda (f)
+                          (run-pipeline/out `(tip ,f --haskell-spec)))))
+
+(define (mk-signature)
+  (display (mk-signature-s (port->string (current-input-port)))))
+
+(define (parameterize-env vars body)
+  (let* ([old-env (environment-variables-copy (current-environment-variables))]
+         [new-env (foldl (lambda (nv env)
+                           (environment-variables-set! env (first  nv)
+                                                           (second nv))
+                           env)
+                         old-env
+                        vars)])
+    (parameterize ([current-environment-variables new-env])
+      (body))))
+
+(define (symbols-from-file f)
+  (symbols-of-theorems-s (read-benchmark (file->string f))))
+
+(define (function-name-to-haskell n)
+  n)
+
+(define (types-from-defs)
+  (define (format-benchmark-symbols)
+    (define (benchmark-types x)
+      (remove-duplicates (symbols-in (expression-types (read-benchmark x)))))
+
+    (format-symbols (symbols-in (benchmark-types
+                                 (port->string (current-input-port))))))
+
+  (displayln (format-benchmark-symbols)))
+
+(define (full-haskell-package-s str dir)
+  (define hs (mk-signature-s str))
+
+  ; Remove the generated signature, as it's incompatible with QuickSpec 1, and
+  ; remove the import of QuickSpec 2
+  (define patched
+    (filter (lambda (line)
+              (not (string-contains? line "import qualified QuickSpec as QS")))
+            (takef (string-split hs "\n")
+                   (lambda (line)
+                     (not (string-prefix? line "sig ="))))))
+
+  (make-directory (string-append dir "/src"))
+
+  (display-to-file (string-join patched "\n")
+                   (string-append dir "/src/A.hs"))
+  (display-to-file "-- Initial tip-benchmark-sig.cabal generated by cabal init.  For further
+-- documentation, see http://haskell.org/cabal/users-guide/
+
+name:                tip-benchmark-sig
+version:             0.1.0.0
+synopsis:            Auto-generated package for theory exploration
+-- description:
+homepage:            http://example.org
+license:             PublicDomain
+license-file:        LICENSE
+author:              Chris Warburton
+maintainer:          chriswarbo@gmail.com
+-- copyright:
+category:            Testing
+build-type:          Simple
+-- extra-source-files:
+cabal-version:       >=1.10
+
+library
+  exposed-modules:     A
+  -- other-modules:
+  -- other-extensions:
+  build-depends:       base >=4.8
+                     , quickspec
+                     , QuickCheck
+                     , testing-feat
+  hs-source-dirs:      src
+  default-language:    Haskell2010
+"
+                   (string-append dir "/tip-benchmark-sig.cabal"))
+
+  (display-to-file "Auto-generated from https://github.com/tip-org/benchmarks, the same LICENSE applies"
+                   (string-append dir "/LICENSE")))
+
+(define (full-haskell-package)
+  (full-haskell-package-s (port->string (current-input-port))
+                          (getenv "OUT_DIR")))
+
 (module+ test
+  (require rackunit)
+
+  (define nat-def      '(declare-datatypes () ((Nat (Z) (S (p Nat))))))
+
+  (define constructorZ '(define-fun constructorZ ()              Nat Z))
+
+  (define constructorS '(define-fun constructorS ((local-p Nat)) Nat (S local-p)))
+
+  (define redundancies `(,constructorZ
+                         ,constructorS
+                         (define-fun redundantZ1 () Nat Z)
+                         (define-fun redundantZ2 () Nat Z)
+                         (define-fun redundantZ3 () Nat Z)))
+
+  (check-equal? (symbols-in '(lambda ((local1 Nat) (local2 (List Nat)))
+                               (free1 local1)))
+                '(free1))
+
+  (check-equal? (concat-map (lambda (x) (list x x x))
+                            '(fee fi fo fum))
+                '(fee fee fee fi fi fi fo fo fo fum fum fum))
+
+  (check-equal? (add-constructor-funcs (list nat-def))
+                `(,nat-def ,constructorZ ,constructorS))
+
+  (for-each (lambda (f)
+              (check-equal? (map ~a (mk-defs-s (string-split f "\n")))
+                            (string-split (string-trim (pipe f mk-defs)) "\n")))
+            '("modules/tip-benchmarks/benchmarks/grammars/simp_expr_unambig1.smt2"
+              "modules/tip-benchmarks/benchmarks/grammars/simp_expr_unambig4.smt2"
+              "modules/tip-benchmarks/benchmarks/tip2015/sort_StoogeSort2IsSort.smt2"))
+
+  (check-equal? (trim '((hello)))                      '((hello)))
+  (check-equal? (trim '((foo) (assert-not bar) (baz))) '((foo) (baz)))
+  (check-equal? (trim '((foo) (check-sat) (bar)))      '((foo) (bar)))
+
   (define f
     "modules/tip-benchmarks/benchmarks/grammars/simp_expr_unambig3.smt2")
 
@@ -716,19 +1031,8 @@
     ('one-liners one-liners)
     ('result     result)
     ('all-result all-result))
-   (check-equal? all-result result)))
+   (check-equal? all-result result))
 
-; Check each function declaration syntax
-
-(define (ss-eq? x y)
-  (cond ([symbol? x]
-         (ss-eq? (symbol->string x) y))
-        ([symbol? y]
-         (ss-eq?  x (symbol->string y)))
-        (#t
-         (equal? x y))))
-
-(module+ test
   (check-true  (ss-eq? 'foo  'foo))
   (check-true  (ss-eq? 'foo  "foo"))
   (check-true  (ss-eq? "foo" 'foo))
@@ -737,30 +1041,8 @@
   (check-false (ss-eq? 'foo  'bar))
   (check-false (ss-eq? 'foo  "bar"))
   (check-false (ss-eq? "foo" 'bar))
-  (check-false (ss-eq? "foo" "bar")))
+  (check-false (ss-eq? "foo" "bar"))
 
-(define (find-sub-exprs f x)
-  (match x
-    [(list 'define-fun name _ _ _)                          (if (ss-eq? name f)
-                                                                (list x)
-                                                                '())]
-    [(list 'define-fun (list 'par _ (list name _ _ _)))     (if (ss-eq? name f)
-                                                                (list x)
-                                                                '())]
-    [(list 'define-fun-rec   name _ _ _)                    (if (ss-eq? name f)
-                                                                (list x)
-                                                                '())]
-    [(list 'define-fun-rec (list 'par _ (list name _ _ _))) (if (ss-eq? name f)
-                                                                (list x)
-                                                                '())]
-    [(list 'define-funs-rec _ _)       (if (member f (names-in x) ss-eq?)
-                                           (list x)
-                                           '())]
-    [(cons h t)                        (append (find-sub-exprs f h)
-                                               (find-sub-exprs f t))    ]
-    [_                                 '()                              ]))
-
-(module+ test
   (check-equal? (find-sub-exprs "constructorZ"
                                 `(,nat-def ,constructorZ ,constructorS))
                 (list constructorZ))
@@ -785,18 +1067,8 @@
                 ("insert2"      "recursive")
                 ("zsplitAt"     "parameterised")
                 ("ztake"        "parameterised recursive")
-                ("stooge2sort2" "mutually recursive")))))
+                ("stooge2sort2" "mutually recursive"))))
 
-(define (as-str x)
-  (if (string? x)
-      x
-      (symbol->string x)))
-
-(define (get-def-s x input)
-  (append (find-sub-exprs x (read-benchmark input))
-          (get-con-def-s x input)))
-
-(module+ test
   (define test-files
     (map (curry string-append benchmark-dir)
                       '("/grammars/simp_expr_unambig1.smt2"
@@ -815,8 +1087,8 @@
                       "tip2015/relaxedprefix_correct.smt2"
                       "tip2015/propositional_AndIdempotent.smt2"
                       "tip2015/propositional_AndImplication.smt2"))]
-           [q (format-symbols (qual-all-s fs))]
-           [s (format-symbols (symbols-of-theorems-s (read-benchmark q)))])
+           [q (qual-all-s fs)]
+           [s (format-symbols (symbols-of-theorems-s q))])
 
       (check-true (string-contains? s "or2-sentinel")
                   "Found an or2 symbol")
@@ -955,15 +1227,8 @@
         ('norm-shape norm-shape)
         ('message    "Duplicate removal kept definition intact"))
        (check-equal? def-shape norm-shape))))
-    (take (shuffle subset) 5)))
+    (take (shuffle subset) 5))
 
-(define (rec-names)
-  (show (rec-names-s (read-benchmark (port->string (current-input-port))))))
-
-(define (rec-names-s exprs)
-  (names-in exprs))
-
-(module+ test
   (check-equal? (names-in '(fee fi fo fum))
                 '())
   (check-equal? (names-in '(define-funs-rec
@@ -984,183 +1249,55 @@
                                           (stooge1sort2 (stooge1sort1 (stooge1sort2 x)))))))))
                               (match (zsplitAt (div (zlength x) 3) x)
                                 (case (Pair2 ys zs) (append ys (stoogesort zs)))))))
-                '(stooge1sort2 stoogesort stooge1sort1)))
+                '(stooge1sort2 stoogesort stooge1sort1))
 
-(define (add-check-sat x)
-  ; Add '(check-sat)' as the last line to appease tip-tools
-  (append x '((check-sat))))
-
-(define (remove-suffices x)
-  ; Removes '-sentinel' suffices. Do this after all other string-based
-  ; transformations, since the sentinels prevent us messing with, say, the
-  ; symbol "plus2", when we only wanted to change the symbol "plus"
-  (read-benchmark (string-replace (format-symbols x)
-                                  "-sentinel"
-                                  "")))
-
-(module+ test
   (define qualified-example
     '((define-fun (par (a b)
-        (foo.smt2baz-sentinel  ((x Nat)) Nat
-          X)))
+                       (foo.smt2baz-sentinel  ((x Nat)) Nat
+                                              X)))
       (define-fun
-         foo.smt2quux-sentinel ()        Bool
-          (hello world))
+        foo.smt2quux-sentinel ()        Bool
+        (hello world))
       (define-fun-rec (par (a)
-        (bar.smt2quux-sentinel ()        Foo
-          (foo bar))))))
+                           (bar.smt2quux-sentinel ()        Foo
+                                                  (foo bar))))))
 
   (check-equal? (remove-suffices qualified-example)
                 '((define-fun (par (a b)
-                    (foo.smt2baz  ((x Nat)) Nat
-                      X)))
+                                   (foo.smt2baz  ((x Nat)) Nat
+                                                 X)))
                   (define-fun
-                     foo.smt2quux ()        Bool
-                      (hello world))
+                    foo.smt2quux ()        Bool
+                    (hello world))
                   (define-fun-rec (par (a)
-                    (bar.smt2quux ()        Foo
-                      (foo bar)))))))
+                                       (bar.smt2quux ()        Foo
+                                                     (foo bar))))))
 
-(define (name-replacements-for x)
-  ; Unqualify any names which only have one definition
-  (define nr-names (rec-names-s x))
-
-  (foldl (lambda (sym rest)
-           (define name (~a sym))
-           (if (string-contains? name ".smt2")
-               (let* ([unsent (substring name
-                                         0
-                                         (- (string-length name)
-                                            (string-length "-sentinel")))]
-                      [unqual (string-join (cdr (string-split unsent ".smt2"))
-                                           ".smt2")]
-                      [count  (- (length (string-split (format-symbols nr-names)
-                                                       (string-append ".smt2"
-                                                                      unqual
-                                                                      "-sentinel")))
-                                 1)])
-                 (if (equal? count 1)
-                     (cons (list name unqual) rest)
-                     rest))
-               rest))
-         '()
-         nr-names))
-
-(module+ test
   (check-equal? (map (curry map ~a)
                      (name-replacements-for qualified-example))
-                '(("foo.smt2baz-sentinel" "baz"))))
+                '(("foo.smt2baz-sentinel" "baz")))
 
-(define (remove-prefices x)
-  ; Removes unambiguous filename prefices
-  (read-benchmark (foldl (lambda (rep str)
-                           (string-replace str (first rep) (second rep)))
-                         (format-symbols x)
-                         (name-replacements-for x))))
-
-(module+ test
   (check-equal? (remove-prefices qualified-example)
                 (cons '(define-fun (par (a b) (baz ((x Nat)) Nat X)))
-                      (cdr qualified-example))))
+                      (cdr qualified-example)))
 
-(define (prepare-s x)
-  ;(tag-types
-    ;(tag-constructors
-      ;(add-constructor-funcs
-  (add-check-sat (remove-suffices (remove-prefices x))))
-
-(define (prepare)
-  (show (prepare-s (read-benchmark (port->string (current-input-port))))))
-
-(module+ test
   (check-equal? (prepare-s qualified-example)
                 '((define-fun (par (a b)
-                    (baz  ((x Nat)) Nat
-                      X)))
+                                   (baz  ((x Nat)) Nat
+                                         X)))
                   (define-fun
-                     foo.smt2quux ()        Bool
-                      (hello world))
+                    foo.smt2quux ()        Bool
+                    (hello world))
                   (define-fun-rec (par (a)
-                    (bar.smt2quux ()        Foo
-                      (foo bar))))
-                  (check-sat))))
+                                       (bar.smt2quux ()        Foo
+                                                     (foo bar))))
+                  (check-sat)))
 
-(define (all-names)
-  (show (map (lambda (line)
-               (join-spaces (names-in (read-benchmark line))))
-             (port->lines (current-input-port)))))
-
-(define (find-redundancies)
-  (show (map (lambda (x)
-               (format "~a\t~a" (first x) (second x)))
-             (find-redundancies-s (read-benchmark (port->string (current-input-port)))))))
-
-(define (find-redundancies-s exprs)
-  (define (mk-output expr so-far name-replacements)
-    (define (zip xs ys)
-      (if (empty? xs)
-          null
-          (if (empty? ys)
-              null
-              (cons (list (car xs) (car ys))
-                    (zip  (cdr xs) (cdr ys))))))
-
-    (let* ([norm-line (norm     expr)]
-           [names     (names-in expr)]
-           [existing  (filter (lambda (x)
-                                (equal? norm-line (second x)))
-                              so-far)])
-      (if (empty? existing)
-          (list (cons (list names norm-line) so-far)
-                name-replacements)
-          (list so-far
-                (append (zip names (first (car existing)))
-                        name-replacements)))))
-
-  (define (remove-redundancies exprs so-far name-replacements)
-    (if (empty? exprs)
-        name-replacements
-        (let* ([result (mk-output (first exprs) so-far name-replacements)]
-               [new-sf (first  result)]
-               [new-nr (second result)])
-          (remove-redundancies (cdr exprs) new-sf new-nr))))
-
-  (remove-redundancies exprs null null))
-
-(define (set-equal? x y p)
-  (equal? (sort x p) (sort y p)))
-
-(module+ test
   (check-equal? (list->set (find-redundancies-s redundancies))
                 (list->set '((redundantZ1 constructorZ)
                              (redundantZ2 constructorZ)
-                             (redundantZ3 constructorZ)))))
+                             (redundantZ3 constructorZ))))
 
-(define (symbols-of-theorems-s expr)
-  (filter (lambda (s)
-            (not (member s '(true-sentinel
-                             false-sentinel
-                             or-sentinel
-                             ite-sentinel))))
-          (benchmark-symbols-expr expr)))
-
-(define (symbols-of-theorems)
-  (displayln (string-join (map ~a (symbols-of-theorems-s
-                                   (read-benchmark
-                                    (port->string (current-input-port)))))
-                          "\n")))
-
-(define (canonical-functions)
-  (show (norm (read-benchmark (port->string (current-input-port))))))
-
-(define (pipe s f)
-  (define o (open-output-string))
-  (parameterize ([current-input-port  (open-input-string s)]
-                 [current-output-port o])
-    (f))
-  (get-output-string o))
-
-(module+ test
   (define (checkNormal kind def expected)
     (define canon
       (norm def))
@@ -1282,46 +1419,8 @@
                           (defining-function-1
                             (filter (lambda ((normalise-var-1 Int))
                                       (> normalise-var-1 normalise-var-3))
-                                    normalise-var-2))))))
+                                    normalise-var-2)))))
 
-(define (get-con-def-s name str)
-  (remove-duplicates (defs-of-src (string-split str "\n") name)))
-
-(define (qualify-given)
-  (define given
-    (read-benchmark (port->string (current-input-port))))
-
-  (define name
-    (string-replace (getenv "NAME") "'" "_tick_"))
-
-  (show (qualify name given)))
-
-(define (theorems-from-symbols-s given-symbols)
-  (define (acceptable-theorem thm-path)
-    (null? (remove* given-symbols
-                    (symbols-of-theorem thm-path))))
-
-  (filter acceptable-theorem (theorem-files)))
-
-(define (theorems-from-symbols)
-  (show (theorems-from-symbols-s (port->lines (current-input-port)))))
-
-(define (replace-strings-s str reps)
-  ; For each (src dst) in reps, replaces src with dst in str
-  (foldl (lambda (pair so-far)
-           (string-replace so-far (as-str (first  pair))
-                                  (as-str (second pair))))
-         str
-         reps))
-
-(define (replace-strings file)
-  (replace-strings-s (port->string (current-input-port))
-                     (map (lambda (line)
-                            (string-split line "\t"))
-                          (filter non-empty-string?
-                                  (file->lines file)))))
-
-(module+ test
   (check-equal? (replace-strings-s "hello mellow yellow fellow"
                                    '(("lo" "LO") ("el" "{{el}}")))
                 "h{{el}}LO m{{el}}LOw y{{el}}LOw f{{el}}LOw")
@@ -1329,44 +1428,11 @@
   (check-equal? (list->set (read-benchmark
                             (replace-strings-s (format-symbols      redundancies)
                                                (find-redundancies-s redundancies))))
-                (list->set `(,constructorZ ,constructorS))))
+                (list->set `(,constructorZ ,constructorS)))
 
-(define (strip-redundancies-s exprs)
-  ; Remove alpha-equivalent expressions from exprs, according to reps
-  (define redundancies (find-redundancies-s exprs))
-  (define replacements (map first redundancies))
-
-  (define stripped
-    (foldl (lambda (expr result)
-             (let ([keep      #t]
-                   [def-names (names-in expr)])
-               (for-each (lambda (def-name)
-                           (when (member def-name replacements)
-                             (set! keep #f)))
-                         def-names)
-               (if keep
-                   (append result (list expr))
-                   result)))
-           '()
-           exprs))
-
-  (read-benchmark (replace-strings-s (format-symbols stripped)
-                                     (map (curry map ~a) redundancies))))
-
-(module+ test
   (check-equal? (list->set (strip-redundancies-s redundancies))
-                (list->set (list constructorZ constructorS))))
+                (list->set (list constructorZ constructorS)))
 
-(define (norm-defs)
-  (show (norm-defs-s (read-benchmark (port->string (current-input-port))))))
-
-(define (norm-defs-s exprs)
-  (let ([norm (strip-redundancies-s exprs)])
-    (if (equal? exprs norm)
-        norm
-        (norm-defs-s norm))))
-
-(module+ test
   (let* ([given '((define-fun min1 ((x Int) (y Int)) Int (ite (<= x y) x y))
                   (define-fun min2 ((a Int) (b Int)) Int (ite (<= a b) a b)))]
          [defs  (norm-defs-s given)]
@@ -1394,12 +1460,7 @@
      (('defs    defs)
       ('syms    syms)
       ('message "References to discarded duplicates are replaced"))
-     (check-not-equal? (member 'min1 syms) #f))))
-
-(define (defs-to-sig x)
-  (mk-signature-s (format-symbols (mk-final-defs-s (string-split x "\n")))))
-
-(module+ test
+     (check-not-equal? (member 'min1 syms) #f)))
 
   (define (in-temp-dir f)
     (let* ([dir    (make-temporary-file "te-benchmark-temp-test-data-~a"
@@ -1557,56 +1618,19 @@
                   ('sig     sig)
                   ('message "Made Haskell for random files"))
                  (check-true (string-contains? sig "QuickSpec"))))
-              '(1 2 4 8))))
+              '(1 2 4 8)))
 
-(define (mk-final-defs)
-  (show (mk-final-defs-s (port->lines (current-input-port)))))
-
-(define (mk-final-defs-s given-files)
-  (prepare-s (mk-defs-s given-files)))
-
-(define (with-temp-file data proc)
-  (let* ([f      (make-temporary-file "te-benchmark-temp-~a")]
-         [result void])
-    (display-to-file data f #:exists 'replace)
-    (set! result (proc f))
-    (delete-file f)
-    result))
-
-(module+ test
   (check-equal? (with-temp-file "foo\nbar\nbaz"
                                 file->string)
-                "foo\nbar\nbaz"))
+                "foo\nbar\nbaz")
 
-(define (dump x) (write x (current-error-port)))
-
-(define (mk-signature-s input)
-  (with-temp-file input (lambda (f)
-                          (run-pipeline/out `(tip ,f --haskell-spec)))))
-
-(define (mk-signature)
-  (display (mk-signature-s (port->string (current-input-port)))))
-
-(define (parameterize-env vars body)
-  (let* ([old-env (environment-variables-copy (current-environment-variables))]
-         [new-env (foldl (lambda (nv env)
-                           (environment-variables-set! env (first  nv)
-                                                           (second nv))
-                           env)
-                         old-env
-                        vars)])
-    (parameterize ([current-environment-variables new-env])
-      (body))))
-
-(module+ test
   (let ([a (getenv "HOME")]
         [b (parameterize-env '([#"HOME" #"foo"])
                              (lambda () (getenv "HOME")))]
         [c (getenv "HOME")])
     (check-equal? a c)
-    (check-equal? b "foo")))
+    (check-equal? b "foo"))
 
-(module+ test
   (test-case "Module tests"
     (for-each (lambda (n)
       (define files
@@ -1655,9 +1679,8 @@
                (('out     out)
                 ('message "Module imported successfully"))
                (check-false (string-contains? out "class Functor")))))))))
-      '(1 3 5))))
+      '(1 3 5)))
 
-(module+ test
   (define fresh (take benchmark-files 10))
 
   (define regressions (map (curry string-append benchmark-dir)
@@ -1681,9 +1704,8 @@
                              (and (not (empty? sym))
                                   (not (string-contains? (~a sym) name2))))
                            syms))))
-    (append regressions fresh)))
+    (append regressions fresh))
 
-(module+ test
   (in-temp-dir (lambda (out-dir)
                  (define files (take benchmark-files 5))
 
@@ -1717,9 +1739,8 @@
                                        ; If the import fails, we're stuck with
                                        ; the Prelude, which contains classes
                                        (check-false (string-contains? out
-                                                                      "class Functor"))))))))
+                                                                      "class Functor")))))))
 
-(module+ test
   (define (names-match src expr expect)
     (define names (rec-names-s expr))
 
@@ -1793,12 +1814,8 @@
                                (stooge2sort2 (stooge2sort1 (stooge2sort2 x)))))))))
                    (match (zsplitAt (div (zlength x) 3) x)
                      (case (Pair2 ys zs) (append ys (stoogesort2 zs))))))
-               '(stooge2sort2 stoogesort2 stooge2sort1)))
+               '(stooge2sort2 stoogesort2 stooge2sort1))
 
-(define (symbols-from-file f)
-  (symbols-of-theorems-s (read-benchmark (file->string f))))
-
-(module+ test
   (define (contains lst elem)
     (not (empty? (filter (curry equal? elem)
                          lst))))
@@ -1872,73 +1889,8 @@
 
   (let* ([f    "modules/tip-benchmarks/benchmarks/tip2015/propositional_AndCommutative.smt2"]
          [syms (symbols-from-file f)])
-    (should-have syms 'function '(or2))))
+    (should-have syms 'function '(or2)))
 
-(define (function-name-to-haskell n)
-  n)
-
-(define (types-from-defs)
-  (define (format-benchmark-symbols)
-    (format-symbols (symbols-in (benchmark-types
-                                 (port->string (current-input-port))))))
-
-  (displayln (format-benchmark-symbols)))
-
-(module+ test
   (let ([f "modules/tip-benchmarks/benchmarks/tip2015/nat_alt_mul_comm.smt2"])
     (check-equal? (string-trim (pipe (file->string f) types-from-defs))
                   "Nat")))
-
-(define (full-haskell-package-s str dir)
-  (define hs (pipe str mk-signature))
-
-  ; Remove the generated signature, as it's incompatible with QuickSpec 1, and
-  ; remove the import of QuickSpec 2
-  (define patched
-    (filter (lambda (line)
-              (not (string-contains? line "import qualified QuickSpec as QS")))
-            (takef (string-split hs "\n")
-                   (lambda (line)
-                     (not (string-prefix? line "sig ="))))))
-
-  (make-directory (string-append dir "/src"))
-
-  (display-to-file (string-join patched "\n")
-                   (string-append dir "/src/A.hs"))
-  (display-to-file "-- Initial tip-benchmark-sig.cabal generated by cabal init.  For further
--- documentation, see http://haskell.org/cabal/users-guide/
-
-name:                tip-benchmark-sig
-version:             0.1.0.0
-synopsis:            Auto-generated package for theory exploration
--- description:
-homepage:            http://example.org
-license:             PublicDomain
-license-file:        LICENSE
-author:              Chris Warburton
-maintainer:          chriswarbo@gmail.com
--- copyright:
-category:            Testing
-build-type:          Simple
--- extra-source-files:
-cabal-version:       >=1.10
-
-library
-  exposed-modules:     A
-  -- other-modules:
-  -- other-extensions:
-  build-depends:       base >=4.8
-                     , quickspec
-                     , QuickCheck
-                     , testing-feat
-  hs-source-dirs:      src
-  default-language:    Haskell2010
-"
-                   (string-append dir "/tip-benchmark-sig.cabal"))
-
-  (display-to-file "Auto-generated from https://github.com/tip-org/benchmarks, the same LICENSE applies"
-                   (string-append dir "/LICENSE")))
-
-(define (full-haskell-package)
-  (full-haskell-package-s (port->string (current-input-port))
-                          (getenv "OUT_DIR")))
