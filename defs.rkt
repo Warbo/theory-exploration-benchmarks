@@ -13,7 +13,14 @@
 (provide theorems-from-symbols)
 (provide types-from-defs)
 
-(define benchmark-dir "modules/tip-benchmarks/benchmarks")
+(define benchmark-dir
+  "modules/tip-benchmarks/benchmarks")
+
+(define benchmark-file
+  (curry string-append benchmark-dir "/"))
+
+(define benchmark-files
+  (curry map benchmark-file))
 
 (define (symbols-in exp)
   (define native-symbols
@@ -1000,16 +1007,16 @@ library
   (for-each (lambda (f)
               (check-equal? (map ~a (mk-defs-s (string-split f "\n")))
                             (string-split (string-trim (pipe f mk-defs)) "\n")))
-            '("modules/tip-benchmarks/benchmarks/grammars/simp_expr_unambig1.smt2"
-              "modules/tip-benchmarks/benchmarks/grammars/simp_expr_unambig4.smt2"
-              "modules/tip-benchmarks/benchmarks/tip2015/sort_StoogeSort2IsSort.smt2"))
+            (benchmark-files '("grammars/simp_expr_unambig1.smt2"
+                               "grammars/simp_expr_unambig4.smt2"
+                               "tip2015/sort_StoogeSort2IsSort.smt2")))
 
   (check-equal? (trim '((hello)))                      '((hello)))
   (check-equal? (trim '((foo) (assert-not bar) (baz))) '((foo) (baz)))
   (check-equal? (trim '((foo) (check-sat) (bar)))      '((foo) (bar)))
 
   (define f
-    "modules/tip-benchmarks/benchmarks/grammars/simp_expr_unambig3.smt2")
+    (string-append benchmark-dir "/grammars/simp_expr_unambig3.smt2"))
 
   (define one-liners
     (qual-all-s (string-split f "\n")))
@@ -1070,23 +1077,21 @@ library
                 ("stooge2sort2" "mutually recursive"))))
 
   (define test-files
-    (map (curry string-append benchmark-dir)
-                      '("/grammars/simp_expr_unambig1.smt2"
-                        "/grammars/simp_expr_unambig4.smt2"
-                        "/tip2015/sort_StoogeSort2IsSort.smt2")))
+    (benchmark-files '("grammars/simp_expr_unambig1.smt2"
+                       "grammars/simp_expr_unambig4.smt2"
+                       "tip2015/sort_StoogeSort2IsSort.smt2")))
 
   (define test-defs
     (mk-defs-s test-files))
 
   (test-case "Real symbols qualified"
-    (let* ([fs (map (curry string-append benchmark-dir "/")
-                    '("tip2015/propositional_AndCommutative.smt2"
-                      "tip2015/propositional_Sound.smt2"
-                      "tip2015/propositional_Okay.smt2"
-                      "tip2015/regexp_RecSeq.smt2"
-                      "tip2015/relaxedprefix_correct.smt2"
-                      "tip2015/propositional_AndIdempotent.smt2"
-                      "tip2015/propositional_AndImplication.smt2"))]
+    (let* ([fs (benchmark-files '("tip2015/propositional_AndCommutative.smt2"
+                                  "tip2015/propositional_Sound.smt2"
+                                  "tip2015/propositional_Okay.smt2"
+                                  "tip2015/regexp_RecSeq.smt2"
+                                  "tip2015/relaxedprefix_correct.smt2"
+                                  "tip2015/propositional_AndIdempotent.smt2"
+                                  "tip2015/propositional_AndImplication.smt2"))]
            [q (qual-all-s fs)]
            [s (format-symbols (symbols-of-theorems-s q))])
 
@@ -1588,9 +1593,8 @@ library
 
   (test-case "Multiple files"
     (define files
-      (string-join (map (curry string-append benchmark-dir "/")
-                        '("tip2015/tree_SwapAB.smt2"
-                          "tip2015/list_z_count_nub.smt2"))
+      (string-join (benchmark-files '("tip2015/tree_SwapAB.smt2"
+                                      "tip2015/list_z_count_nub.smt2"))
                    "\n"))
 
     (define sig
@@ -1601,12 +1605,12 @@ library
       ('sig     sig))
      (check-true (string-contains? sig "local"))))
 
-  (define benchmark-files
+  (define all-benchmark-files
     (shuffle (theorem-files)))
 
   (test-case "Random files"
     (define (files n)
-      (string-join (take benchmark-files n) "\n"))
+      (string-join (take all-benchmark-files n) "\n"))
 
     (for-each (lambda (n)
                 (define sig
@@ -1634,7 +1638,7 @@ library
   (test-case "Module tests"
     (for-each (lambda (n)
       (define files
-        (string-join (take benchmark-files n) "\n"))
+        (string-join (take all-benchmark-files n) "\n"))
 
       (in-temp-dir (lambda (dir)
         (define out-dir (path->string dir))
@@ -1681,11 +1685,11 @@ library
                (check-false (string-contains? out "class Functor")))))))))
       '(1 3 5)))
 
-  (define fresh (take benchmark-files 10))
+  (define fresh (take all-benchmark-files 10))
 
-  (define regressions (map (curry string-append benchmark-dir)
-                           '("/tip2015/list_elem_map.smt2"
-                             "/tip2015/propositional_AndCommutative.smt2")))
+  (define regressions
+    (benchmark-files '("tip2015/list_elem_map.smt2"
+                       "tip2015/propositional_AndCommutative.smt2")))
 
   (for-each (lambda (file)
     (define name  (last (string-split file "/")))
@@ -1707,7 +1711,7 @@ library
     (append regressions fresh))
 
   (in-temp-dir (lambda (out-dir)
-                 (define files (take benchmark-files 5))
+                 (define files (take all-benchmark-files 5))
 
                  (parameterize-env `([#"FILES"   ,(string->bytes/utf-8
                                                    (string-join files "\n"))]
@@ -1838,7 +1842,7 @@ library
                  (check-false (contains syms sym))))
               xs))
 
-  (let* ([f    "modules/tip-benchmarks/benchmarks/tip2015/int_right_distrib.smt2"]
+  (let* ([f    (string-append benchmark-dir "/tip2015/int_right_distrib.smt2")]
          [syms (symbols-from-file f)])
 
     (should-have syms 'constructor '(Pos Neg Z S P N))
