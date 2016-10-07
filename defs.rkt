@@ -71,25 +71,6 @@
                                                     (expression-constructors b))]
       [_                                    null])))
 
-(define (expression-destructors exp)
-  (let* ((destructor-symbols (lambda (c)
-           (match c
-             [(cons name vars) (map car vars)]
-             [_                (error "Unexpected destructor form")])))
-
-         (destructors-from-def (lambda (decs)
-           (symbols-in (foldl (lambda (dec got)
-                                (append got (match dec
-                                              [(cons type defs) (symbols-in (map destructor-symbols defs))]
-                                              [_                (error "Unexpected type def")])))
-                              null
-                              decs)))))
-    (match exp
-      [(list 'declare-datatypes given decs) (destructors-from-def decs)]
-      [(cons a b)                           (append (expression-destructors a)
-                                                    (expression-destructors b))]
-      [_                                    null])))
-
 (define (expression-types exp)
   (define (constructor-types defs)
     (match defs
@@ -119,6 +100,25 @@
          [_                                            null]))
 
 (define (expression-symbols exp)
+  (define (expression-destructors exp)
+    (let* ((destructor-symbols (lambda (c)
+                                 (match c
+                                   [(cons name vars) (map car vars)]
+                                   [_                (error "Unexpected destructor form")])))
+
+           (destructors-from-def (lambda (decs)
+                                   (symbols-in (foldl (lambda (dec got)
+                                                        (append got (match dec
+                                                                      [(cons type defs) (symbols-in (map destructor-symbols defs))]
+                                                                      [_                (error "Unexpected type def")])))
+                                                      null
+                                                      decs)))))
+      (match exp
+        [(list 'declare-datatypes given decs) (destructors-from-def decs)]
+        [(cons a b)                           (append (expression-destructors a)
+                                                      (expression-destructors b))]
+        [_                                    null])))
+
   (define (expression-funs exp)
     (define (fun-rec-expressions decs defs)
       (match (list decs defs)
@@ -247,24 +247,6 @@
 (define (symbols-of-theorem path)
   (benchmark-symbols (read-benchmark (file->string path))))
 
-(define (find-defs sym given ty-decs)
-  (define (any-of f xs)
-    (match xs
-      [(cons a b) (or (f a) (any-of f b))]
-      [_          #f]))
-
-  (map (lambda (dec) (list 'declare-datatypes given (list dec)))
-       (filter (lambda (ty-dec)
-                 (any-of (lambda (con-dec)
-                           (or (equal? (symbol->string (car con-dec))
-                                       sym)
-                               (any-of (lambda (des-dec)
-                                         (equal? (symbol->string (car des-dec))
-                                                 sym))
-                                       (cdr con-dec))))
-                         (cdr ty-dec)))
-               ty-decs)))
-
 (define (files-with given)
   (filter (lambda (path)
             (member given (map symbol->string (symbols-of-theorem path))))
@@ -279,6 +261,78 @@
   (remove-duplicates (expression-symbols expr)))
 
 (define (norm expr)
+  (define (norm-let bindings body)
+    (if (empty? bindings)
+        (list bindings (norm body))
+        (let* ([binding   (first  bindings)]
+               [name      (first  binding)]
+               [value     (second binding)]
+               [new-value (norm value)]
+               [rec       (norm-let (cdr bindings) body)]
+               [new-binds (first  rec)]
+               [new-body  (second rec)]
+               [new-name  (next-var (list new-body new-value new-binds))])
+          (list (cons (list new-name new-value) new-binds)
+                (replace-in name new-name new-body)))))
+
+  (define (norm-params ps def)
+    (if (empty? ps)
+        (match def
+          [           (list name        args        return body)
+                      (let* ([fun (norm-func args body)])
+                        (list ps (list norm-func-1 (first fun) return (replace-in name
+                                                                                  norm-func-1
+                                                                                  (second fun)))))]
+          [_ (error "Unexpected parameterised function definition" def)])
+        (let* ([p   (car ps)]
+               [rec (norm-params (cdr ps) def)]
+               [v   (next-var rec)])
+          (list (cons v (first rec))
+                (replace-in p v (second rec))))))
+
+  (define (norm-type-params ps decs)
+    (if (empty? ps)
+        (list ps decs)
+        (let* ([rec  (norm-type-params (cdr ps) decs)]
+               [name (inc-name var-prefix (max-name var-prefix rec))])
+          (list (cons name (first rec))
+                (replace-in (car ps)
+                            name
+                            (second rec))))))
+
+  (define (norm-types decs)
+    (define (norm-type dec rest)
+      (define (norm-constructors cs rest)
+        (define (norm-constructor c rest)
+          (define constructor-prefix
+            "normalise-constructor-")
+
+          (define (norm-destructors ds rest)
+            (define  destructor-prefix "normalise-destructor-")
+
+            (if (empty? ds)
+                ds
+                (let* ([rec  (norm-destructors (cdr ds) rest)]
+                       [name (inc-name destructor-prefix (max-name destructor-prefix (list rest rec)))])
+                  (cons (cons name (cdr (car ds))) rec))))
+
+          (let ([name (inc-name constructor-prefix (max-name constructor-prefix rest))])
+            (cons name (norm-destructors (cdr c) rest))))
+
+        (if (empty? cs)
+            cs
+            (let ([rec (norm-constructors (cdr cs) rest)])
+              (cons (norm-constructor (car cs) (list rest rec)) rec))))
+
+      (let ([name (inc-name type-prefix (max-name type-prefix rest))]
+            [cs   (norm-constructors (cdr dec) rest)])
+        (cons name (replace-in (car dec) name cs))))
+
+    (if (empty? decs)
+        decs
+        (let ([rec (norm-types (cdr decs))])
+          (cons (norm-type (car decs) rec) rec))))
+
   (match expr
     [(  list 'define-fun-rec (list 'par p         def))
      (let ([rec (norm-params p def)])
@@ -324,20 +378,6 @@
 
     [_ expr]))
 
-(define (norm-let bindings body)
-  (if (empty? bindings)
-      (list bindings (norm body))
-      (let* ([binding   (first  bindings)]
-             [name      (first  binding)]
-             [value     (second binding)]
-             [new-value (norm value)]
-             [rec       (norm-let (cdr bindings) body)]
-             [new-binds (first  rec)]
-             [new-body  (second rec)]
-             [new-name  (next-var (list new-body new-value new-binds))])
-        (list (cons (list new-name new-value) new-binds)
-              (replace-in name new-name new-body)))))
-
 (define (norm-case pat body)
   (match pat
     [(list con)    (list pat body)]
@@ -358,21 +398,6 @@
         (list (cons name norm-ps)
               (replace-in p name norm-body)))))
 
-(define (norm-params ps def)
-  (if (empty? ps)
-      (match def
-        [           (list name        args        return body)
-         (let* ([fun (norm-func args body)])
-           (list ps (list norm-func-1 (first fun) return (replace-in name
-                                                                     norm-func-1
-                                                                     (second fun)))))]
-        [_ (error "Unexpected parameterised function definition" def)])
-      (let* ([p   (car ps)]
-             [rec (norm-params (cdr ps) def)]
-             [v   (next-var rec)])
-        (list (cons v (first rec))
-              (replace-in p v (second rec))))))
-
 (define (norm-func args body)
   (if (empty? args)
       (list args (norm body))
@@ -384,22 +409,6 @@
 
 (define norm-func-prefix "defining-function-")
 (define norm-func-1 (string->symbol (string-append norm-func-prefix "1")))
-
-(define (norm-types decs)
-  (if (empty? decs)
-      decs
-      (let ([rec (norm-types (cdr decs))])
-        (cons (norm-type (car decs) rec) rec))))
-
-(define (norm-type-params ps decs)
-  (if (empty? ps)
-      (list ps decs)
-      (let* ([rec  (norm-type-params (cdr ps) decs)]
-             [name (inc-name var-prefix (max-name var-prefix rec))])
-        (list (cons name (first rec))
-              (replace-in (car ps)
-                          name
-                          (second rec))))))
 
 (define (next-var expr)
   (string->symbol
@@ -426,52 +435,26 @@
 (define (var-num x)
   (string->number (substring (symbol->string x) (string-length var-prefix))))
 
-(define (norm-type dec rest)
-  (let ([name (inc-name type-prefix (max-name type-prefix rest))]
-        [cs   (norm-constructors (cdr dec) rest)])
-    (cons name (replace-in (car dec) name cs))))
-
 (define (inc-name pre n)
   (string->symbol (string-append pre (number->string (+ 1 n)))))
 
-(define (norm-constructors cs rest)
-  (if (empty? cs)
-      cs
-      (let ([rec (norm-constructors (cdr cs) rest)])
-        (cons (norm-constructor (car cs) (list rest rec)) rec))))
-
-(define (norm-constructor c rest)
-  (define constructor-prefix
-    "normalise-constructor-")
-
-  (let ([name (inc-name constructor-prefix (max-name constructor-prefix rest))])
-    (cons name (norm-destructors (cdr c) rest))))
-
-(define (norm-destructors ds rest)
-  (if (empty? ds)
-      ds
-      (let* ([rec  (norm-destructors (cdr ds) rest)]
-             [name (inc-name destructor-prefix (max-name destructor-prefix (list rest rec)))])
-        (cons (cons name (cdr (car ds))) rec))))
-
 (define        type-prefix "defining-type-")
-(define  destructor-prefix "normalise-destructor-")
 (define         var-prefix "normalise-var-")
 
 (define (max-name pre expr)
+  (define (name-num pre x)
+    (if (symbol? x)
+        (if (string-prefix? (symbol->string x) pre)
+            (string->number (substring (symbol->string x)
+                                       (string-length pre)))
+            0)
+        0))
+
   (match expr
     [(cons a b) (let ([ma (max-name pre a)]
                       [mb (max-name pre b)])
                   (if (< ma mb) mb ma))]
     [x          (name-num pre x)]))
-
-(define (name-num pre x)
-  (if (symbol? x)
-      (if (string-prefix? (symbol->string x) pre)
-          (string->number (substring (symbol->string x)
-                                     (string-length pre)))
-          0)
-      0))
 
 (define (names-in defs)
   (match defs
@@ -497,13 +480,6 @@
                                   (cdr dec))))
               decs))
 
-(define (join-spaces xs)
-  (if (empty? xs)
-      ""
-      (if (equal? (length xs) 1)
-          (format "~a" (car xs))
-          (format "~a ~a" (car xs) (join-spaces (cdr xs))))))
-
 (define (tag-constructors x)
   ;; Tag constructors with 'CONSTRUCTOR' to disambiguate
   (foldl (lambda (c y)
@@ -525,49 +501,6 @@
 
 (define (concat-map f xs)
   (apply append (map f xs)))
-
-(define (func-for x c)
-  (define (arg-decs-for x)
-    ;; Look through x for any definitions of c, and return its argument list
-    (define (arg-decs-for-ty x)
-      (define (arg-decs-for-con x)
-        (match x
-          [(list name)      (if (equal? name c) (list '())  '())]
-          [(cons name args) (if (equal? name c) (list args) '())]))
-
-      (concat-map arg-decs-for-con (cdr x)))
-
-    (match x
-      [(list 'declare-datatypes _ decs) (concat-map arg-decs-for-ty decs)]
-      [(cons h t) (append (arg-decs-for h)
-                          (arg-decs-for t))]
-      [_ '()]))
-
-  (define arg-decs
-    (car (arg-decs-for x)))
-
-  (define (constructor-type x)
-    (define (constructor-type-ty dec)
-      (concat-map (lambda (con)
-                    (if (equal? (car con) c)
-                        (list (car dec))
-                        '()))
-                  (cdr dec)))
-
-    (match x
-      [(list 'declare-datatypes _ decs) (concat-map constructor-type-ty decs)]
-      [(cons a b) (append (constructor-type a)
-                          (constructor-type b))]
-      [_ '()]))
-
-  (prefix-locals
-   `(define-fun
-      ,(prefix-name c "constructor")
-      ,arg-decs
-      ,(car (constructor-type x))
-      ,(if (empty? arg-decs)
-           c
-           (cons c (map car (car (arg-decs-for x))))))))
 
 (define (trim lst)
   (filter (lambda (x)
@@ -643,6 +576,24 @@
 
 (define (get-def-s name exprs)
   (define (defs-from sym exp)
+    (define (find-defs sym given ty-decs)
+      (define (any-of f xs)
+        (match xs
+          [(cons a b) (or (f a) (any-of f b))]
+          [_          #f]))
+
+      (map (lambda (dec) (list 'declare-datatypes given (list dec)))
+           (filter (lambda (ty-dec)
+                     (any-of (lambda (con-dec)
+                               (or (equal? (symbol->string (car con-dec))
+                                           sym)
+                                   (any-of (lambda (des-dec)
+                                             (equal? (symbol->string (car des-dec))
+                                                     sym))
+                                           (cdr con-dec))))
+                             (cdr ty-dec)))
+                   ty-decs)))
+
     (match exp
       [(list 'declare-datatypes given decs) (find-defs sym given decs)]
       [(cons a b)                           (append (defs-from sym a)
@@ -704,6 +655,49 @@
 (define (add-constructor-funcs x)
   ;; Adding function for each constructor
   (let* ([consts (expression-constructors x)])
+    (define (func-for x c)
+      (define (arg-decs-for x)
+        ;; Look through x for any definitions of c, and return its argument list
+        (define (arg-decs-for-ty x)
+          (define (arg-decs-for-con x)
+            (match x
+              [(list name)      (if (equal? name c) (list '())  '())]
+              [(cons name args) (if (equal? name c) (list args) '())]))
+
+          (concat-map arg-decs-for-con (cdr x)))
+
+        (match x
+          [(list 'declare-datatypes _ decs) (concat-map arg-decs-for-ty decs)]
+          [(cons h t) (append (arg-decs-for h)
+                              (arg-decs-for t))]
+          [_ '()]))
+
+      (define arg-decs
+        (car (arg-decs-for x)))
+
+      (define (constructor-type x)
+        (define (constructor-type-ty dec)
+          (concat-map (lambda (con)
+                        (if (equal? (car con) c)
+                            (list (car dec))
+                            '()))
+                      (cdr dec)))
+
+        (match x
+          [(list 'declare-datatypes _ decs) (concat-map constructor-type-ty decs)]
+          [(cons a b) (append (constructor-type a)
+                              (constructor-type b))]
+          [_ '()]))
+
+      (prefix-locals
+       `(define-fun
+          ,(prefix-name c "constructor")
+          ,arg-decs
+          ,(car (constructor-type x))
+          ,(if (empty? arg-decs)
+               c
+               (cons c (map car (car (arg-decs-for x))))))))
+
     (append x (map (curry func-for x) consts))))
 
 (define (prepare x)
@@ -1133,7 +1127,7 @@ library
                      (check-equal? norms (list norm)))))
                 normalised)))
 
-  (check-equal? (get-def "constructorZ" (format-symbols redundancies))
+  (check-equal? (get-def-s "constructorZ" redundancies)
                 (list constructorZ))
 
   (for-each (lambda (sym)
@@ -1149,7 +1143,7 @@ library
        (check-equal? count 1)))
 
     (define norm-def
-      (format-symbols (get-def sym (format-symbols test-defs))))
+      (format-symbols (get-def-s sym test-defs)))
 
     (define norm-count
       (length (filter non-empty-string?
