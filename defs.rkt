@@ -92,13 +92,11 @@
 
 (define (expression-types exp)
   (define (constructor-types defs)
-    (let ((con-types (lambda (def)
-                       ;; Given (Cons (Cons_1 a) (Cons_2 (list a))) we want '(a list)
-                       (concat-map (lambda (x) (symbols-in (cdr x)))
-                                   (cdr def)))))
-      (match defs
-        [(cons h t) (append (con-types h) (constructor-types t))]
-        [_          null])))
+    (match defs
+      [(cons h t) (append (concat-map (lambda (x) (symbols-in (cdr x)))
+                                      (cdr h))
+                          (constructor-types t))]
+      [_          null]))
 
   (match exp
          [(list 'define-fun-rec
@@ -114,7 +112,8 @@
 
          [(list 'declare-datatypes given decs)         (append (map car decs)
                                                                (remove* (symbols-in given)
-                                                                        (symbols-in (map (lambda (x) (constructor-types (cdr x))) decs))))]
+                                                                        (symbols-in (map (lambda (x) (constructor-types (cdr x)))
+                                                                                         decs))))]
          [(cons a b)                                   (append (expression-types a)
                                                                (expression-types b))]
          [_                                            null]))
@@ -247,13 +246,6 @@
 
 (define (symbols-of-theorem path)
   (benchmark-symbols (read-benchmark (file->string path))))
-
-(define (defs-from sym exp)
-  (match exp
-    [(list 'declare-datatypes given decs) (find-defs sym given decs)]
-    [(cons a b)                           (append (defs-from sym a)
-                                                  (defs-from sym b))]
-    [_                                    null]))
 
 (define (find-defs sym given ty-decs)
   (define (any-of f xs)
@@ -449,6 +441,9 @@
         (cons (norm-constructor (car cs) (list rest rec)) rec))))
 
 (define (norm-constructor c rest)
+  (define constructor-prefix
+    "normalise-constructor-")
+
   (let ([name (inc-name constructor-prefix (max-name constructor-prefix rest))])
     (cons name (norm-destructors (cdr c) rest))))
 
@@ -460,7 +455,6 @@
         (cons (cons name (cdr (car ds))) rec))))
 
 (define        type-prefix "defining-type-")
-(define constructor-prefix "normalise-constructor-")
 (define  destructor-prefix "normalise-destructor-")
 (define         var-prefix "normalise-var-")
 
@@ -529,18 +523,6 @@
 (define (prefix-name n p)
   (string->symbol (string-append p (symbol->string n))))
 
-(define (constructor-type c x)
-  (let* ((constructor-type-ty (lambda (c dec)
-           (concat-map (lambda (con)
-                         (if (equal? (car con) c)
-                             (list (car dec))
-                             '()))
-                       (cdr dec)))))
-    (match x
-      [(list 'declare-datatypes _ decs) (concat-map (curry constructor-type-ty c) decs)]
-      [(cons a b) (append (constructor-type c a) (constructor-type c b))]
-      [_ '()])))
-
 (define (concat-map f xs)
   (apply append (map f xs)))
 
@@ -564,11 +546,25 @@
   (define arg-decs
     (car (arg-decs-for x)))
 
+  (define (constructor-type x)
+    (define (constructor-type-ty dec)
+      (concat-map (lambda (con)
+                    (if (equal? (car con) c)
+                        (list (car dec))
+                        '()))
+                  (cdr dec)))
+
+    (match x
+      [(list 'declare-datatypes _ decs) (concat-map constructor-type-ty decs)]
+      [(cons a b) (append (constructor-type a)
+                          (constructor-type b))]
+      [_ '()]))
+
   (prefix-locals
    `(define-fun
       ,(prefix-name c "constructor")
       ,arg-decs
-      ,(car (constructor-type c x))
+      ,(car (constructor-type x))
       ,(if (empty? arg-decs)
            c
            (cons c (map car (car (arg-decs-for x))))))))
@@ -647,14 +643,18 @@
 
 (define (get-def x input)
   (define (get-con-def name str)
-    (define (defs-of-src src given)
-      (foldl (lambda (str rest)
-               (append (defs-from given (read-benchmark str))
-                       rest))
-             '()
-             src))
+    (define (defs-from sym exp)
+      (match exp
+        [(list 'declare-datatypes given decs) (find-defs sym given decs)]
+        [(cons a b)                           (append (defs-from sym a)
+                                                      (defs-from sym b))]
+        [_                                    null]))
 
-    (remove-duplicates (defs-of-src (string-split str "\n") name)))
+    (remove-duplicates (foldl (lambda (str rest)
+                                (append (defs-from name (read-benchmark str))
+                                        rest))
+                              '()
+                              (string-split str "\n"))))
 
   (append (find-sub-exprs x (read-benchmark input))
           (get-con-def x input)))
@@ -766,9 +766,6 @@
                                     (port->string (current-input-port)))))
                           "\n")))
 
-(define (canonical-functions)
-  (show (norm (read-benchmark (port->string (current-input-port))))))
-
 (define (pipe s f)
   (define o (open-output-string))
   (parameterize ([current-input-port  (open-input-string s)]
@@ -875,14 +872,11 @@
   n)
 
 (define (types-from-defs)
-  (define (format-benchmark-symbols)
-    (define (benchmark-types x)
-      (remove-duplicates (symbols-in (expression-types (read-benchmark x)))))
-
-    (format-symbols (symbols-in (benchmark-types
-                                 (port->string (current-input-port))))))
-
-  (displayln (format-benchmark-symbols)))
+  (show (symbols-in
+         (remove-duplicates
+          (symbols-in
+           (expression-types
+            (read-benchmark (port->string (current-input-port)))))))))
 
 (define (full-haskell-package-s str dir)
   (define hs (mk-signature-s str))
@@ -1142,15 +1136,15 @@ library
 
   (for-each (lambda (sym)
     (define def (format-symbols (get-def sym qual)))
-    (define count
-      (length (filter non-empty-string?
-                      (string-split def "\n"))))
 
-    (with-check-info
-     (('sym     sym)
-      ('def     def)
-      ('message "Symbol got qualified"))
-     (check-equal? count 1))
+    (let ([count (length (filter non-empty-string?
+                                 (string-split def "\n")))])
+      (with-check-info
+       (('sym     sym)
+        ('def     def)
+        ('count   count)
+        ('message "Symbol got qualified"))
+       (check-equal? count 1)))
 
     (define norm-def
       (format-symbols (get-def sym (format-symbols test-defs))))
@@ -1259,131 +1253,133 @@ library
                              (redundantZ2 constructorZ)
                              (redundantZ3 constructorZ))))
 
-  (define (checkNormal kind def expected)
-    (define canon
-      (norm def))
+  (test-case "Normalise"
+    (define (check-normal kind def expected)
+      (define canon
+        (norm def))
 
-    (with-check-info
-        (('kind     kind)
-         ('def      def)
-         ('expect   expected)
-         ('message  "Normalising as expected"))
-      (check-equal? canon expected)))
+      (with-check-info
+       (('kind     kind)
+        ('def      def)
+        ('expect   expected)
+        ('canon    canon)
+        ('message  "Normalising as expected"))
+       (check-equal? canon expected)))
 
-  (checkNormal "function"
-               '(define-fun sort2
-                  ((x Int) (y Int))
-                  (list Int)
-                  (ite (<= x y)
-                       (cons x (cons y
-                                     (as nil (list Int))))
-                       (cons y (cons x
-                                     (as nil (list Int))))))
-               '(define-fun defining-function-1
-                  ((normalise-var-2 Int) (normalise-var-1 Int))
-                  (list Int)
-                  (ite (<= normalise-var-2 normalise-var-1)
-                       (cons normalise-var-2 (cons normalise-var-1
-                                                   (as nil (list Int))))
-                       (cons normalise-var-1 (cons normalise-var-2
-                                                   (as nil (list Int)))))))
+    (check-normal "function"
+                  '(define-fun sort2
+                     ((x Int) (y Int))
+                     (list Int)
+                     (ite (<= x y)
+                          (cons x (cons y
+                                        (as nil (list Int))))
+                          (cons y (cons x
+                                        (as nil (list Int))))))
+                  '(define-fun defining-function-1
+                     ((normalise-var-2 Int) (normalise-var-1 Int))
+                     (list Int)
+                     (ite (<= normalise-var-2 normalise-var-1)
+                          (cons normalise-var-2 (cons normalise-var-1
+                                                      (as nil (list Int))))
+                          (cons normalise-var-1 (cons normalise-var-2
+                                                      (as nil (list Int)))))))
 
-  (checkNormal "parameterised function"
-               '(define-fun
-                  (par (a)
-                       (zsplitAt
-                        ((x Int)
-                         (y (list a)))
-                        (Pair (list a) (list a))
-                        (Pair2 (ztake x y)
-                               (zdrop x y)))))
-               '(define-fun
-                  (par (normalise-var-3)
-                       (defining-function-1
-                         ((normalise-var-2 Int)
-                          (normalise-var-1 (list normalise-var-3)))
-                         (Pair (list normalise-var-3) (list normalise-var-3))
-                         (Pair2 (ztake normalise-var-2 normalise-var-1)
-                                (zdrop normalise-var-2 normalise-var-1))))))
-
-  (checkNormal "datatype"
-               '(declare-datatypes
-                 (a)
-                 ((list
-                   (nil)
-                   (cons (head a)
-                         (tail (list a))))))
-               '(declare-datatypes
-                 (normalise-var-1)
-                 (((defining-type-1
-                     (normalise-constructor-2)
-                     (normalise-constructor-1 (normalise-destructor-2 normalise-var-1)
-                                              (normalise-destructor-1 (defining-type-1 normalise-var-1))))))))
-
-  (checkNormal "let binding"
-               '(define-fun-rec msorttd
-                  ((x (list Int))) (list Int)
-                  (let ((k (div (zlength x) 2)))
-                    (lmerge (msorttd (ztake k
-                                            x))
-                            (msorttd (zdrop k
-                                            x)))))
-               '(define-fun-rec defining-function-1
-                  ((normalise-var-2 (list Int))) (list Int)
-                  (let ((normalise-var-1 (div (zlength normalise-var-2) 2)))
-                    (lmerge (defining-function-1 (ztake normalise-var-1
-                                                        normalise-var-2))
-                            (defining-function-1 (zdrop normalise-var-1
-                                                        normalise-var-2))))))
-
-  (checkNormal "pattern match"
-               '(define-fun-rec s
-                  ((x Bin)) Bin
-                  (match x
-                    (case One (ZeroAnd One))
-                    (case (ZeroAnd xs)
-                      (OneAnd xs))
-                    (case (OneAnd ys)
-                      (ZeroAnd (s ys)))))
-               '(define-fun-rec defining-function-1
-                  ((normalise-var-2 Bin)) Bin
-                  (match normalise-var-2
-                    (case One (ZeroAnd One))
-                    (case (ZeroAnd normalise-var-1)
-                      (OneAnd normalise-var-1))
-                    (case (OneAnd normalise-var-1)
-                      (ZeroAnd (defining-function-1 normalise-var-1))))))
-
-  (checkNormal "anonymous function"
-               '(define-fun-rec qsort
-                  ((y Int) (xs (list Int)))
-                  (list Int)
-                  (append (append (qsort
-                                   (filter (lambda ((z Int))
-                                             (<= z
-                                                 y))
-                                           xs))
-                                  (cons y (as nil (list Int))))
-                          (qsort
-                           (filter (lambda ((x2 Int))
-                                     (> x2 y))
-                                   xs))))
-               '(define-fun-rec defining-function-1
-                  ((normalise-var-3 Int) (normalise-var-2 (list Int)))
-                  (list Int)
-                  (append (append (defining-function-1
-                                    (filter (lambda ((normalise-var-1 Int))
-                                              (<= normalise-var-1
-                                                  normalise-var-3))
-                                            normalise-var-2))
-                                  (cons normalise-var-3 (as nil (list Int))))
+    (check-normal "parameterised function"
+                  '(define-fun
+                     (par (a)
+                          (zsplitAt
+                           ((x Int)
+                            (y (list a)))
+                           (Pair (list a) (list a))
+                           (Pair2 (ztake x y)
+                                  (zdrop x y)))))
+                  '(define-fun
+                     (par (normalise-var-3)
                           (defining-function-1
-                            (filter (lambda ((normalise-var-1 Int))
-                                      (> normalise-var-1 normalise-var-3))
-                                    normalise-var-2)))))
+                            ((normalise-var-2 Int)
+                             (normalise-var-1 (list normalise-var-3)))
+                            (Pair (list normalise-var-3) (list normalise-var-3))
+                            (Pair2 (ztake normalise-var-2 normalise-var-1)
+                                   (zdrop normalise-var-2 normalise-var-1))))))
+
+    (check-normal "datatype"
+                  '(declare-datatypes
+                    (a)
+                    ((list
+                      (nil)
+                      (cons (head a)
+                            (tail (list a))))))
+                  '(declare-datatypes
+                    (normalise-var-1)
+                    (((defining-type-1
+                        (normalise-constructor-2)
+                        (normalise-constructor-1 (normalise-destructor-2 normalise-var-1)
+                                                 (normalise-destructor-1 (defining-type-1 normalise-var-1))))))))
+
+    (check-normal "let binding"
+                  '(define-fun-rec msorttd
+                     ((x (list Int))) (list Int)
+                     (let ((k (div (zlength x) 2)))
+                       (lmerge (msorttd (ztake k
+                                               x))
+                               (msorttd (zdrop k
+                                               x)))))
+                  '(define-fun-rec defining-function-1
+                     ((normalise-var-2 (list Int))) (list Int)
+                     (let ((normalise-var-1 (div (zlength normalise-var-2) 2)))
+                       (lmerge (defining-function-1 (ztake normalise-var-1
+                                                           normalise-var-2))
+                               (defining-function-1 (zdrop normalise-var-1
+                                                           normalise-var-2))))))
+
+    (check-normal "pattern match"
+                  '(define-fun-rec s
+                     ((x Bin)) Bin
+                     (match x
+                       (case One (ZeroAnd One))
+                       (case (ZeroAnd xs)
+                         (OneAnd xs))
+                       (case (OneAnd ys)
+                         (ZeroAnd (s ys)))))
+                  '(define-fun-rec defining-function-1
+                     ((normalise-var-2 Bin)) Bin
+                     (match normalise-var-2
+                       (case One (ZeroAnd One))
+                       (case (ZeroAnd normalise-var-1)
+                         (OneAnd normalise-var-1))
+                       (case (OneAnd normalise-var-1)
+                         (ZeroAnd (defining-function-1 normalise-var-1))))))
+
+    (check-normal "anonymous function"
+                  '(define-fun-rec qsort
+                     ((y Int) (xs (list Int)))
+                     (list Int)
+                     (append (append (qsort
+                                      (filter (lambda ((z Int))
+                                                (<= z
+                                                    y))
+                                              xs))
+                                     (cons y (as nil (list Int))))
+                             (qsort
+                              (filter (lambda ((x2 Int))
+                                        (> x2 y))
+                                      xs))))
+                  '(define-fun-rec defining-function-1
+                     ((normalise-var-3 Int) (normalise-var-2 (list Int)))
+                     (list Int)
+                     (append (append (defining-function-1
+                                       (filter (lambda ((normalise-var-1 Int))
+                                                 (<= normalise-var-1
+                                                     normalise-var-3))
+                                               normalise-var-2))
+                                     (cons normalise-var-3 (as nil (list Int))))
+                             (defining-function-1
+                               (filter (lambda ((normalise-var-1 Int))
+                                         (> normalise-var-1 normalise-var-3))
+                                       normalise-var-2))))))
 
   (check-equal? (replace-strings "hello mellow yellow fellow"
-                                   '(("lo" "LO") ("el" "{{el}}")))
+                                 '(("lo" "LO") ("el" "{{el}}")))
                 "h{{el}}LO m{{el}}LOw y{{el}}LOw f{{el}}LOw")
 
   (check-equal? (list->set (read-benchmark
@@ -1447,9 +1443,6 @@ library
                      (delete-file temp-file)
                      result))))
 
-  (define (count-substrings str sub)
-    (- (length (string-split str sub)) 1))
-
   (test-case "Form"
     (define form
       '(declare-datatypes ()
@@ -1468,15 +1461,14 @@ library
 
     (define sig (string-to-haskell form))
 
-    (define data-count (length (filter (lambda (line)
-                                         (string-prefix? line "data "))
-                                       (string-split sig "\n"))))
-
-    (with-check-info
-     (('data-count data-count)
-      ('sig        sig)
-      ('message    "'Form' datatype appears in signature"))
-     (check-equal? data-count 1)))
+    (let ([data-count (length (filter (lambda (line)
+                                        (string-prefix? line "data "))
+                                      (string-split sig "\n")))])
+      (with-check-info
+       (('data-count data-count)
+        ('sig        sig)
+        ('message    "'Form' datatype appears in signature"))
+       (check-equal? data-count 1))))
 
   (test-case "Mutual recursion"
     (define mut '(define-funs-rec
@@ -1764,80 +1756,81 @@ library
                      (case (Pair2 ys zs) (append ys (stoogesort2 zs))))))
                '(stooge2sort2 stoogesort2 stooge2sort1))
 
-  (define (contains lst elem)
-    (not (empty? (filter (curry equal? elem)
-                         lst))))
+  (test-case "Symbol lookup"
+    (define (contains lst elem)
+      (not (empty? (filter (curry equal? elem)
+                           lst))))
 
-  (define (should-have syms kind xs)
-    (for-each (lambda (sym)
-                (with-check-info
-                 (('sym  sym)
-                  ('syms syms)
-                  ('kind kind))
-                 (check-true (contains syms sym))))
-              xs))
+    (define (should-have syms kind xs)
+      (for-each (lambda (sym)
+                  (with-check-info
+                   (('sym  sym)
+                    ('syms syms)
+                    ('kind kind))
+                   (check-true (contains syms sym))))
+                xs))
 
-  (define (should-not-have syms kind xs)
-    (for-each (lambda (sym)
-                (with-check-info
-                 (('sym  sym)
-                  ('syms syms)
-                  ('kind kind))
-                 (check-false (contains syms sym))))
-              xs))
+    (define (should-not-have syms kind xs)
+      (for-each (lambda (sym)
+                  (with-check-info
+                   (('sym  sym)
+                    ('syms syms)
+                    ('kind kind))
+                   (check-false (contains syms sym))))
+                xs))
 
-  (let* ([f    (string-append benchmark-dir "/tip2015/int_right_distrib.smt2")]
-         [syms (symbols-from-file f)])
+    (let* ([f    (string-append benchmark-dir "/tip2015/int_right_distrib.smt2")]
+           [syms (symbols-from-file f)])
 
-    (should-have syms 'constructor '(Pos Neg Z S P N))
+      (should-have syms 'constructor '(Pos Neg Z S P N))
 
-    (should-have syms 'destructor  '(p P_0 N_0))
+      (should-have syms 'destructor  '(p P_0 N_0))
 
-    (should-have syms 'function '(toInteger sign plus2 opposite
-                                  timesSign mult minus plus absVal
-                                  times))
+      (should-have syms 'function '(toInteger sign plus2 opposite
+                                    timesSign mult minus plus absVal
+                                    times))
 
-    (should-not-have syms 'type '(Nat     Nat-sentinel
-                                  Sign    Sign-sentinel
-                                  Integer Integer-sentinel
-                                  =>      =>-sentinel))
+      (should-not-have syms 'type '(Nat     Nat-sentinel
+                                    Sign    Sign-sentinel
+                                    Integer Integer-sentinel
+                                    =>      =>-sentinel))
 
-    (should-not-have syms 'variable '(x  x-sentinel
-                                      y  y-sentinel
-                                      z  z-sentinel
-                                      m  m-sentinel
-                                      m2 m2-sentinel
-                                      n  n-sentinel
-                                      n2 n2-sentinel
-                                      n3 n3-sentinel
-                                      o  o-sentinel))
+      (should-not-have syms 'variable '(x  x-sentinel
+                                        y  y-sentinel
+                                        z  z-sentinel
+                                        m  m-sentinel
+                                        m2 m2-sentinel
+                                        n  n-sentinel
+                                        n2 n2-sentinel
+                                        n3 n3-sentinel
+                                        o  o-sentinel))
 
-    (should-not-have syms 'keyword  '(match             match-sentinel
-                                      case              case-sentinel
-                                      define-fun        define-fun-sentinel
-                                      declare-datatypes declare-datatypes-sentinel
-                                      assert-not        assert-not-sentinel
-                                      forall            forall-sentinel
-                                      =                 =-sentinel
-                                      check-sat         check-sat-sentinel))
+      (should-not-have syms 'keyword  '(match             match-sentinel
+                                        case              case-sentinel
+                                        define-fun        define-fun-sentinel
+                                        declare-datatypes declare-datatypes-sentinel
+                                        assert-not        assert-not-sentinel
+                                        forall            forall-sentinel
+                                        =                 =-sentinel
+                                        check-sat         check-sat-sentinel))
 
-    (define theorems
-      (theorems-from-symbols-s syms))
+      (define theorems
+        (theorems-from-symbols-s syms))
 
-    (with-check-info
-     (('theorems theorems)
-      ('f        f)
-      ('syms     syms)
-      ('message  "Theorem allowed by its own symbols"))
-     (check-true (contains theorems f))))
+      (with-check-info
+       (('theorems theorems)
+        ('f        f)
+        ('syms     syms)
+        ('message  "Theorem allowed by its own symbols"))
+       (check-true (contains theorems f))))
 
-  (let* ([f    (benchmark-file "tip2015/list_PairEvens.smt2")]
-         [syms (symbols-from-file f)])
-    (should-not-have syms 'higher-order-type '(=> =>-sentinel)))
+    (let* ([f    (benchmark-file "tip2015/list_PairEvens.smt2")]
+           [syms (symbols-from-file f)])
+      (should-not-have syms 'higher-order-type '(=> =>-sentinel)))
 
-  (let* ([f    (benchmark-file "tip2015/propositional_AndCommutative.smt2")]
-         [syms (symbols-from-file f)])
-    (should-have syms 'function '(or2)))
+    (let* ([f    (benchmark-file "tip2015/propositional_AndCommutative.smt2")]
+           [syms (symbols-from-file f)])
+      (should-have syms 'function '(or2))))
 
   (let ([f (benchmark-file "tip2015/nat_alt_mul_comm.smt2")])
     (check-equal? (string-trim (pipe (file->string f) types-from-defs))
