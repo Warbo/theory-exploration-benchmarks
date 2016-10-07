@@ -24,31 +24,32 @@
 
 (define (symbols-in exp)
   (define native-symbols
-    (list 'Int 'Bool '* '> 'mod 'and 'or 'xor 'iff 'ite 'true 'false 'not 'implies
-          'distinct '@ '= '<= '- '+ '* 'div '=> 'as))
+    (list 'Int 'Bool '* '> 'mod 'and 'or 'xor 'iff 'ite 'true 'false 'not
+          'implies 'distinct '@ '= '<= '- '+ '* 'div '=> 'as))
 
-  (let ((case-symbols (lambda (c)
-                        (match c
-                          ;; Remove the symbols occuring in pat from body. This will remove fresh
-                          ;; variables, but may also remove constructors. That's fine though,
-                          ;; since we extract constructors separately anyway.
-                          [(list 'case pat body) (remove* (symbols-in pat) (symbols-in body))]
-                          [_                     (error "Unexpected case form")]))))
-    (remove* native-symbols (match exp
-      [(cons 'match (cons arg cases)) (append (symbols-in arg)
-                                              (symbols-in (map case-symbols cases)))]
-      [(list 'lambda args body)       (remove* (map car args)
-                                               (symbols-in body))]
-      [(list 'let defs body)          (remove* (map car defs)
-                                               (append (symbols-in (map cdr defs))
-                                                       (symbols-in body)))]
-      [(list 'as val typ)             (append (symbols-in val)
-                                              (symbols-in typ))]
-      [(cons a b)                     (append (symbols-in a)
-                                              (symbols-in b))]
-      [_                              (if (symbol? exp) (list exp) null)]))))
+  (define (case-symbols c)
+    (match c
+      ;; Remove the symbols occuring in pat from body. This will remove fresh
+      ;; variables, but may also remove constructors. That's fine though,
+      ;; since we extract constructors separately anyway.
+      [(list 'case pat body) (remove* (symbols-in pat) (symbols-in body))]
+      [_                     (error "Unexpected case form")]))
 
-; Extract the symbols used by a benchmark expression
+  (remove* native-symbols (match exp
+    [(cons 'match (cons arg cases)) (append (symbols-in arg)
+                                            (symbols-in (map case-symbols cases)))]
+    [(list 'lambda args body)       (remove* (map car args)
+                                             (symbols-in body))]
+    [(list 'let defs body)          (remove* (map car defs)
+                                             (append (symbols-in (map cdr defs))
+                                                     (symbols-in body)))]
+    [(list 'as val typ)             (append (symbols-in val)
+                                            (symbols-in typ))]
+    [(cons a b)                     (append (symbols-in a)
+                                            (symbols-in b))]
+    [_                              (if (symbol? exp) (list exp) null)])))
+
+;; Extract the symbols used by a benchmark expression
 
 (define (expression-constructors exp)
   (let* ((constructor-symbols (lambda (c)
@@ -158,22 +159,13 @@
                    (expression-funs         exp))))
 
 (define (qualify name expr)
-  (define (qualify-all name rest x)
-    (if (empty? rest)
-        x
-        (qualify-all name
-                     (cdr rest)
-                     (replace-in (car rest)
-                                 (string-append name
-                                                (as-str (car rest))
-                                                "-sentinel")
-                                 x))))
-
-  (define syms  (expression-symbols expr))
-  (define types (expression-types   expr))
-  (define all   (symbols-in (append syms types)))
-
-  (qualify-all name all (prefix-locals expr)))
+  (foldl (lambda (sym x)
+           (replace-in sym
+                       (string-append name (as-str sym) "-sentinel")
+                       x))
+         (prefix-locals expr)
+         (symbols-in (append (expression-symbols expr)
+                             (expression-types   expr)))))
 
 (define (prefix-locals expr)
   ;; Turn bindings like (lambda (x Int) (f x)) into
@@ -243,7 +235,7 @@
   (displayln (format-symbols x)))
 
 (define theorem-files
-  ; Directory traversal is expensive; if we have to do it, memoise the result
+  ;; Directory traversal is expensive; if we have to do it, memoise the result
   (let ([result #f])
     (lambda ()
       (when (equal? #f result)
@@ -254,7 +246,7 @@
       result)))
 
 (define (symbols-of-theorem path)
-  (benchmark-symbols-expr (read-benchmark (file->string path))))
+  (benchmark-symbols (read-benchmark (file->string path))))
 
 (define (defs-from sym exp)
   (match exp
@@ -291,7 +283,7 @@
     (with-input-from-string content
       read)))
 
-(define (benchmark-symbols-expr expr)
+(define (benchmark-symbols expr)
   (remove-duplicates (expression-symbols expr)))
 
 (define (norm expr)
@@ -584,21 +576,13 @@
              c
              (cons c (arg-apps-for c x)))))))
 
-(define (add-constructor-funcs x)
-  ;; Adding function for each constructor
-  (let* ([consts (expression-constructors x)])
-    (append x (map (curry func-for x) consts))))
-
 (define (trim lst)
   (filter (lambda (x)
             (and (not (equal? (first x) 'assert-not))
                  (not (equal? x '(check-sat)))))
           lst))
 
-(define (qual-all)
-  (show (qual-all-s (port->lines (current-input-port)))))
-
-(define (qual-all-s given-files)
+(define (qual-all given-files)
   (define (take-from-end n lst)
     (reverse (take (reverse lst) n)))
 
@@ -621,14 +605,14 @@
   (show (mk-defs-s (port->lines (current-input-port)))))
 
 (define (mk-defs-s given-files)
-  (norm-defs-s (qual-all-s given-files)))
+  (norm-defs (qual-all given-files)))
 
-; Combine all definitions in files given on stdin
+;; Combine all definitions in files given on stdin
 
 (define (non-empty? x)
   (not (empty? x)))
 
-; Check each function declaration syntax
+;; Check each function declaration syntax
 
 (define (ss-eq? x y)
   (cond ([symbol? x]
@@ -664,8 +648,8 @@
       x
       (symbol->string x)))
 
-(define (get-def-s x input)
-  (define (get-con-def-s name str)
+(define (get-def x input)
+  (define (get-con-def name str)
     (define (defs-of-src src given)
       (foldl (lambda (str rest)
                (append (defs-from given (read-benchmark str))
@@ -676,29 +660,22 @@
     (remove-duplicates (defs-of-src (string-split str "\n") name)))
 
   (append (find-sub-exprs x (read-benchmark input))
-          (get-con-def-s x input)))
+          (get-con-def x input)))
 
-(define (rec-names)
-  (show (rec-names-s (read-benchmark (port->string (current-input-port))))))
-
-(define (rec-names-s exprs)
+(define (rec-names exprs)
   (names-in exprs))
 
-(define (add-check-sat x)
-  ; Add '(check-sat)' as the last line to appease tip-tools
-  (append x '((check-sat))))
-
 (define (remove-suffices x)
-  ; Removes '-sentinel' suffices. Do this after all other string-based
-  ; transformations, since the sentinels prevent us messing with, say, the
-  ; symbol "plus2", when we only wanted to change the symbol "plus"
+  ;; Removes '-sentinel' suffices. Do this after all other string-based
+  ;; transformations, since the sentinels prevent us messing with, say, the
+  ;; symbol "plus2", when we only wanted to change the symbol "plus"
   (read-benchmark (string-replace (format-symbols x)
                                   "-sentinel"
                                   "")))
 
 (define (name-replacements-for x)
-  ; Unqualify any names which only have one definition
-  (define nr-names (rec-names-s x))
+  ;; Unqualify any names which only have one definition
+  (define nr-names (rec-names x))
 
   (foldl (lambda (sym rest)
            (define name (~a sym))
@@ -722,32 +699,28 @@
          nr-names))
 
 (define (remove-prefices x)
-  ; Removes unambiguous filename prefices
+  ;; Removes unambiguous filename prefices
   (read-benchmark (foldl (lambda (rep str)
                            (string-replace str (first rep) (second rep)))
                          (format-symbols x)
                          (name-replacements-for x))))
 
-(define (prepare-s x)
+(define (add-constructor-funcs x)
+  ;; Adding function for each constructor
+  (let* ([consts (expression-constructors x)])
+    (append x (map (curry func-for x) consts))))
+
+(define (prepare x)
+  (define (add-check-sat x)
+    ;; Add '(check-sat)' as the last line to appease tip-tools
+    (append x '((check-sat))))
+
   ;(tag-types
     ;(tag-constructors
       ;(add-constructor-funcs
   (add-check-sat (remove-suffices (remove-prefices x))))
 
-(define (prepare)
-  (show (prepare-s (read-benchmark (port->string (current-input-port))))))
-
-(define (all-names)
-  (show (map (lambda (line)
-               (join-spaces (names-in (read-benchmark line))))
-             (port->lines (current-input-port)))))
-
-(define (find-redundancies)
-  (show (map (lambda (x)
-               (format "~a\t~a" (first x) (second x)))
-             (find-redundancies-s (read-benchmark (port->string (current-input-port)))))))
-
-(define (find-redundancies-s exprs)
+(define (find-redundancies exprs)
   (define (mk-output expr so-far name-replacements)
     (define (zip xs ys)
       (if (empty? xs)
@@ -788,7 +761,7 @@
                              false-sentinel
                              or-sentinel
                              ite-sentinel))))
-          (benchmark-symbols-expr expr)))
+          (benchmark-symbols expr)))
 
 (define (symbols-of-theorems)
   (displayln (string-join (map ~a (symbols-of-theorems-s
@@ -825,24 +798,17 @@
 (define (theorems-from-symbols)
   (show (theorems-from-symbols-s (port->lines (current-input-port)))))
 
-(define (replace-strings-s str reps)
-  ; For each (src dst) in reps, replaces src with dst in str
+(define (replace-strings str reps)
+  ;; For each (src dst) in reps, replaces src with dst in str
   (foldl (lambda (pair so-far)
            (string-replace so-far (as-str (first  pair))
                                   (as-str (second pair))))
          str
          reps))
 
-(define (replace-strings file)
-  (replace-strings-s (port->string (current-input-port))
-                     (map (lambda (line)
-                            (string-split line "\t"))
-                          (filter non-empty-string?
-                                  (file->lines file)))))
-
-(define (strip-redundancies-s exprs)
-  ; Remove alpha-equivalent expressions from exprs, according to reps
-  (define redundancies (find-redundancies-s exprs))
+(define (strip-redundancies exprs)
+  ;; Remove alpha-equivalent expressions from exprs, according to reps
+  (define redundancies (find-redundancies exprs))
   (define replacements (map first redundancies))
 
   (define stripped
@@ -859,17 +825,14 @@
            '()
            exprs))
 
-  (read-benchmark (replace-strings-s (format-symbols stripped)
+  (read-benchmark (replace-strings (format-symbols stripped)
                                      (map (curry map ~a) redundancies))))
 
-(define (norm-defs)
-  (show (norm-defs-s (read-benchmark (port->string (current-input-port))))))
-
-(define (norm-defs-s exprs)
-  (let ([norm (strip-redundancies-s exprs)])
+(define (norm-defs exprs)
+  (let ([norm (strip-redundancies exprs)])
     (if (equal? exprs norm)
         norm
-        (norm-defs-s norm))))
+        (norm-defs norm))))
 
 (define (defs-to-sig x)
   (mk-signature-s (format-symbols (mk-final-defs-s (string-split x "\n")))))
@@ -878,7 +841,7 @@
   (show (mk-final-defs-s (port->lines (current-input-port)))))
 
 (define (mk-final-defs-s given-files)
-  (prepare-s (mk-defs-s given-files)))
+  (prepare (mk-defs-s given-files)))
 
 (define (with-temp-file data proc)
   (let* ([f      (make-temporary-file "te-benchmark-temp-~a")]
@@ -927,8 +890,8 @@
 (define (full-haskell-package-s str dir)
   (define hs (mk-signature-s str))
 
-  ; Remove the generated signature, as it's incompatible with QuickSpec 1, and
-  ; remove the import of QuickSpec 2
+  ;; Remove the generated signature, as it's incompatible with QuickSpec 1, and
+  ;; remove the import of QuickSpec 2
   (define patched
     (filter (lambda (line)
               (not (string-contains? line "import qualified QuickSpec as QS")))
@@ -978,6 +941,7 @@ library
   (full-haskell-package-s (port->string (current-input-port))
                           (getenv "OUT_DIR")))
 
+;; Everything from here is tests
 (module+ test
   (require rackunit)
 
@@ -1019,19 +983,16 @@ library
     (string-append benchmark-dir "/grammars/simp_expr_unambig3.smt2"))
 
   (define one-liners
-    (qual-all-s (string-split f "\n")))
+    (qual-all (string-split f "\n")))
 
   (define result
     (filter non-empty?
             (map (lambda (expr)
-                   (filter non-empty? (rec-names-s (list expr))))
+                   (filter non-empty? (rec-names (list expr))))
                  one-liners)))
 
-  (define (all-names-s exprs)
-    (map names-in exprs))
-
   (define all-result
-    (filter non-empty? (all-names-s one-liners)))
+    (filter non-empty? (map names-in one-liners)))
 
   (with-check-info
    (('f          f)
@@ -1092,7 +1053,7 @@ library
                                   "tip2015/relaxedprefix_correct.smt2"
                                   "tip2015/propositional_AndIdempotent.smt2"
                                   "tip2015/propositional_AndImplication.smt2"))]
-           [q (qual-all-s fs)]
+           [q (qual-all fs)]
            [s (format-symbols (symbols-of-theorems-s q))])
 
       (check-true (string-contains? s "or2-sentinel")
@@ -1133,7 +1094,7 @@ library
                    "tip2015/sort_StoogeSort2IsSort.smt2ztake-sentinel"
                    "tip2015/sort_StoogeSort2IsSort.smt2stooge2sort2-sentinel"))
 
-  (define qual (format-symbols (qual-all-s test-files)))
+  (define qual (format-symbols (qual-all test-files)))
 
   (let* ([syms (format-symbols (symbols-of-theorems-s (read-benchmark qual)))])
 
@@ -1185,7 +1146,7 @@ library
                 normalised)))
 
   (for-each (lambda (sym)
-    (define def (format-symbols (get-def-s sym qual)))
+    (define def (format-symbols (get-def sym qual)))
     (define count
       (length (filter non-empty-string?
                       (string-split def "\n"))))
@@ -1197,7 +1158,7 @@ library
      (check-equal? count 1))
 
     (define norm-def
-      (format-symbols (get-def-s sym (format-symbols test-defs))))
+      (format-symbols (get-def sym (format-symbols test-defs))))
 
     (define norm-count
       (length (filter non-empty-string?
@@ -1210,8 +1171,8 @@ library
      (check-true (< norm-count 2)))
 
     (when (equal? norm-count 1)
-      ; The symbols in norm-def may be replacements, so we can't compare
-      ; directly. Instead, we just infer the structure:
+      ;; The symbols in norm-def may be replacements, so we can't compare
+      ;; directly. Instead, we just infer the structure:
       (define (strip-non-paren s)
         (list->string (foldr (lambda (c str)
                                (if (or (equal? c #\()
@@ -1286,7 +1247,7 @@ library
                 (cons '(define-fun (par (a b) (baz ((x Nat)) Nat X)))
                       (cdr qualified-example)))
 
-  (check-equal? (prepare-s qualified-example)
+  (check-equal? (prepare qualified-example)
                 '((define-fun (par (a b)
                                    (baz  ((x Nat)) Nat
                                          X)))
@@ -1298,7 +1259,7 @@ library
                                                      (foo bar))))
                   (check-sat)))
 
-  (check-equal? (list->set (find-redundancies-s redundancies))
+  (check-equal? (list->set (find-redundancies redundancies))
                 (list->set '((redundantZ1 constructorZ)
                              (redundantZ2 constructorZ)
                              (redundantZ3 constructorZ))))
@@ -1426,21 +1387,21 @@ library
                                       (> normalise-var-1 normalise-var-3))
                                     normalise-var-2)))))
 
-  (check-equal? (replace-strings-s "hello mellow yellow fellow"
+  (check-equal? (replace-strings "hello mellow yellow fellow"
                                    '(("lo" "LO") ("el" "{{el}}")))
                 "h{{el}}LO m{{el}}LOw y{{el}}LOw f{{el}}LOw")
 
   (check-equal? (list->set (read-benchmark
-                            (replace-strings-s (format-symbols      redundancies)
-                                               (find-redundancies-s redundancies))))
+                            (replace-strings (format-symbols      redundancies)
+                                               (find-redundancies redundancies))))
                 (list->set `(,constructorZ ,constructorS)))
 
-  (check-equal? (list->set (strip-redundancies-s redundancies))
+  (check-equal? (list->set (strip-redundancies redundancies))
                 (list->set (list constructorZ constructorS)))
 
   (let* ([given '((define-fun min1 ((x Int) (y Int)) Int (ite (<= x y) x y))
                   (define-fun min2 ((a Int) (b Int)) Int (ite (<= a b) a b)))]
-         [defs  (norm-defs-s given)]
+         [defs  (norm-defs given)]
          [syms  (symbols-of-theorems-s defs)]
          [min1  (member 'min1 syms)]
          [min2  (member 'min2 syms)])
@@ -1456,7 +1417,7 @@ library
   (let* ([given '((define-fun min1 ((x Int) (y Int)) Int (ite (<= x y) x y))
                   (define-fun min2 ((a Int) (b Int)) Int (ite (<= a b) a b))
                   (define-fun fun3 ((x Int)) Int (min2 x x)))]
-         [defs  (norm-defs-s given)]
+         [defs  (norm-defs given)]
          [syms  (symbols-of-theorems-s
                  (filter (lambda (expr)
                            (member 'fun3 expr))
@@ -1475,12 +1436,12 @@ library
       result))
 
   (define (string-to-haskell val)
-    ; mk-final-defs takes in filenames, so it can qualify names. This makes
-    ; and cleans up temporary files for testing.
+    ;; mk-final-defs takes in filenames, so it can qualify names. This makes
+    ;; and cleans up temporary files for testing.
 
-    ; Note: We make a file in a directory, to avoid problems if tmpdir begins
-    ; with a number (e.g. '/var/run/user/1000'); otherwise qualified variable
-    ; names would be invalid
+    ;; Note: We make a file in a directory, to avoid problems if tmpdir begins
+    ;; with a number (e.g. '/var/run/user/1000'); otherwise qualified variable
+    ;; names would be invalid
     (in-temp-dir (lambda (dir)
                    (define temp-file (string-append (path->string dir)
                                                     "/test.smt2"))
@@ -1502,7 +1463,7 @@ library
                 (Var (Var_0 Int))))))
 
     (define prepared
-      (prepare-s form))
+      (prepare form))
 
     (with-check-info
      (('prepared prepared)
@@ -1547,7 +1508,7 @@ library
                          (models2 q x)
                          (models5 q x y)))))
 
-    (define prepared (prepare-s mut))
+    (define prepared (prepare mut))
 
     (with-check-info
      (('prepared prepared)
@@ -1678,7 +1639,7 @@ library
                 (run-pipeline/out '(echo -e "import A\n:browse")
                                   '(cabal repl -v0)))
 
-              ; If the import fails, we're stuck with the Prelude, which contains classes
+              ;; If the import fails, we're stuck with the Prelude, which contains classes
               (with-check-info
                (('out     out)
                 ('message "Module imported successfully"))
@@ -1740,13 +1701,13 @@ library
                                          (run-pipeline/out '(echo -e "import A\n:browse")
                                                            '(cabal repl -v0)))
 
-                                       ; If the import fails, we're stuck with
-                                       ; the Prelude, which contains classes
+                                       ;; If the import fails, we're stuck with
+                                       ;; the Prelude, which contains classes
                                        (check-false (string-contains? out
                                                                       "class Functor")))))))
 
   (define (names-match src expr expect)
-    (define names (rec-names-s expr))
+    (define names (rec-names expr))
 
     (with-check-info
      (('src     src)
@@ -1887,14 +1848,14 @@ library
       ('message  "Theorem allowed by its own symbols"))
      (check-true (contains theorems f))))
 
-  (let* ([f    "modules/tip-benchmarks/benchmarks/tip2015/list_PairEvens.smt2"]
+  (let* ([f    (benchmark-file "tip2015/list_PairEvens.smt2")]
          [syms (symbols-from-file f)])
     (should-not-have syms 'higher-order-type '(=> =>-sentinel)))
 
-  (let* ([f    "modules/tip-benchmarks/benchmarks/tip2015/propositional_AndCommutative.smt2"]
+  (let* ([f    (benchmark-file "tip2015/propositional_AndCommutative.smt2")]
          [syms (symbols-from-file f)])
     (should-have syms 'function '(or2)))
 
-  (let ([f "modules/tip-benchmarks/benchmarks/tip2015/nat_alt_mul_comm.smt2"])
+  (let ([f (benchmark-file "tip2015/nat_alt_mul_comm.smt2")])
     (check-equal? (string-trim (pipe (file->string f) types-from-defs))
                   "Nat")))
