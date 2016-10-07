@@ -1566,24 +1566,21 @@ library
       ('sig     sig))
      (check-true (string-contains? sig "local"))))
 
-  (define all-benchmark-files
-    (shuffle (theorem-files)))
+  (define test-benchmark-files
+    (take (shuffle (theorem-files)) 10))
 
   (test-case "Random files"
-    (define (files n)
-      (string-join (take all-benchmark-files n) "\n"))
+    (define files
+      (string-join test-benchmark-files "\n"))
 
-    (for-each (lambda (n)
-                (define sig
-                  (defs-to-sig (files n)))
+    (define sig
+      (defs-to-sig files))
 
-                (with-check-info
-                 (('n       n)
-                  ('files   files)
-                  ('sig     sig)
-                  ('message "Made Haskell for random files"))
-                 (check-true (string-contains? sig "QuickSpec"))))
-              '(1 2 4 8)))
+    (with-check-info
+     (('files   files)
+      ('sig     sig)
+      ('message "Made Haskell for random files"))
+     (check-true (string-contains? sig "QuickSpec"))))
 
   (check-equal? (with-temp-file "foo\nbar\nbaz"
                                 file->string)
@@ -1597,56 +1594,49 @@ library
     (check-equal? b "foo"))
 
   (test-case "Module tests"
-    (for-each (lambda (n)
-      (define files
-        (string-join (take all-benchmark-files n) "\n"))
+    (define files
+      (string-join test-benchmark-files "\n"))
 
-      (in-temp-dir (lambda (dir)
-        (define out-dir (path->string dir))
-        (parameterize-env `([#"FILES"   ,(string->bytes/utf-8 files)]
-                            [#"OUT_DIR" ,(string->bytes/utf-8 out-dir)])
-          (lambda ()
-            (define these
-              (take (string-split files "\n") n))
+    (in-temp-dir
+     (lambda (dir)
+       (define out-dir (path->string dir))
+       (parameterize-env `([#"FILES"   ,(string->bytes/utf-8 files)]
+                           [#"OUT_DIR" ,(string->bytes/utf-8 out-dir)])
+         (lambda ()
+           (full-haskell-package-s
+            (format-symbols (mk-final-defs-s test-benchmark-files))
+            out-dir)
 
-            (full-haskell-package-s (format-symbols (mk-final-defs-s these))
-                                    out-dir)
+           (with-check-info
+            (('files   files)
+             ('message "Made Haskell package"))
+            (check-true (directory-exists? out-dir)))))
 
-            (with-check-info
-             (('n       n)
-              ('these   these)
-              ('files   files)
-              ('message "Made Haskell package"))
-             (check-true (directory-exists? out-dir)))))
+       (with-check-info
+        (('message "Made src directory"))
+        (check-true (directory-exists? (string-append out-dir "/src"))))
 
-        (with-check-info
-         (('message "Made src directory"))
-         (check-true (directory-exists? (string-append out-dir "/src"))))
+       (for-each (lambda (f)
+                   (with-check-info
+                    (('f       f)
+                     ('message "Made package file"))
+                    (check-true (file-exists? (string-append out-dir f)))))
+                 '("/src/A.hs" "/tip-benchmark-sig.cabal" "/LICENSE"))
 
-        (for-each (lambda (f)
-                    (with-check-info
-                     (('f       f)
-                      ('message "Made package file"))
-                     (check-true (file-exists? (string-append out-dir f)))))
-                  '("/src/A.hs" "/tip-benchmark-sig.cabal" "/LICENSE"))
+       (parameterize-env `([#"HOME" ,(string->bytes/utf-8 out-dir)])
+         (lambda ()
+           (parameterize ([current-directory out-dir])
+             (run-pipeline/out '(cabal configure))
 
-        (parameterize-env `([#"HOME" ,(string->bytes/utf-8 out-dir)])
-          (lambda ()
-            (parameterize ([current-directory out-dir])
-              (run-pipeline/out '(cabal configure))
+             (define out
+               (run-pipeline/out '(echo -e "import A\n:browse")
+                                 '(cabal repl -v0)))
 
-              (define out
-                (run-pipeline/out '(echo -e "import A\n:browse")
-                                  '(cabal repl -v0)))
-
-              ;; If the import fails, we're stuck with the Prelude, which contains classes
-              (with-check-info
-               (('out     out)
-                ('message "Module imported successfully"))
-               (check-false (string-contains? out "class Functor")))))))))
-      '(1 3 5)))
-
-  (define fresh (take all-benchmark-files 10))
+             ;; If the import fails, we're stuck with the Prelude, which contains classes
+             (with-check-info
+              (('out     out)
+               ('message "Module imported successfully"))
+              (check-false (string-contains? out "class Functor")))))))))
 
   (define regressions
     (benchmark-files '("tip2015/list_elem_map.smt2"
@@ -1669,42 +1659,40 @@ library
                              (and (not (empty? sym))
                                   (not (string-contains? (~a sym) name2))))
                            syms))))
-    (append regressions fresh))
+    (append regressions test-benchmark-files))
 
-  (in-temp-dir (lambda (out-dir)
-                 (define files (take all-benchmark-files 5))
+  (in-temp-dir
+   (lambda (out-dir)
+     (parameterize-env `([#"FILES"   ,(string->bytes/utf-8
+                                       (string-join test-benchmark-files "\n"))]
+                         [#"OUT_DIR" ,(string->bytes/utf-8
+                                       (path->string out-dir))]
+                         [#"HOME"    ,(string->bytes/utf-8
+                                       (path->string out-dir))])
+       (lambda ()
+         (full-haskell-package-s (format-symbols (mk-final-defs-s test-benchmark-files))
+                                 (path->string out-dir))
 
-                 (parameterize-env `([#"FILES"   ,(string->bytes/utf-8
-                                                   (string-join files "\n"))]
-                                     [#"OUT_DIR" ,(string->bytes/utf-8
-                                                   (path->string out-dir))]
-                                     [#"HOME"    ,(string->bytes/utf-8
-                                                   (path->string out-dir))])
-                                   (lambda ()
+         (parameterize ([current-directory out-dir])
 
-                                     (full-haskell-package-s (format-symbols (mk-final-defs-s files))
-                                                             (path->string out-dir))
+           (check-true (directory-exists? "src"))
 
-                                     (parameterize ([current-directory out-dir])
+           (check-true (file-exists? "src/A.hs"))
 
-                                       (check-true (directory-exists? "src"))
+           (check-true (file-exists? "tip-benchmark-sig.cabal"))
 
-                                       (check-true (file-exists? "src/A.hs"))
+           (check-true (file-exists? "LICENSE"))
 
-                                       (check-true (file-exists? "tip-benchmark-sig.cabal"))
+           (run-pipeline/out '(cabal configure))
 
-                                       (check-true (file-exists? "LICENSE"))
+           (define out
+             (run-pipeline/out '(echo -e "import A\n:browse")
+                               '(cabal repl -v0)))
 
-                                       (run-pipeline/out '(cabal configure))
-
-                                       (define out
-                                         (run-pipeline/out '(echo -e "import A\n:browse")
-                                                           '(cabal repl -v0)))
-
-                                       ;; If the import fails, we're stuck with
-                                       ;; the Prelude, which contains classes
-                                       (check-false (string-contains? out
-                                                                      "class Functor")))))))
+           ;; If the import fails, we're stuck with
+           ;; the Prelude, which contains classes
+           (check-false (string-contains? out
+                                          "class Functor")))))))
 
   (define (names-match src expr expect)
     (define names (rec-names expr))
