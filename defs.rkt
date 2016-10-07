@@ -641,23 +641,22 @@
       x
       (symbol->string x)))
 
-(define (get-def x input)
-  (define (get-con-def name str)
-    (define (defs-from sym exp)
-      (match exp
-        [(list 'declare-datatypes given decs) (find-defs sym given decs)]
-        [(cons a b)                           (append (defs-from sym a)
-                                                      (defs-from sym b))]
-        [_                                    null]))
+(define (get-def-s name exprs)
+  (define (defs-from sym exp)
+    (match exp
+      [(list 'declare-datatypes given decs) (find-defs sym given decs)]
+      [(cons a b)                           (append (defs-from sym a)
+                                                    (defs-from sym b))]
+      [_                                    null]))
 
-    (remove-duplicates (foldl (lambda (str rest)
-                                (append (defs-from name (read-benchmark str))
-                                        rest))
-                              '()
-                              (string-split str "\n"))))
+  (remove-duplicates (append (find-sub-exprs name exprs)
+                             (foldl (lambda (expr rest)
+                                      (append (defs-from name expr) rest))
+                                    '()
+                                    exprs))))
 
-  (append (find-sub-exprs x (read-benchmark input))
-          (get-con-def x input)))
+(define (get-def name str)
+  (get-def-s name (read-benchmark str)))
 
 (define (rec-names exprs)
   (names-in exprs))
@@ -1133,6 +1132,9 @@ library
                       ('message    "Duplicate normalised forms!"))
                      (check-equal? norms (list norm)))))
                 normalised)))
+
+  (check-equal? (get-def "constructorZ" (format-symbols redundancies))
+                (list constructorZ))
 
   (for-each (lambda (sym)
     (define def (format-symbols (get-def sym qual)))
