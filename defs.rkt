@@ -256,6 +256,11 @@
     [_                                    null]))
 
 (define (find-defs sym given ty-decs)
+  (define (any-of f xs)
+    (match xs
+      [(cons a b) (or (f a) (any-of f b))]
+      [_          #f]))
+
   (map (lambda (dec) (list 'declare-datatypes given (list dec)))
        (filter (lambda (ty-dec)
                  (any-of (lambda (con-dec)
@@ -267,11 +272,6 @@
                                        (cdr con-dec))))
                          (cdr ty-dec)))
                ty-decs)))
-
-(define (any-of f xs)
-  (match xs
-    [(cons a b) (or (f a) (any-of f b))]
-    [_          #f]))
 
 (define (files-with given)
   (filter (lambda (path)
@@ -529,24 +529,6 @@
 (define (prefix-name n p)
   (string->symbol (string-append p (symbol->string n))))
 
-(define (arg-decs-for c x)
-  ;; Look through x for any definitions of c, and return its argument list
-  (let ([arg-decs-for-ty (lambda (c x)
-          (let ((arg-decs-for-con (lambda (c x)
-                  (match x
-                    [(list name) (if (equal? name c)
-                                     (list '())
-                                     '())]
-                    [(cons name args) (if (equal? name c)
-                                          (list args)
-                                          '())]))))
-            (concat-map (curry arg-decs-for-con c) (cdr x))))])
-    (match x
-      [(list 'declare-datatypes _ decs) (concat-map (curry arg-decs-for-ty c) decs)]
-      [(cons h t) (append (arg-decs-for c h)
-                          (arg-decs-for c t))]
-      [_ '()])))
-
 (define (constructor-type c x)
   (let* ((constructor-type-ty (lambda (c dec)
            (concat-map (lambda (con)
@@ -563,18 +545,33 @@
   (apply append (map f xs)))
 
 (define (func-for x c)
-  (let ([arg-apps-for (lambda (c x)
-           (map car (car (arg-decs-for c x))))]
+  (define (arg-decs-for x)
+    ;; Look through x for any definitions of c, and return its argument list
+    (define (arg-decs-for-ty x)
+      (define (arg-decs-for-con x)
+        (match x
+          [(list name)      (if (equal? name c) (list '())  '())]
+          [(cons name args) (if (equal? name c) (list args) '())]))
 
-        [arg-decs (car (arg-decs-for c x))])
-    (prefix-locals
-     `(define-fun
-        ,(prefix-name c "constructor")
-        ,arg-decs
-        ,(car (constructor-type c x))
-        ,(if (empty? arg-decs)
-             c
-             (cons c (arg-apps-for c x)))))))
+      (concat-map arg-decs-for-con (cdr x)))
+
+    (match x
+      [(list 'declare-datatypes _ decs) (concat-map arg-decs-for-ty decs)]
+      [(cons h t) (append (arg-decs-for h)
+                          (arg-decs-for t))]
+      [_ '()]))
+
+  (define arg-decs
+    (car (arg-decs-for x)))
+
+  (prefix-locals
+   `(define-fun
+      ,(prefix-name c "constructor")
+      ,arg-decs
+      ,(car (constructor-type c x))
+      ,(if (empty? arg-decs)
+           c
+           (cons c (map car (car (arg-decs-for x))))))))
 
 (define (trim lst)
   (filter (lambda (x)
@@ -991,15 +988,13 @@ library
                    (filter non-empty? (rec-names (list expr))))
                  one-liners)))
 
-  (define all-result
-    (filter non-empty? (map names-in one-liners)))
-
-  (with-check-info
-   (('f          f)
-    ('one-liners one-liners)
-    ('result     result)
-    ('all-result all-result))
-   (check-equal? all-result result))
+  (let ([all-result (filter non-empty? (map names-in one-liners))])
+    (with-check-info
+     (('f          f)
+      ('one-liners one-liners)
+      ('result     result)
+      ('all-result all-result))
+     (check-equal? all-result result)))
 
   (check-true  (ss-eq? 'foo  'foo))
   (check-true  (ss-eq? 'foo  "foo"))
