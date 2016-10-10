@@ -13,6 +13,19 @@
 (provide theorems-from-symbols)
 (provide types-from-defs)
 
+;; Examples used for tests
+(define nat-def      '(declare-datatypes () ((Nat (Z) (S (p Nat))))))
+
+(define constructorZ '(define-fun constructorZ ()              Nat Z))
+
+(define constructorS '(define-fun constructorS ((local-p Nat)) Nat (S local-p)))
+
+(define redundancies `(,constructorZ
+                       ,constructorS
+                       (define-fun redundantZ1 () Nat Z)
+                       (define-fun redundantZ2 () Nat Z)
+                       (define-fun redundantZ3 () Nat Z)))
+
 (define benchmark-dir
   "modules/tip-benchmarks/benchmarks")
 
@@ -324,8 +337,9 @@
             (let ([rec (norm-constructors (cdr cs) rest)])
               (cons (norm-constructor (car cs) (list rest rec)) rec))))
 
-      (let ([name (inc-name type-prefix (max-name type-prefix rest))]
-            [cs   (norm-constructors (cdr dec) rest)])
+      (let* ([type-prefix "defining-type-"]
+             [name (inc-name type-prefix (max-name type-prefix rest))]
+             [cs   (norm-constructors (cdr dec) rest)])
         (cons name (replace-in (car dec) name cs))))
 
     (if (empty? decs)
@@ -361,10 +375,18 @@
 
     [  (list 'case pat body)
      (let* ([norm-body  (norm body)]
-            [rec        (norm-case pat norm-body)]
-            [norm-pat   (first rec)]
-            [norm-body2 (second rec)])
-       (list 'case norm-pat norm-body2))]
+            [rec        (match pat
+                          [(list con)    (list pat norm-body)]
+                          [(cons con ps) (match (foldl (lambda (x y)
+                                                         (let ([name (next-var y)])
+                                                           (list (cons name (first y))
+                                                                 (replace-in x name (second y)))))
+                                                       (list '() norm-body)
+                                                       ps)
+                                           [(list norm-ps norm-body2)
+                                            (list (cons con norm-ps) norm-body2)])]
+                          [_             (list pat norm-body)])])
+       (cons 'case rec))]
 
     [(list 'lambda args body)
      (let ([rec (norm-func args body)])
@@ -377,26 +399,6 @@
     [(cons a b) (cons (norm a) (norm b))]
 
     [_ expr]))
-
-(define (norm-case pat body)
-  (match pat
-    [(list con)    (list pat body)]
-    [(cons con ps) (let* ([rec       (norm-case2 ps body)]
-                          [norm-ps   (first rec)]
-                          [norm-body (second rec)])
-                     (list (cons con norm-ps) norm-body))]
-    [_             (list pat body)]))
-
-(define (norm-case2 ps body)
-  (if (empty? ps)
-      (list ps body)
-      (let* ([p         (car ps)]
-             [rec       (norm-case2 (cdr ps) body)]
-             [norm-ps   (first rec)]
-             [norm-body (second rec)]
-             [name      (next-var (list norm-ps norm-body))])
-        (list (cons name norm-ps)
-              (replace-in p name norm-body)))))
 
 (define (norm-func args body)
   (if (empty? args)
@@ -438,7 +440,6 @@
 (define (inc-name pre n)
   (string->symbol (string-append pre (number->string (+ 1 n)))))
 
-(define        type-prefix "defining-type-")
 (define         var-prefix "normalise-var-")
 
 (define (max-name pre expr)
@@ -793,11 +794,9 @@
          str
          reps))
 
-(define (strip-redundancies exprs)
-  ;; Remove alpha-equivalent expressions from exprs, according to reps
+(define (norm-defs exprs)
   (define redundancies (find-redundancies exprs))
   (define replacements (map first redundancies))
-
   (define stripped
     (foldl (lambda (expr result)
              (let ([keep      #t]
@@ -812,14 +811,13 @@
            '()
            exprs))
 
-  (read-benchmark (replace-strings (format-symbols stripped)
+  (define norm
+    (read-benchmark (replace-strings (format-symbols stripped)
                                      (map (curry map ~a) redundancies))))
 
-(define (norm-defs exprs)
-  (let ([norm (strip-redundancies exprs)])
-    (if (equal? exprs norm)
-        norm
-        (norm-defs norm))))
+  (if (equal? exprs norm)
+      norm
+      (norm-defs norm)))
 
 (define (defs-to-sig x)
   (mk-signature-s (format-symbols (mk-final-defs-s (string-split x "\n")))))
@@ -928,18 +926,6 @@ library
 ;; Everything from here is tests
 (module+ test
   (require rackunit)
-
-  (define nat-def      '(declare-datatypes () ((Nat (Z) (S (p Nat))))))
-
-  (define constructorZ '(define-fun constructorZ ()              Nat Z))
-
-  (define constructorS '(define-fun constructorS ((local-p Nat)) Nat (S local-p)))
-
-  (define redundancies `(,constructorZ
-                         ,constructorS
-                         (define-fun redundantZ1 () Nat Z)
-                         (define-fun redundantZ2 () Nat Z)
-                         (define-fun redundantZ3 () Nat Z)))
 
   (check-equal? (symbols-in '(lambda ((local1 Nat) (local2 (List Nat)))
                                (free1 local1)))
@@ -1113,8 +1099,7 @@ library
                   syms)))
 
   (test-case "No alpha-equivalent duplicates in result"
-    (let* ([normalised (read-benchmark
-                        (format-symbols (norm test-defs)))])
+    (let* ([normalised (norm test-defs)])
       (for-each (lambda (norm)
                   (define norms
                     (filter (curry equal? norm) normalised))
@@ -1382,9 +1367,6 @@ library
                             (replace-strings (format-symbols      redundancies)
                                                (find-redundancies redundancies))))
                 (list->set `(,constructorZ ,constructorS)))
-
-  (check-equal? (list->set (strip-redundancies redundancies))
-                (list->set (list constructorZ constructorS)))
 
   (let* ([given '((define-fun min1 ((x Int) (y Int)) Int (ite (<= x y) x y))
                   (define-fun min2 ((a Int) (b Int)) Int (ite (<= a b) a b)))]
