@@ -274,19 +274,30 @@
   (remove-duplicates (expression-symbols expr)))
 
 (define (norm expr)
+  (define norm-func-1 'defining-function-1)
+
+  (define (norm-func args body)
+    (if (empty? args)
+        (list args (norm body))
+        (let* ([arg (car args)]
+               [rec (norm-func (cdr args) body)]
+               [v   (next-var rec)])
+          (list (cons (cons v (cdr arg)) (first rec))
+                (replace-in (car arg) v (second rec))))))
+
+
   (define (norm-let bindings body)
-    (if (empty? bindings)
-        (list bindings (norm body))
-        (let* ([binding   (first  bindings)]
-               [name      (first  binding)]
-               [value     (second binding)]
-               [new-value (norm value)]
-               [rec       (norm-let (cdr bindings) body)]
-               [new-binds (first  rec)]
-               [new-body  (second rec)]
-               [new-name  (next-var (list new-body new-value new-binds))])
-          (list (cons (list new-name new-value) new-binds)
-                (replace-in name new-name new-body)))))
+    (foldr (lambda (binding rec)
+             (let* ([name      (first  binding)]
+                    [value     (second binding)]
+                    [new-value (norm value)]
+                    [new-binds (first  rec)]
+                    [new-body  (second rec)]
+                    [new-name  (next-var (cons new-value rec))])
+               (list (cons (list new-name new-value) new-binds)
+                     (replace-in name new-name new-body))))
+           (list '() (norm body))
+           bindings))
 
   (define (norm-params ps def)
     (if (empty? ps)
@@ -317,23 +328,25 @@
     (define (norm-type dec rest)
       (define (norm-constructors cs rest)
         (define (norm-constructor c rest)
-          (define constructor-prefix
-            "normalise-constructor-")
+          (define constructor-prefix "normalise-constructor-")
 
           (define (norm-destructors ds rest)
             (define  destructor-prefix "normalise-destructor-")
 
             (if (empty? ds)
-                ds
-                (let* ([rec  (norm-destructors (cdr ds) rest)]
-                       [name (inc-name destructor-prefix (max-name destructor-prefix (list rest rec)))])
-                  (cons (cons name (cdr (car ds))) rec))))
+                '()
+                (let* ([rec  (norm-destructors (cdr ds) rest)])
+                  (cons (cons (inc-name destructor-prefix
+                                        (max-name destructor-prefix
+                                                  (list rest rec)))
+                              (cdr (car ds)))
+                        rec))))
 
-          (let ([name (inc-name constructor-prefix (max-name constructor-prefix rest))])
-            (cons name (norm-destructors (cdr c) rest))))
+          (cons (inc-name constructor-prefix (max-name constructor-prefix rest))
+                (norm-destructors (cdr c) rest)))
 
         (if (empty? cs)
-            cs
+            '()
             (let ([rec (norm-constructors (cdr cs) rest)])
               (cons (norm-constructor (car cs) (list rest rec)) rec))))
 
@@ -374,23 +387,21 @@
        (list 'declare-datatypes (car rec) (cdr rec)))]
 
     [  (list 'case pat body)
-     (let* ([norm-body  (norm body)]
-            [rec        (match pat
-                          [(list con)    (list pat norm-body)]
-                          [(cons con ps) (match (foldl (lambda (x y)
-                                                         (let ([name (next-var y)])
-                                                           (list (cons name (first y))
-                                                                 (replace-in x name (second y)))))
-                                                       (list '() norm-body)
-                                                       ps)
-                                           [(list norm-ps norm-body2)
-                                            (list (cons con norm-ps) norm-body2)])]
-                          [_             (list pat norm-body)])])
-       (cons 'case rec))]
+     (let ([norm-body (norm body)])
+       (cons 'case (match pat
+                     [(list con)    (list pat norm-body)]
+                     [(cons con ps) (match (foldl (lambda (x y)
+                                                    (let ([name (next-var y)])
+                                                      (list (cons name (first y))
+                                                            (replace-in x name (second y)))))
+                                                  (list '() norm-body)
+                                                  ps)
+                                      [(list norm-ps norm-body2)
+                                       (list (cons con norm-ps) norm-body2)])]
+                     [_             (list pat norm-body)])))]
 
     [(list 'lambda args body)
-     (let ([rec (norm-func args body)])
-       (list 'lambda (first rec) (second rec)))]
+       (cons 'lambda (norm-func args body))]
 
     [(list 'let bindings body)
      (let* ([rec (norm-let bindings (norm body))])
@@ -399,18 +410,6 @@
     [(cons a b) (cons (norm a) (norm b))]
 
     [_ expr]))
-
-(define (norm-func args body)
-  (if (empty? args)
-      (list args (norm body))
-      (let* ([arg (car args)]
-             [rec (norm-func (cdr args) body)]
-             [v   (next-var rec)])
-        (list (cons (cons v (cdr arg)) (first rec))
-              (replace-in (car arg) v (second rec))))))
-
-(define norm-func-prefix "defining-function-")
-(define norm-func-1 (string->symbol (string-append norm-func-prefix "1")))
 
 (define (next-var expr)
   (string->symbol
