@@ -286,19 +286,6 @@
                 (replace-in (car arg) v (second rec))))))
 
 
-  (define (norm-let bindings body)
-    (foldr (lambda (binding rec)
-             (let* ([name      (first  binding)]
-                    [value     (second binding)]
-                    [new-value (norm value)]
-                    [new-binds (first  rec)]
-                    [new-body  (second rec)]
-                    [new-name  (next-var (cons new-value rec))])
-               (list (cons (list new-name new-value) new-binds)
-                     (replace-in name new-name new-body))))
-           (list '() (norm body))
-           bindings))
-
   (define (norm-params ps def)
     (if (empty? ps)
         (match def
@@ -404,8 +391,13 @@
        (cons 'lambda (norm-func args body))]
 
     [(list 'let bindings body)
-     (let* ([rec (norm-let bindings (norm body))])
-       (list 'let (first rec) (second rec)))]
+     (cons 'let (foldr (lambda (binding rec)
+                         (let* ([value (norm (second binding))]
+                                [name  (next-var (cons value rec))])
+                           (list (cons (list name value) (first rec))
+                                 (replace-in (first binding) name (second rec)))))
+                       (list '() (norm body))
+                       bindings))]
 
     [(cons a b) (cons (norm a) (norm b))]
 
