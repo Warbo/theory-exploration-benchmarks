@@ -301,16 +301,6 @@
           (list (cons v (first rec))
                 (replace-in p v (second rec))))))
 
-  (define (norm-type-params ps decs)
-    (if (empty? ps)
-        (list ps decs)
-        (let* ([rec  (norm-type-params (cdr ps) decs)]
-               [name (inc-name var-prefix (max-name var-prefix rec))])
-          (list (cons name (first rec))
-                (replace-in (car ps)
-                            name
-                            (second rec))))))
-
   (define (norm-types decs)
     (define (norm-type dec rest)
       (define (norm-constructors cs rest)
@@ -369,9 +359,13 @@
                                                                   (second rec))))]
 
     [  (list 'declare-datatypes given     decs)
-     (let* ([norm-decs (norm-types decs)]
-            [rec       (norm-type-params given norm-decs)])
-       (list 'declare-datatypes (car rec) (cdr rec)))]
+     (cons 'declare-datatypes
+           (foldr (lambda (p rec)
+                    (let ([name (inc-name var-prefix (max-name var-prefix rec))])
+                      (list (cons name (first rec))
+                            (replace-in p name (second rec)))))
+                  (list '() (norm-types decs))
+                  given))]
 
     [  (list 'case pat body)
      (let ([norm-body (norm body)])
@@ -404,29 +398,24 @@
     [_ expr]))
 
 (define (next-var expr)
+  (define (var-num x)
+    (string->number (substring (symbol->string x) (string-length var-prefix))))
+
+  (define (max-var expr)
+    (if (and (symbol? expr)
+             (string-prefix? (symbol->string expr) var-prefix))
+        expr
+        (match expr
+          [(cons a b) (let ([ma (max-var a)]
+                            [mb (max-var b)])
+                        (if (< (var-num ma) (var-num mb))
+                            mb
+                            ma))]
+          [_          (string->symbol (string-append var-prefix "0"))])))
+
   (string->symbol
    (string-append var-prefix
                   (number->string (+ 1 (var-num (max-var expr)))))))
-
-(define (max-var expr)
-  (if (is-var? expr)
-      expr
-      (match expr
-        [(cons a b) (let ([ma (max-var a)]
-                          [mb (max-var b)])
-                      (if (var-lt? ma mb) mb ma))]
-        [_          (string->symbol (string-append var-prefix "0"))])))
-
-(define (is-var? v)
-  (if (symbol? v)
-      (string-prefix? (symbol->string v) var-prefix)
-      #f))
-
-(define (var-lt? x y)
-  (< (var-num x) (var-num y)))
-
-(define (var-num x)
-  (string->number (substring (symbol->string x) (string-length var-prefix))))
 
 (define (inc-name pre n)
   (string->symbol (string-append pre (number->string (+ 1 n)))))
@@ -1283,10 +1272,10 @@ library
                             (tail (list a))))))
                   '(declare-datatypes
                     (normalise-var-1)
-                    (((defining-type-1
-                        (normalise-constructor-2)
-                        (normalise-constructor-1 (normalise-destructor-2 normalise-var-1)
-                                                 (normalise-destructor-1 (defining-type-1 normalise-var-1))))))))
+                    ((defining-type-1
+                       (normalise-constructor-2)
+                       (normalise-constructor-1 (normalise-destructor-2 normalise-var-1)
+                                                (normalise-destructor-1 (defining-type-1 normalise-var-1)))))))
 
     (check-normal "let binding"
                   '(define-fun-rec msorttd
