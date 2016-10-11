@@ -285,7 +285,6 @@
           (list (cons (cons v (cdr arg)) (first rec))
                 (replace-in (car arg) v (second rec))))))
 
-
   (define (norm-params ps def)
     (if (empty? ps)
         (match def
@@ -300,33 +299,6 @@
                [v   (next-var rec)])
           (list (cons v (first rec))
                 (replace-in p v (second rec))))))
-
-  (define (norm-types decs)
-    (define constructor-prefix "normalise-constructor-")
-    (define destructor-prefix  "normalise-destructor-")
-    (define type-prefix        "defining-type-")
-
-    (if (empty? decs)
-        decs
-        (let* ([rec (norm-types (cdr decs))]
-               [name (inc-name type-prefix (max-name type-prefix rec))])
-          (cons (cons name
-                      (replace-in (car (car decs)) name
-                                  (foldr (lambda (c rec3)
-                                           (cons (cons (inc-name constructor-prefix
-                                                                 (max-name constructor-prefix (list rec rec3)))
-                                                       (foldr (lambda (d rec2)
-                                                                (cons (cons (inc-name destructor-prefix
-                                                                                      (max-name destructor-prefix
-                                                                                                (list rec rec3 rec2)))
-                                                                            (cdr d))
-                                                                      rec2))
-                                                              '()
-                                                              (cdr c)))
-                                                 rec3))
-                                         '()
-                                         (cdr (car decs)))))
-                rec))))
 
   (match expr
     [(  list 'define-fun-rec (list 'par p         def))
@@ -350,12 +322,44 @@
                                                                   (second rec))))]
 
     [  (list 'declare-datatypes given     decs)
+     (define (replace-param p expr)
+       (define name
+         (inc-name var-prefix (max-name var-prefix expr)))
+
+       (list (cons name (first expr))
+             (replace-in p name (second expr))))
+
+     (define (norm-type dec expr)
+       (define type-prefix "defining-type-")
+
+       (define name
+         (inc-name type-prefix (max-name type-prefix expr)))
+
+       (define (norm-constructor c rec3)
+         (define (norm-destructor d rec2)
+           (define destructor-prefix "normalise-destructor-")
+
+           (cons (cons (inc-name destructor-prefix
+                                 (max-name destructor-prefix
+                                           (list expr rec3 rec2)))
+                       (cdr d))
+                 rec2))
+
+         (define constructor-prefix "normalise-constructor-")
+
+         (cons (cons (inc-name constructor-prefix
+                               (max-name constructor-prefix (list expr rec3)))
+                     (foldr norm-destructor '() (cdr c)))
+               rec3))
+
+       (cons (cons name
+                   (replace-in (car dec) name
+                               (foldr norm-constructor '() (cdr dec))))
+             expr))
+
      (cons 'declare-datatypes
-           (foldr (lambda (p rec)
-                    (let ([name (inc-name var-prefix (max-name var-prefix rec))])
-                      (list (cons name (first rec))
-                            (replace-in p name (second rec)))))
-                  (list '() (norm-types decs))
+           (foldr replace-param
+                  (list '() (foldr norm-type '() decs))
                   given))]
 
     [  (list 'case pat body)
