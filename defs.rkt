@@ -302,40 +302,31 @@
                 (replace-in p v (second rec))))))
 
   (define (norm-types decs)
-    (define (norm-type dec rest)
-      (define (norm-constructors cs rest)
-        (define (norm-constructor c rest)
-          (define constructor-prefix "normalise-constructor-")
-
-          (define (norm-destructors ds rest)
-            (define  destructor-prefix "normalise-destructor-")
-
-            (if (empty? ds)
-                '()
-                (let* ([rec  (norm-destructors (cdr ds) rest)])
-                  (cons (cons (inc-name destructor-prefix
-                                        (max-name destructor-prefix
-                                                  (list rest rec)))
-                              (cdr (car ds)))
-                        rec))))
-
-          (cons (inc-name constructor-prefix (max-name constructor-prefix rest))
-                (norm-destructors (cdr c) rest)))
-
-        (if (empty? cs)
-            '()
-            (let ([rec (norm-constructors (cdr cs) rest)])
-              (cons (norm-constructor (car cs) (list rest rec)) rec))))
-
-      (let* ([type-prefix "defining-type-"]
-             [name (inc-name type-prefix (max-name type-prefix rest))]
-             [cs   (norm-constructors (cdr dec) rest)])
-        (cons name (replace-in (car dec) name cs))))
+    (define constructor-prefix "normalise-constructor-")
+    (define destructor-prefix  "normalise-destructor-")
+    (define type-prefix        "defining-type-")
 
     (if (empty? decs)
         decs
-        (let ([rec (norm-types (cdr decs))])
-          (cons (norm-type (car decs) rec) rec))))
+        (let* ([rec (norm-types (cdr decs))]
+               [name (inc-name type-prefix (max-name type-prefix rec))])
+          (cons (cons name
+                      (replace-in (car (car decs)) name
+                                  (foldr (lambda (c rec3)
+                                           (cons (cons (inc-name constructor-prefix
+                                                                 (max-name constructor-prefix (list rec rec3)))
+                                                       (foldr (lambda (d rec2)
+                                                                (cons (cons (inc-name destructor-prefix
+                                                                                      (max-name destructor-prefix
+                                                                                                (list rec rec3 rec2)))
+                                                                            (cdr d))
+                                                                      rec2))
+                                                              '()
+                                                              (cdr c)))
+                                                 rec3))
+                                         '()
+                                         (cdr (car decs)))))
+                rec))))
 
   (match expr
     [(  list 'define-fun-rec (list 'par p         def))
