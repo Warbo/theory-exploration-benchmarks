@@ -1,6 +1,6 @@
-{ bash, buildEnv, fetchurl, fetchFromGitHub, haskellPackages,
-  makeWrapper, python, racket, stdenv, writeScript }:
+{ pkgs ? import <nixpkgs> {} }:
 
+with pkgs;
 let propagatedBuildInputs = [
       bash haskellPackages.cabal-install python
       (racketWithDeps [ shellPipeline ])
@@ -58,56 +58,41 @@ let propagatedBuildInputs = [
       done
     '';
   };
-in rec {
+in stdenv.mkDerivation (rec {
+     name = "te-benchmark";
+     src  = ./.;
 
-  # Scripts for combining all TIP benchmarks into one
-  te-benchmark = stdenv.mkDerivation (rec {
-    name = "te-benchmark";
-    src  = ./.;
+     buildInputs = [ makeWrapper ];
+     inherit propagatedBuildInputs;
 
-    buildInputs = [ makeWrapper ];
-    inherit propagatedBuildInputs;
+     NIX_PATH   = builtins.getEnv "NIX_PATH";
+     NIX_REMOTE = builtins.getEnv "NIX_REMOTE";
 
-    NIX_PATH   = builtins.getEnv "NIX_PATH";
-    NIX_REMOTE = builtins.getEnv "NIX_REMOTE";
+     installPhase = ''
+       mkdir -p      "$out/lib"
+       cp    *.sh    "$out/lib/"
+       cp    *.rkt   "$out/lib/"
+       cp -r modules "$out/lib/"
 
-    installPhase = ''
-      mkdir -p      "$out/lib"
-      cp    *.sh    "$out/lib/"
-      cp    *.rkt   "$out/lib/"
-      cp    *.py    "$out/lib/"
-      cp -r modules "$out/lib/"
+       # Ensure tip is available
+       wrapProgram "$out/lib/mk_signature.rkt" --prefix PATH : "${env}/bin"
 
-      # Ensure tip is available
-      wrapProgram "$out/lib/mk_signature.rkt" --prefix PATH : "${env}/bin"
+       mkdir -p    "$out/bin"
+       for F in "$out/lib"/*.sh "$out/lib"/*.rkt
+       do
+         NAME=$(basename "$F")
+         echo -e "#!/usr/bin/env bash\ncd '$out/lib'\n'$F' \"\$@\"" > "$out/bin/$NAME"
+       done
+       chmod +x    "$out/bin/"*
+     '';
 
-      mkdir -p    "$out/bin"
-      for F in "$out/lib"/*.sh "$out/lib"/*.rkt "$out/lib"/*.py
-      do
-        NAME=$(basename "$F")
-        echo -e "#!/usr/bin/env bash\ncd '$out/lib'\n'$F' \"\$@\"" > "$out/bin/$NAME"
-      done
-      chmod +x    "$out/bin/"*
-    '';
-  });
+     doCheck = true;
+     checkPhase = ''
+       raco test defs.rkt
+     '';
+   })
 
-  # Test suite takes ages, so keep it separate
-  te-benchmark-tests = stdenv.mkDerivation {
-    name = "te-tests";
-
-    inherit propagatedBuildInputs;
-
-    src = ./.;
-
-    buildCommand = ''
-      source $stdenv/setup
-
-      cd "$src"
-      HOME="$PWD" ./test.sh || exit 1
-      touch "$out"
-    '';
-  };
-
+   /*
   # Uses te-benchmark to produce one big smtlib file
   tip-benchmark-smtlib = stdenv.mkDerivation {
     name        = "tip-benchmark-smtlib";
@@ -148,3 +133,4 @@ in rec {
     '';
   };
 }
+*/
