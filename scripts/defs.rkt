@@ -13,6 +13,13 @@
 (provide theorems-from-symbols)
 (provide types-from-defs)
 
+(define verbose #t)
+(define (quiet)
+  (set! verbose #f))
+(define (log . args)
+  (when verbose
+    (apply eprintf args)))
+
 ;; Examples used for tests
 (define nat-def      '(declare-datatypes () ((Nat (Z) (S (p Nat))))))
 
@@ -786,10 +793,12 @@
            '()
            exprs))
 
+  (log "Normalising ~a definitions\n" (length exprs))
   (define norm
     (read-benchmark (replace-strings (format-symbols stripped)
                                      (map (curry map ~a) redundancies))))
 
+  (log "Stripped ~a redundancies\n" (- (length exprs) (length norm)))
   (if (equal? exprs norm)
       norm
       (norm-defs norm)))
@@ -901,6 +910,8 @@ library
 ;; Everything from here is tests
 (module+ test
   (require rackunit)
+
+  (quiet)
 
   (check-equal? (symbols-in '(lambda ((local1 Nat) (local2 (List Nat)))
                                (free1 local1)))
