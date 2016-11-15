@@ -1,16 +1,7 @@
 { pkgs ? import <nixpkgs> {} }:
 
 with pkgs;
-let propagatedBuildInputs = [
-      bash haskellPackages.cabal-install python
-      (racketWithDeps [ shellPipeline ])
-      (haskellPackages.ghcWithPackages (hs: [
-        hs.tip-lib hs.QuickCheck hs.quickspec hs.testing-feat
-      ])) ];
-    env = buildEnv {
-      name  = "tip-bench-env";
-      paths = propagatedBuildInputs;
-    };
+let
 
   shellPipeline = fetchFromGitHub {
     owner  = "willghatch";
@@ -58,79 +49,56 @@ let propagatedBuildInputs = [
       done
     '';
   };
-in stdenv.mkDerivation (rec {
-     name = "te-benchmark";
-     src  = ./.;
 
-     buildInputs = [ makeWrapper ];
-     inherit propagatedBuildInputs;
-
-     NIX_PATH   = builtins.getEnv "NIX_PATH";
-     NIX_REMOTE = builtins.getEnv "NIX_REMOTE";
-
-     installPhase = ''
-       mkdir -p      "$out/lib"
-       cp    *.sh    "$out/lib/"
-       cp    *.rkt   "$out/lib/"
-       cp -r modules "$out/lib/"
-
-       # Ensure tip is available
-       wrapProgram "$out/lib/mk_signature.rkt" --prefix PATH : "${env}/bin"
-
-       mkdir -p    "$out/bin"
-       for F in "$out/lib"/*.sh "$out/lib"/*.rkt
-       do
-         NAME=$(basename "$F")
-         echo -e "#!/usr/bin/env bash\ncd '$out/lib'\n'$F' \"\$@\"" > "$out/bin/$NAME"
-       done
-       chmod +x    "$out/bin/"*
-     '';
-
-     doCheck = true;
-     checkPhase = ''
-       raco test defs.rkt
-     '';
-   })
-
-   /*
-  # Uses te-benchmark to produce one big smtlib file
-  tip-benchmark-smtlib = stdenv.mkDerivation {
-    name        = "tip-benchmark-smtlib";
-    buildInputs = [ te-benchmark ];
-
-    teBenchmark = te-benchmark;
-
-    buildCommand = ''
-      source $stdenv/setup
-      set -e
-
-      # Create combined benchmark
-      cd "$teBenchmark/lib"
-
-      find modules/tip-benchmarks/benchmarks -name "*.smt2" |
-        ./mk_final_defs.rkt > "$out"
-    '';
+  env = buildEnv {
+    name  = "tip-bench-env";
+    paths = [
+      bash
+      haskellPackages.cabal-install
+      (racketWithDeps [ shellPipeline ])
+      (haskellPackages.ghcWithPackages (hs: [
+        hs.tip-lib
+        hs.QuickCheck
+        hs.quickspec
+        hs.testing-feat
+      ]))
+    ];
   };
 
-  # Uses tip-benchmark-smtlib to produce a Haskell package
-  tip-benchmarks = stdenv.mkDerivation {
-    name         = "tip-benchmarks";
-    buildInputs  = [ te-benchmark ];
-    teBenchmark  = te-benchmark;
-    SMT_FILE     = tip-benchmark-smtlib;
-    buildCommand = ''
-      source $stdenv/setup
-      set -e
+in rec {
+  tip-benchmarks = ./modules/tip-benchmarks/benchmarks;
 
-      OUT_DIR="$out"
-      mkdir -p "$OUT_DIR"
-      export OUT_DIR
+  tools = stdenv.mkDerivation (rec {
+    name = "te-benchmark";
+    src  = ./scripts;
 
-      # Create Haskell package
-      cd "$teBenchmark/lib"
-      find modules/tip-benchmarks/benchmarks/ -name "*.smt2" |
-        ./mk_final_defs.rkt | ./full_haskell_package.rkt
+    buildInputs = [ makeWrapper env ];
+
+    installPhase = ''
+      mkdir -p      "$out/lib"
+      cp    *.sh    "$out/lib/"
+      cp    *.rkt   "$out/lib/"
+
+      mkdir -p    "$out/bin"
+      for F in "$out/lib"/*.sh "$out/lib"/*.rkt
+      do
+        NAME=$(basename "$F")
+        makeWrapper "$F" "$out/bin/$NAME" --prefix PATH : "${env}/bin" \
+                                          --set PWD "$out/lib"
+      done
     '';
-  };
+
+    doCheck = true;
+    checkPhase = ''
+      BENCHMARKS="${tip-benchmarks}" raco test defs.rkt
+    '';
+  });
+
+  tip-benchmark-smtlib = runCommand "mk-smtlib"
+    {
+      buildInputs = [ tools ];
+    }
+    ''
+      find "${tip-benchmarks}" -name "*.smt2" | mk_final_defs.rkt > "$out"
+    '';
 }
-*/
