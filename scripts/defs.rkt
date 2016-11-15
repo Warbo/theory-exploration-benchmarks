@@ -34,7 +34,8 @@
                        (define-fun redundantZ3 () Nat Z)))
 
 (define benchmark-dir
-  "modules/tip-benchmarks/benchmarks")
+  (or (getenv "BENCHMARKS")
+      "No BENCHMARKS env var given"))
 
 (define benchmark-file
   (curry string-append benchmark-dir "/"))
@@ -936,7 +937,7 @@ library
   (check-equal? (trim '((foo) (check-sat) (bar)))      '((foo) (bar)))
 
   (define f
-    (string-append benchmark-dir "/grammars/simp_expr_unambig3.smt2"))
+    (benchmark-file "grammars/simp_expr_unambig3.smt2"))
 
   (define one-liners
     (qual-all (string-split f "\n")))
@@ -970,9 +971,7 @@ library
                 (list constructorZ))
 
   (let* ([file "tip2015/sort_StoogeSort2IsSort.smt2"]
-         [defs (mk-defs-s (list (path->string (build-path (current-directory)
-                                                          benchmark-dir
-                                                          file))))])
+         [defs (mk-defs-s (list (benchmark-file file)))])
     (for-each (lambda (data)
                 (define def
                   (find-sub-exprs (string-append file (first data) "-sentinel")
@@ -1484,7 +1483,7 @@ library
 
   (test-case "Single files"
     (define files (map (lambda (suf)
-                         (string-append benchmark-dir "/" suf))
+                         (benchmark-file suf))
                        '("isaplanner/prop_54.smt2"
                          "tip2015/propositional_AndIdempotent.smt2"
                          "tip2015/propositional_AndCommutative.smt2"
@@ -1743,7 +1742,7 @@ library
                    (check-false (contains syms sym))))
                 xs))
 
-    (let* ([f    (string-append benchmark-dir "/tip2015/int_right_distrib.smt2")]
+    (let* ([f    (benchmark-file "tip2015/int_right_distrib.smt2")]
            [syms (symbols-from-file f)])
 
       (should-have syms 'constructor '(Pos Neg Z S P N))
