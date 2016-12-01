@@ -578,14 +578,14 @@
       x
       (symbol->string x)))
 
+(define (any-of f xs)
+  (match xs
+    [(cons a b) (or (f a) (any-of f b))]
+    [_          #f]))
+
 (define (get-def-s name exprs)
   (define (defs-from sym exp)
     (define (find-defs sym given ty-decs)
-      (define (any-of f xs)
-        (match xs
-          [(cons a b) (or (f a) (any-of f b))]
-          [_          #f]))
-
       (map (lambda (dec) (list 'declare-datatypes given (list dec)))
            (filter (lambda (ty-dec)
                      (any-of (lambda (con-dec)
@@ -623,38 +623,6 @@
   (read-benchmark (string-replace (format-symbols x)
                                   "-sentinel"
                                   "")))
-
-(define (name-replacements-for x)
-  ;; Unqualify any names which only have one definition
-  (define nr-names (rec-names x))
-
-  (foldl (lambda (sym rest)
-           (define name (~a sym))
-           (if (string-contains? name ".smt2")
-               (let* ([unsent (substring name
-                                         0
-                                         (- (string-length name)
-                                            (string-length "-sentinel")))]
-                      [unqual (string-join (cdr (string-split unsent ".smt2"))
-                                           ".smt2")]
-                      [count  (- (length (string-split (format-symbols nr-names)
-                                                       (string-append ".smt2"
-                                                                      unqual
-                                                                      "-sentinel")))
-                                 1)])
-                 (if (equal? count 1)
-                     (cons (list name unqual) rest)
-                     rest))
-               rest))
-         '()
-         nr-names))
-
-(define (remove-prefices x)
-  ;; Removes unambiguous filename prefices
-  (read-benchmark (foldl (lambda (rep str)
-                           (string-replace str (first rep) (second rep)))
-                         (format-symbols x)
-                         (name-replacements-for x))))
 
 (define (add-constructor-funcs x)
   ;; Adding function for each constructor
@@ -712,7 +680,7 @@
   ;(tag-types
     ;(tag-constructors
       ;(add-constructor-funcs
-  (add-check-sat (remove-suffices (remove-prefices x))))
+  (add-check-sat (remove-suffices x)))
 
 (define (find-redundancies exprs)
   (define (mk-output expr so-far name-replacements)
@@ -833,8 +801,11 @@
 (define (mk-final-defs-s given-files)
   (prepare (mk-defs-s given-files)))
 
+(define temp-file-prefix
+  "tebenchmarktemp")
+
 (define (with-temp-file data proc)
-  (let* ([f      (make-temporary-file "te-benchmark-temp-~a")]
+  (let* ([f      (make-temporary-file (string-append temp-file-prefix "~a"))]
          [result void])
     (display-to-file data f #:exists 'replace)
     (set! result (proc f))
@@ -1214,17 +1185,9 @@ library
                                        (bar.smt2quux ()        Foo
                                                      (foo bar))))))
 
-  (check-equal? (map (curry map ~a)
-                     (name-replacements-for qualified-example))
-                '(("foo.smt2baz-sentinel" "baz")))
-
-  (check-equal? (remove-prefices qualified-example)
-                (cons '(define-fun (par (a b) (baz ((x Nat)) Nat X)))
-                      (cdr qualified-example)))
-
   (check-equal? (prepare qualified-example)
                 '((define-fun (par (a b)
-                                   (baz  ((x Nat)) Nat
+                                   (foo.smt2baz  ((x Nat)) Nat
                                          X)))
                   (define-fun
                     foo.smt2quux ()        Bool
@@ -1403,7 +1366,7 @@ library
      (check-not-equal? (member 'min1 syms) #f)))
 
   (define (in-temp-dir f)
-    (let* ([dir    (make-temporary-file "te-benchmark-temp-test-data-~a"
+    (let* ([dir    (make-temporary-file (string-append temp-file-prefix "~a")
                                         'directory)]
            [result (f dir)])
       (delete-directory/files dir)
@@ -1489,16 +1452,24 @@ library
     (define sig (string-to-haskell mut))
 
     (for-each (lambda (fun)
-                (define def-count (length (filter (lambda (line)
-                                                    (string-prefix? line fun))
-                                                  (string-split sig "\n"))))
+                (define def-found
+                  (any-of (lambda (line)
+                            (regexp-match?
+                             (string-append
+                              "^"
+                              (regexp-quote temp-file-prefix)
+                              "[0-9]+"
+                              (regexp-quote "testsmt2")
+                              (regexp-quote fun))
+                             line))
+                          (string-split sig "\n")))
 
                 (with-check-info
                  (('fun       fun)
-                  ('def-count def-count)
+                  ('def-found def-found)
                   ('sig       sig)
                   ('message   "Function defined in signature"))
-                 (check-true (> def-count 0))))
+                 (check-true def-found)))
               (list "models" "models2" "models5"))))
 
   (test-case "Single files"
