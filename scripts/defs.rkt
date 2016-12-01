@@ -278,6 +278,26 @@
     (with-input-from-string content
       read)))
 
+(define (lowercase-names expr)
+  "Return the names of all functions defined in the given expr, including
+   destructors"
+  (match expr
+    [(list 'define-fun-rec (list 'par _ (list name _ _ _))) (list name)]
+    [(list 'define-fun-rec name _ _ _)                      (list name)]
+    [(list 'define-fun (list 'par _ (list name _ _ _)))     (list name)]
+    [(list 'define-fun name _ _ _)                          (list name)]
+    [(list 'define-funs-rec decs _)                         (map first decs)]
+    [(list 'declare-datatypes _ decs)
+     (concat-map (lambda (dec)
+                   (define constructor-decs
+                     (cdr dec))
+                   (define destructor-decs
+                     (concat-map cdr constructor-decs))
+                   (map first destructor-decs))
+                 decs)]
+    [(cons a b) (append (lowercase-names a) (lowercase-names b))]
+    [_          '()]))
+
 (define (benchmark-symbols expr)
   (remove-duplicates (expression-symbols expr)))
 
@@ -1797,4 +1817,55 @@ library
 
   (let ([f (benchmark-file "tip2015/nat_alt_mul_comm.smt2")])
     (check-equal? (string-trim (pipe (file->string f) types-from-defs))
-                  "Nat")))
+                  "Nat"))
+
+  (test-case "Name extraction"
+    (check-equal?
+     (lowercase-names
+      (read-benchmark
+       (file->string (benchmark-file "tip2015/sort_NStoogeSort2Permutes.smt2"))))
+     '(head tail first second p zelem zdelete twoThirds third take sort2 null
+       zisPermutation length drop splitAt append nstooge2sort2 nstoogesort2
+       nstooge2sort1)))
+
+  ;; When TIP translates from its smtlib-like format to Haskell, it performs a
+  ;; renaming step, to ensure that all names are valid Haskell identifiers. We
+  ;; need to ensure that the names we produce don't get altered by this step.
+  (test-case "Name preservation"
+    (define test-benchmark-lower-names
+      ;; A selection of names, which will be lowercase in Haskell
+      (concat-map (lambda (filename)
+                    (benchmark-symbols
+                     (concat-map lowercase-names
+                                 (read-benchmark (file->string filename)))))
+                  test-benchmark-files))
+
+    (define test-benchmark-upper-names
+      ;; A selection of names, which will be uppercase in Haskell
+      '())
+
+    (define (tip-rename name)
+      "Given a string NAME, returns the renamed version that TIP will output"
+
+      (define input
+        ;; A trivial definition which uses this name
+        `((define-fun-rec ,(string->symbol name) () Bool ,(string->symbol name))
+          (check-sat)))
+
+      (define output
+        ;; Run through TIP
+        (run-pipeline/out `(echo ,(format-symbols input))
+                          '(tip --haskell)))
+
+      ;; The definition will be on the only line with an "="
+      (define def-line
+        (first (filter (lambda (line)
+                         (string-contains? line "="))
+                       (string-split output "\n"))))
+
+      ;; The name will be the only thing to the left of the "="
+      (string-trim (first (string-split def-line "="))))
+
+    (for-each (lambda (name)
+                (check-equal? (tip-rename name) name))
+              test-benchmark-lower-names)))
