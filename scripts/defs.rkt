@@ -254,6 +254,9 @@
 (define (show x)
   (displayln (format-symbols x)))
 
+(define (string-reverse s)
+  (list->string (reverse (string->list s))))
+
 (define theorem-files
   ;; Directory traversal is expensive; if we have to do it, memoise the result
   (let ([result #f])
@@ -672,6 +675,56 @@
 
     (append x (map (curry func-for x) consts))))
 
+(define (encode16 str)
+  (define chars
+    (string->list str))
+
+  (define codepoints
+    (map char->integer chars))
+
+  (define rawhex
+    (map (lambda (p)
+           (number->string p 16))
+         codepoints))
+
+  (define padded
+    (map (lambda (s)
+           (string-reverse
+            (substring (string-reverse (string-append "0" s))
+                       0
+                       2)))
+         rawhex))
+  (apply string-append padded))
+
+(define (decode16 str)
+  (define hex-pairs
+    (letrec ([get-pairs (lambda (s)
+                          (if (non-empty-string? s)
+                              (cons (substring s 0 2)
+                                    (get-pairs (substring s 2 (string-length s))))
+                              '()))])
+      (get-pairs str)))
+
+  (define codepoints
+    (map (lambda (pair)
+           (string->number pair 16))
+         hex-pairs))
+
+  (define chars
+    (map integer->char codepoints))
+
+  (list->string chars))
+
+(define (encode-names expr)
+  (foldl (lambda (name e)
+           (replace-in name (encode-lower-name name) e))
+         expr
+         (lowercase-names expr)))
+
+(define (encode-lower-name name)
+  (string->symbol (string-append "global"
+                                 (encode16 (symbol->string name)))))
+
 (define (prepare x)
   (define (add-check-sat x)
     ;; Add '(check-sat)' as the last line to appease tip-tools
@@ -680,7 +733,7 @@
   ;(tag-types
     ;(tag-constructors
       ;(add-constructor-funcs
-  (add-check-sat (remove-suffices x)))
+  (add-check-sat (encode-names (remove-suffices x))))
 
 (define (find-redundancies exprs)
   (define (mk-output expr so-far name-replacements)
@@ -1165,13 +1218,14 @@ library
 
   (define qualified-example
     '((define-fun (par (a b)
-                       (foo.smt2baz-sentinel  ((x Nat)) Nat
-                                              X)))
+                       (foo.smt2baz-sentinel ((x Nat)) Nat
+                                             X)))
+
       (define-fun
-        foo.smt2quux-sentinel ()        Bool
-        (hello world))
+        foo.smt2quux-sentinel () Bool (hello world))
+
       (define-fun-rec (par (a)
-                           (bar.smt2quux-sentinel ()        Foo
+                           (bar.smt2quux-sentinel () Foo
                                                   (foo bar))))))
 
   (check-equal? (remove-suffices qualified-example)
@@ -1186,15 +1240,18 @@ library
                                                      (foo bar))))))
 
   (check-equal? (prepare qualified-example)
-                '((define-fun (par (a b)
-                                   (foo.smt2baz  ((x Nat)) Nat
-                                         X)))
+                `((define-fun (par (a b)
+                                   (,(encode-lower-name 'foo.smt2baz)
+                                    ((x Nat)) Nat
+                                    X)))
                   (define-fun
-                    foo.smt2quux ()        Bool
+                    ,(encode-lower-name 'foo.smt2quux)
+                    () Bool
                     (hello world))
                   (define-fun-rec (par (a)
-                                       (bar.smt2quux ()        Foo
-                                                     (foo bar))))
+                                       (,(encode-lower-name 'bar.smt2quux)
+                                        () Foo
+                                        (foo bar))))
                   (check-sat)))
 
   (check-equal? (list->set (find-redundancies redundancies))
@@ -1451,26 +1508,32 @@ library
 
     (define sig (string-to-haskell mut))
 
-    (for-each (lambda (fun)
-                (define def-found
-                  (any-of (lambda (line)
-                            (regexp-match?
-                             (string-append
-                              "^"
-                              (regexp-quote temp-file-prefix)
-                              "[0-9]+"
-                              (regexp-quote "testsmt2")
-                              (regexp-quote fun))
-                             line))
-                          (string-split sig "\n")))
+    (for-each
+     (lambda (fun)
+       (define def-found
+         (any-of (lambda (line)
+                   (and (string-prefix? line "global")
+                        (let* ([id   (first (regexp-match "global[0-9a-f]+"
+                                                          line))]
+                               [enc  (substring id 6)]
+                               [name (decode16 enc)])
+                          (regexp-match? (string-append
+                                          "^"
+                                          (regexp-quote temp-file-prefix)
+                                          "[0-9]+"
+                                          (regexp-quote (string-append "/test.smt2" fun))
+                                          "$")
+                                         name))))
+                 (string-split sig "\n")))
 
-                (with-check-info
-                 (('fun       fun)
-                  ('def-found def-found)
-                  ('sig       sig)
-                  ('message   "Function defined in signature"))
-                 (check-true def-found)))
-              (list "models" "models2" "models5"))))
+       (with-check-info
+         (('fun       fun)
+          ('enc       (encode16 fun))
+          ('def-found def-found)
+          ('sig       sig)
+          ('message   "Function defined in signature"))
+         (check-true def-found)))
+     (list "models" "models2" "models5"))))
 
   (test-case "Single files"
     (define files (map (lambda (suf)
@@ -1805,22 +1868,19 @@ library
   (test-case "Name preservation"
     (define test-benchmark-lower-names
       ;; A selection of names, which will be lowercase in Haskell
-      (concat-map (lambda (filename)
-                    (benchmark-symbols
-                     (concat-map lowercase-names
-                                 (read-benchmark (file->string filename)))))
-                  test-benchmark-files))
+      (concat-map lowercase-names
+                  (mk-final-defs-s test-benchmark-files)))
 
     (define test-benchmark-upper-names
       ;; A selection of names, which will be uppercase in Haskell
       '())
 
     (define (tip-rename name)
-      "Given a string NAME, returns the renamed version that TIP will output"
+      "Given a symbol NAME, returns the renamed version that TIP will output"
 
       (define input
         ;; A trivial definition which uses this name
-        `((define-fun-rec ,(string->symbol name) () Bool ,(string->symbol name))
+        `((define-fun-rec ,name () Bool ,name)
           (check-sat)))
 
       (define output
@@ -1838,5 +1898,5 @@ library
       (string-trim (first (string-split def-line "="))))
 
     (for-each (lambda (name)
-                (check-equal? (tip-rename name) name))
+                (check-equal? (tip-rename name) (symbol->string name)))
               test-benchmark-lower-names)))
