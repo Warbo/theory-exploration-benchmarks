@@ -307,6 +307,23 @@
     [(cons a b) (append (lowercase-names a) (lowercase-names b))]
     [_          '()]))
 
+(define (uppercase-names expr)
+  "Return the names of all types and constructors defined in the given expr"
+  (match expr
+    [(list 'declare-datatypes _ type-decs)
+     (append
+      ;; Type names
+      (map first type-decs)
+      ;; Constructor names
+      (concat-map (lambda (type-dec)
+                   (define constructor-decs
+                     (cdr type-dec))
+                   (map first constructor-decs))
+                 type-decs))]
+
+    [(cons a b) (append (uppercase-names a) (uppercase-names b))]
+    [_          '()]))
+
 (define (benchmark-symbols expr)
   (remove-duplicates (expression-symbols expr)))
 
@@ -727,13 +744,27 @@
   (list->string chars))
 
 (define (encode-names expr)
+  ;; Replace function names with "globalXXX" where "XXX" is a hex encoding of
+  ;; the name
+  (define lower-encoded
+    (foldl (lambda (name e)
+             (replace-in name (encode-lower-name name) e))
+           expr
+           (lowercase-names expr)))
+
+  ;; Replace type and constructor names with "GlobalXXX" where "XXX" is a hex
+  ;; encoding of the name
   (foldl (lambda (name e)
-           (replace-in name (encode-lower-name name) e))
-         expr
-         (lowercase-names expr)))
+           (replace-in name (encode-upper-name name) e))
+         lower-encoded
+         (uppercase-names expr)))
 
 (define (encode-lower-name name)
   (string->symbol (string-append "global"
+                                 (encode16 (symbol->string name)))))
+
+(define (encode-upper-name name)
+  (string->symbol (string-append "Global"
                                  (encode16 (symbol->string name)))))
 
 (define (prepare x)
@@ -1475,14 +1506,13 @@ library
 
     (define sig (string-to-haskell form))
 
-    (let ([data-count (length (filter (lambda (line)
-                                        (string-prefix? line "data "))
-                                      (string-split sig "\n")))])
+    (let ([data-found (regexp-match? "data[ ]+Global[0-9a-f]+[ ]+="
+                                     (string-replace sig "\n" ""))])
       (with-check-info
-       (('data-count data-count)
+       (('data-found data-found)
         ('sig        sig)
         ('message    "'Form' datatype appears in signature"))
-       (check-equal? data-count 1))))
+       (check-true data-found))))
 
   (test-case "Mutual recursion"
     (define mut '(define-funs-rec
@@ -1871,23 +1901,31 @@ library
        (file->string (benchmark-file "tip2015/sort_NStoogeSort2Permutes.smt2"))))
      '(head tail first second p zelem zdelete twoThirds third take sort2 null
        zisPermutation length drop splitAt append nstooge2sort2 nstoogesort2
-       nstooge2sort1)))
+       nstooge2sort1))
+
+    (check-equal?
+     (uppercase-names
+      (read-benchmark
+       (file->string (benchmark-file "tip2015/sort_NStoogeSort2Permutes.smt2"))))
+     '(list nil cons Pair Pair2 Nat Z S)))
 
   ;; When TIP translates from its smtlib-like format to Haskell, it performs a
   ;; renaming step, to ensure that all names are valid Haskell identifiers. We
   ;; need to ensure that the names we produce don't get altered by this step.
   (test-case "Name preservation"
+    (define test-benchmark-defs
+      (mk-final-defs-s test-benchmark-files))
+
     (define test-benchmark-lower-names
       ;; A selection of names, which will be lowercase in Haskell
-      (concat-map lowercase-names
-                  (mk-final-defs-s test-benchmark-files)))
+      (concat-map lowercase-names test-benchmark-defs))
 
     (define test-benchmark-upper-names
       ;; A selection of names, which will be uppercase in Haskell
-      '())
+      (concat-map uppercase-names test-benchmark-defs))
 
-    (define (tip-rename name)
-      "Given a symbol NAME, returns the renamed version that TIP will output"
+    (define (tip-lower-rename name)
+      "Given a function name NAME, returns TIP's renamed version"
 
       (define input
         ;; A trivial definition which uses this name
@@ -1908,6 +1946,32 @@ library
       ;; The name will be the only thing to the left of the "="
       (string-trim (first (string-split def-line "="))))
 
+    (define (tip-upper-rename name)
+      "Given a type name NAME, returns TIP's renamed version"
+
+      (define input
+        ;; A trivial definition which uses this name
+        `((declare-datatypes () ((,name)))
+          (check-sat)))
+
+      (define output
+        ;; Run through TIP
+        (run-pipeline/out `(echo ,(format-symbols input))
+                          '(tip --haskell)))
+
+      ;; The definition will be immediately to the left of the only occurrence
+      ;; of "="
+      (define prefix
+        (string-trim (first (string-split (string-replace output "\n" "")
+                                          "="))))
+
+      ;; The name will occur immediately after the final "data"
+      (string-trim (last (string-split prefix "data"))))
+
     (for-each (lambda (name)
-                (check-equal? (tip-rename name) (symbol->string name)))
-              test-benchmark-lower-names)))
+                (check-equal? (tip-lower-rename name) (symbol->string name)))
+              test-benchmark-lower-names)
+
+    (for-each (lambda (name)
+                (check-equal? (tip-upper-rename name) (symbol->string name)))
+              test-benchmark-upper-names)))
