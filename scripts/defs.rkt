@@ -289,7 +289,13 @@
     [(list 'define-fun-rec name _ _ _)                      (list name)]
     [(list 'define-fun (list 'par _ (list name _ _ _)))     (list name)]
     [(list 'define-fun name _ _ _)                          (list name)]
-    [(list 'define-funs-rec decs _)                         (map first decs)]
+    [(list 'define-funs-rec decs _)
+     (map (lambda (dec)
+            (if (equal? (first dec) 'par)
+                (first (third dec))
+                (first dec)))
+          decs)]
+
     [(list 'declare-datatypes _ decs)
      (concat-map (lambda (dec)
                    (define constructor-decs
@@ -465,7 +471,12 @@
 
 (define (names-in defs)
   (match defs
-    [(list 'define-funs-rec decs defs)            (map car decs)]
+    [(list 'define-funs-rec decs defs)
+     (map (lambda (dec)
+            (if (equal? (first dec) 'par)
+                (first (third dec))
+                (first dec)))
+          decs)]
     [(list 'define-fun
            (list 'par p
                  (list name args return body)))   (list name)]
