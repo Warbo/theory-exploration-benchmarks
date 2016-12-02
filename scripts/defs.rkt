@@ -487,33 +487,8 @@
     [x          (name-num pre x)]))
 
 (define (names-in defs)
-  (match defs
-    [(list 'define-funs-rec decs defs)
-     (map (lambda (dec)
-            (if (equal? (first dec) 'par)
-                (first (third dec))
-                (first dec)))
-          decs)]
-    [(list 'define-fun
-           (list 'par p
-                 (list name args return body)))   (list name)]
-    [(list 'define-fun name args return body)     (list name)]
-    [(list 'define-fun-rec
-           (list 'par p
-                 (list name args return body)))   (list name)]
-    [(list 'define-fun-rec name args return body) (list name)]
-    [(list 'declare-datatypes given decs)         (type-names decs)]
-    [(cons a b)                                   (append (names-in a) (names-in b))]
-    [_                                            null]))
-
-(define (type-names decs)
-  (concat-map (lambda (dec)
-                (cons (car dec) ; type name
-                      (concat-map (lambda (con)
-                                    (cons (car con) ; constructor name
-                                          (map car (cdr con)))) ; destructor names
-                                  (cdr dec))))
-              decs))
+  (append (lowercase-names defs)
+          (uppercase-names defs)))
 
 (define (tag-constructors x)
   ;; Tag constructors with 'CONSTRUCTOR' to disambiguate
@@ -777,16 +752,16 @@
       ;(add-constructor-funcs
   (add-check-sat (encode-names (remove-suffices x))))
 
+(define (zip xs ys)
+  (if (empty? xs)
+      null
+      (if (empty? ys)
+          null
+          (cons (list (car xs) (car ys))
+                (zip  (cdr xs) (cdr ys))))))
+
 (define (find-redundancies exprs)
   (define (mk-output expr so-far name-replacements)
-    (define (zip xs ys)
-      (if (empty? xs)
-          null
-          (if (empty? ys)
-              null
-              (cons (list (car xs) (car ys))
-                    (zip  (cdr xs) (cdr ys))))))
-
     (let* ([norm-line (norm     expr)]
            [names     (names-in expr)]
            [existing  (filter (lambda (x)
@@ -809,8 +784,33 @@
 
   (remove-redundancies exprs null null))
 
-(define (set-equal? x y p)
-  (equal? (sort x p) (sort y p)))
+;; FIXME: Replace redundant string-<= stuff
+
+(define (list-<= x y)
+  (if (empty? x)
+      true
+      (if (empty? y)
+          false
+          (if (< (car x) (car y))
+              true
+              (if (< (car y) (car x))
+                  false
+                  (list-<= (cdr x) (cdr y)))))))
+
+(define (string-<= x y)
+  (define list-x
+    (map char->integer (string->list x)))
+  (define list-y
+    (map char->integer (string->list y)))
+
+  (list-<= list-x list-y))
+
+(define (set-equal? x y)
+  (define (cmp x y)
+    (string-<= (format "~a" x)
+               (format "~a" y)))
+
+  (equal? (sort x cmp) (sort y cmp)))
 
 (define (symbols-of-theorems-s expr)
   (filter (lambda (s)
@@ -1748,7 +1748,7 @@ library
       ('expect  expect)
       ('names   names)
       ('message "Got expected names"))
-    (check-equal? names expect)))
+    (check-true (set-equal? names expect))))
 
   (names-match "datatype"
                '(declare-datatypes (a) ((list (nil)
@@ -1974,4 +1974,9 @@ library
 
     (for-each (lambda (name)
                 (check-equal? (tip-upper-rename name) (symbol->string name)))
-              test-benchmark-upper-names)))
+              test-benchmark-upper-names))
+
+  ;; When we remove alpha-equivalent definitions, make sure those remaining are
+  ;; also appear first in lexicographical order
+  #;(test-case "Names normalised"
+    ))
