@@ -20,19 +20,6 @@
   (when verbose
     (apply eprintf args)))
 
-;; Examples used for tests
-(define nat-def      '(declare-datatypes () ((Nat (Z) (S (p Nat))))))
-
-(define constructorZ '(define-fun constructorZ ()              Nat Z))
-
-(define constructorS '(define-fun constructorS ((local-p Nat)) Nat (S local-p)))
-
-(define redundancies `(,constructorZ
-                       ,constructorS
-                       (define-fun redundantZ1 () Nat Z)
-                       (define-fun redundantZ2 () Nat Z)
-                       (define-fun redundantZ3 () Nat Z)))
-
 (define benchmark-dir
   (or (getenv "BENCHMARKS")
       "No BENCHMARKS env var given"))
@@ -764,17 +751,24 @@
   (define (mk-output expr so-far name-replacements)
     (let* ([norm-line (norm     expr)]
            [names     (names-in expr)]
+           ;; Any existing alpha-equivalent definitions:
+           ;;   '(((name1 name2 ...) expr) ...)
            [existing  (filter (lambda (x)
                                 (equal? norm-line (second x)))
                               so-far)])
       (if (empty? existing)
+          ;; This expr isn't redundant, associate its names with its normal form
           (list (cons (list names norm-line) so-far)
                 name-replacements)
+
+          ;; This expr is redundant, associate its names with their equivalents
           (list so-far
                 (append (zip names (first (car existing)))
                         name-replacements)))))
 
   (define (remove-redundancies exprs so-far name-replacements)
+    ;; TODO: Choose the lexicographically smallest name out of all the
+    ;; equivalents, when replacing
     (if (empty? exprs)
         name-replacements
         (let* ([result (mk-output (first exprs) so-far name-replacements)]
@@ -1000,6 +994,19 @@ library
 
   (quiet)
 
+  ;; Examples used for tests
+  (define nat-def      '(declare-datatypes () ((Nat (Z) (S (p Nat))))))
+
+  (define constructorZ '(define-fun constructorZ ()              Nat Z))
+
+  (define constructorS '(define-fun constructorS ((local-p Nat)) Nat (S local-p)))
+
+  (define redundancies `(,constructorZ
+                         ,constructorS
+                         (define-fun redundantZ1 () Nat Z)
+                         (define-fun redundantZ2 () Nat Z)
+                         (define-fun redundantZ3 () Nat Z)))
+
   (check-equal? (symbols-in '(lambda ((local1 Nat) (local2 (List Nat)))
                                (free1 local1)))
                 '(free1))
@@ -1135,7 +1142,7 @@ library
 
   (define qual (format-symbols (qual-all test-files)))
 
-  (let* ([syms (format-symbols (symbols-of-theorems-s (read-benchmark qual)))])
+  (let ([syms (format-symbols (symbols-of-theorems-s (read-benchmark qual)))])
 
     (for-each (lambda (sym)
                 (with-check-info
@@ -1151,26 +1158,26 @@ library
                   ('message "Found symbol"))
                  (check-not-equal? (member sym (string-split syms "\n"))
                                    #f)))
-              subset)
+              subset))
 
-      (let* ([syms (string-split (format-symbols (symbols-of-theorems-s test-defs))
-                                 "\n")])
-        (for-each (lambda (sym)
-                    (with-check-info
-                     (('sym       sym)
-                      ('test-defs test-defs)
-                      ('message   "Symbol is qualified"))
-                     (check-true (string-contains? sym ".smt2")))
+  (let ([syms (string-split (format-symbols (symbols-of-theorems-s test-defs))
+                            "\n")])
+    (for-each (lambda (sym)
+                (with-check-info
+                  (('sym       sym)
+                   ('test-defs test-defs)
+                   ('message   "Symbol is qualified"))
+                  (check-true (string-contains? sym ".smt2")))
 
-                    (with-check-info
-                     (('sym       sym)
-                      ('test-defs test-defs)
-                      ('message   "Symbol has suffix"))
-                     (check-true (string-contains? sym "-sentinel"))))
-                  syms)))
+                (with-check-info
+                  (('sym       sym)
+                   ('test-defs test-defs)
+                   ('message   "Symbol has suffix"))
+                  (check-true (string-contains? sym "-sentinel"))))
+              syms))
 
   (test-case "No alpha-equivalent duplicates in result"
-    (let* ([normalised (norm test-defs)])
+    (let ([normalised (norm test-defs)])
       (for-each (lambda (norm)
                   (define norms
                     (filter (curry equal? norm) normalised))
@@ -1187,10 +1194,9 @@ library
                 (list constructorZ))
 
   (for-each (lambda (sym)
-    (define def (format-symbols (get-def sym qual)))
+    (define def (get-def sym qual))
 
-    (let ([count (length (filter non-empty-string?
-                                 (string-split def "\n")))])
+    (let ([count (length def)])
       (with-check-info
        (('sym     sym)
         ('def     def)
@@ -1215,16 +1221,12 @@ library
       ;; The symbols in norm-def may be replacements, so we can't compare
       ;; directly. Instead, we just infer the structure:
       (define (strip-non-paren s)
-        (list->string (foldr (lambda (c str)
-                               (if (or (equal? c #\()
-                                       (equal? c #\)))
-                                   (cons c str)
-                                   str))
-                             '()
-                             (string->list s))))
+        (list->string (filter (lambda (c)
+                                (or (equal? c #\()
+                                    (equal? c #\))))
+                              (string->list (format-symbols s)))))
 
-      (define def-shape (strip-non-paren def))
-
+      (define def-shape  (strip-non-paren      def))
       (define norm-shape (strip-non-paren norm-def))
 
       (with-check-info
@@ -1233,7 +1235,11 @@ library
         ('def-shape  def-shape)
         ('norm-shape norm-shape)
         ('message    "Duplicate removal kept definition intact"))
-       (check-equal? def-shape norm-shape))))
+       (check-equal? def-shape norm-shape)))
+
+    ;; The names which appear should be the first (lexicographically) from each
+    ;; alpha-equivalent group
+    )
     (take (shuffle subset) 5))
 
   (check-equal? (names-in '(fee fi fo fum))
