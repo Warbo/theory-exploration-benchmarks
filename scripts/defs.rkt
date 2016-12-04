@@ -801,8 +801,8 @@
 
 (define (set-equal? x y)
   (define (cmp x y)
-    (string-<= (format "~a" x)
-               (format "~a" y)))
+    (string-<= (~a x)
+               (~a y)))
 
   (equal? (sort x cmp) (sort y cmp)))
 
@@ -1108,10 +1108,10 @@ library
       (check-false (member "or2-sentinel" (string-split s "\n"))
                    "or2 symbol is qualified")
 
-      (let* ([d (format-symbols (mk-defs-s fs))]
-             [s (format-symbols (symbols-of-theorems-s (read-benchmark d)))])
-         (check-true (string-contains? s "or2-sentinel")
-                     "Found 'or2' symbol"))))
+      (check-true (string-contains? (format-symbols
+                                     (symbols-of-theorems-s (mk-defs-s fs)))
+                                    "or2-sentinel")
+                  "Found 'or2' symbol")))
 
   (define subset '("grammars/simp_expr_unambig1.smt2append-sentinel"
                    "grammars/simp_expr_unambig1.smt2lin-sentinel"
@@ -1205,11 +1205,10 @@ library
        (check-equal? count 1)))
 
     (define norm-def
-      (format-symbols (get-def-s sym test-defs)))
+      (get-def-s sym test-defs))
 
     (define norm-count
-      (length (filter non-empty-string?
-                      (string-split norm-def "\n"))))
+      (length norm-def))
 
     (with-check-info
      (('sym      sym)
