@@ -168,7 +168,9 @@
 (define (qualify name expr)
   (foldl (lambda (sym x)
            (replace-in sym
-                       (string-append name (as-str sym) "-sentinel")
+                       (string->symbol (string-append name
+                                                      (as-str sym)
+                                                      "-sentinel"))
                        x))
          (prefix-locals expr)
          (symbols-in (append (expression-symbols expr)
@@ -577,22 +579,26 @@
     [_          #f]))
 
 (define (get-def-s name exprs)
+  #;(unless (symbol? name)
+    (error "get-def-s expected symbol, given" name))
+
   (define (defs-from sym exp)
-    (define (find-defs sym given ty-decs)
+    #;(unless (symbol? sym)
+      (error "defs-from expected symbol, given" sym))
+
+    (define (find-defs given ty-decs)
       (map (lambda (dec) (list 'declare-datatypes given (list dec)))
            (filter (lambda (ty-dec)
                      (any-of (lambda (con-dec)
-                               (or (equal? (symbol->string (car con-dec))
-                                           sym)
+                               (or (equal? (car con-dec) sym)
                                    (any-of (lambda (des-dec)
-                                             (equal? (symbol->string (car des-dec))
-                                                     sym))
+                                             (equal? (car des-dec) sym))
                                            (cdr con-dec))))
                              (cdr ty-dec)))
                    ty-decs)))
 
     (match exp
-      [(list 'declare-datatypes given decs) (find-defs sym given decs)]
+      [(list 'declare-datatypes given decs) (find-defs given decs)]
       [(cons a b)                           (append (defs-from sym a)
                                                     (defs-from sym b))]
       [_                                    null]))
@@ -608,6 +614,13 @@
 
 (define (rec-names exprs)
   (names-in exprs))
+
+(define (remove-suffix x)
+  ;; Strip "-sentinel"
+  (string->symbol
+   (string-reverse
+    (substring (string-reverse (symbol->string x))
+               9))))
 
 (define (remove-suffices x)
   ;; Removes '-sentinel' suffices. Do this after all other string-based
@@ -704,6 +717,12 @@
     (map integer->char codepoints))
 
   (list->string chars))
+
+(define (decode-name name)
+  (define no-global
+    (substring (symbol->string name) 6))
+
+  (string->symbol (decode16 no-global)))
 
 (define (encode-names expr)
   ;; Replace function names with "globalXXX" where "XXX" is a hex encoding of
@@ -1100,12 +1119,12 @@ library
                                   "tip2015/propositional_AndIdempotent.smt2"
                                   "tip2015/propositional_AndImplication.smt2"))]
            [q (qual-all fs)]
-           [s (format-symbols (symbols-of-theorems-s q))])
+           [s (symbols-of-theorems-s q)])
 
-      (check-true (string-contains? s "or2-sentinel")
+      (check-true (string-contains? (~a s) "or2-sentinel")
                   "Found an or2 symbol")
 
-      (check-false (member "or2-sentinel" (string-split s "\n"))
+      (check-false (member 'or2-sentinel s)
                    "or2 symbol is qualified")
 
       (check-true (string-contains? (format-symbols
@@ -1113,67 +1132,68 @@ library
                                     "or2-sentinel")
                   "Found 'or2' symbol")))
 
-  (define subset '("grammars/simp_expr_unambig1.smt2append-sentinel"
-                   "grammars/simp_expr_unambig1.smt2lin-sentinel"
-                   "grammars/simp_expr_unambig4.smt2nil-sentinel"
-                   "grammars/simp_expr_unambig4.smt2cons-sentinel"
-                   "grammars/simp_expr_unambig4.smt2C-sentinel"
-                   "grammars/simp_expr_unambig4.smt2D-sentinel"
-                   "grammars/simp_expr_unambig4.smt2X-sentinel"
-                   "grammars/simp_expr_unambig4.smt2Y-sentinel"
-                   "grammars/simp_expr_unambig4.smt2Pl-sentinel"
-                   "grammars/simp_expr_unambig4.smt2Plus-sentinel"
-                   "grammars/simp_expr_unambig4.smt2EX-sentinel"
-                   "grammars/simp_expr_unambig4.smt2EY-sentinel"
-                   "grammars/simp_expr_unambig4.smt2head-sentinel"
-                   "grammars/simp_expr_unambig4.smt2tail-sentinel"
-                   "grammars/simp_expr_unambig4.smt2Plus_0-sentinel"
-                   "grammars/simp_expr_unambig4.smt2Plus_1-sentinel"
-                   "grammars/simp_expr_unambig4.smt2append-sentinel"
-                   "grammars/simp_expr_unambig4.smt2linTerm-sentinel"
-                   "grammars/simp_expr_unambig4.smt2lin-sentinel"
-                   "tip2015/sort_StoogeSort2IsSort.smt2nil-sentinel"
-                   "tip2015/sort_StoogeSort2IsSort.smt2cons-sentinel"
-                   "tip2015/sort_StoogeSort2IsSort.smt2sort2-sentinel"
-                   "tip2015/sort_StoogeSort2IsSort.smt2insert2-sentinel"
-                   "tip2015/sort_StoogeSort2IsSort.smt2zsplitAt-sentinel"
-                   "tip2015/sort_StoogeSort2IsSort.smt2ztake-sentinel"
-                   "tip2015/sort_StoogeSort2IsSort.smt2stooge2sort2-sentinel"))
+  (define subset '(grammars/simp_expr_unambig1.smt2append-sentinel
+                   grammars/simp_expr_unambig1.smt2lin-sentinel
+                   grammars/simp_expr_unambig4.smt2nil-sentinel
+                   grammars/simp_expr_unambig4.smt2cons-sentinel
+                   grammars/simp_expr_unambig4.smt2C-sentinel
+                   grammars/simp_expr_unambig4.smt2D-sentinel
+                   grammars/simp_expr_unambig4.smt2X-sentinel
+                   grammars/simp_expr_unambig4.smt2Y-sentinel
+                   grammars/simp_expr_unambig4.smt2Pl-sentinel
+                   grammars/simp_expr_unambig4.smt2Plus-sentinel
+                   grammars/simp_expr_unambig4.smt2EX-sentinel
+                   grammars/simp_expr_unambig4.smt2EY-sentinel
+                   grammars/simp_expr_unambig4.smt2head-sentinel
+                   grammars/simp_expr_unambig4.smt2tail-sentinel
+                   grammars/simp_expr_unambig4.smt2Plus_0-sentinel
+                   grammars/simp_expr_unambig4.smt2Plus_1-sentinel
+                   grammars/simp_expr_unambig4.smt2append-sentinel
+                   grammars/simp_expr_unambig4.smt2linTerm-sentinel
+                   grammars/simp_expr_unambig4.smt2lin-sentinel
+                   tip2015/sort_StoogeSort2IsSort.smt2nil-sentinel
+                   tip2015/sort_StoogeSort2IsSort.smt2cons-sentinel
+                   tip2015/sort_StoogeSort2IsSort.smt2sort2-sentinel
+                   tip2015/sort_StoogeSort2IsSort.smt2insert2-sentinel
+                   tip2015/sort_StoogeSort2IsSort.smt2zsplitAt-sentinel
+                   tip2015/sort_StoogeSort2IsSort.smt2ztake-sentinel
+                   tip2015/sort_StoogeSort2IsSort.smt2stooge2sort2-sentinel))
 
   (define qual (format-symbols (qual-all test-files)))
 
-  (let ([syms (format-symbols (symbols-of-theorems-s (read-benchmark qual)))])
+  (let ([syms (symbols-of-theorems-s (read-benchmark qual))])
 
     (for-each (lambda (sym)
                 (with-check-info
                  (('sym     sym)
                   ('message "Native symbol was stripped"))
-                 (check-false (member sym (string-split syms "\n")))))
-              '("true-sentinel" "false-sentinel" "ite-sentinel" "or-sentinel"))
+                 (check-false (member sym syms))))
+              '(true-sentinel false-sentinel ite-sentinel or-sentinel))
 
     (for-each (lambda (sym)
                 (with-check-info
                  (('sym     sym)
                   ('syms    syms)
                   ('message "Found symbol"))
-                 (check-not-equal? (member sym (string-split syms "\n"))
+                 (check-not-equal? (member sym syms)
                                    #f)))
               subset))
 
-  (let ([syms (string-split (format-symbols (symbols-of-theorems-s test-defs))
-                            "\n")])
+  (let ([syms (symbols-of-theorems-s test-defs)])
     (for-each (lambda (sym)
                 (with-check-info
                   (('sym       sym)
                    ('test-defs test-defs)
                    ('message   "Symbol is qualified"))
-                  (check-true (string-contains? sym ".smt2")))
+                  (check-true (string-contains? (symbol->string sym)
+                                                ".smt2")))
 
                 (with-check-info
                   (('sym       sym)
                    ('test-defs test-defs)
                    ('message   "Symbol has suffix"))
-                  (check-true (string-contains? sym "-sentinel"))))
+                  (check-true (string-contains? (symbol->string sym)
+                                                "-sentinel"))))
               syms))
 
   (test-case "No alpha-equivalent duplicates in result"
@@ -1190,7 +1210,7 @@ library
                      (check-equal? norms (list norm)))))
                 normalised)))
 
-  (check-equal? (get-def-s "constructorZ" redundancies)
+  (check-equal? (get-def-s 'constructorZ redundancies)
                 (list constructorZ))
 
   (for-each (lambda (sym)
@@ -1234,12 +1254,90 @@ library
         ('def-shape  def-shape)
         ('norm-shape norm-shape)
         ('message    "Duplicate removal kept definition intact"))
-       (check-equal? def-shape norm-shape)))
-
-    ;; The names which appear should be the first (lexicographically) from each
-    ;; alpha-equivalent group
-    )
+       (check-equal? def-shape norm-shape))))
     (take (shuffle subset) 5))
+
+  (define test-benchmark-files
+    (take (shuffle (theorem-files)) 10))
+
+  (test-case "Smallest name chosen"
+    ;; The names which appear after normalising should be the first,
+    ;; lexicographically, from each alpha-equivalent group
+
+    ;; Collect together some definitions, which include some alpha-equivalent
+    ;; redundancies
+    (define raw       (qual-all (append test-files test-benchmark-files)))
+    (define raw-names (names-in raw))
+
+    ;; Remove redundancies
+    (define normal       (mk-final-defs-s test-files))
+    (define normal-names (names-in normal))
+
+    ;; If some raw name is smaller than some normalised name, the two names must
+    ;; not refer to alpha-equivalent definitions (since that would mean the
+    ;; normalised name isn't the smallest)
+    (for-each (lambda (raw-name)
+                ;; Find the definition of this raw name, and all the other names
+                ;; which accompany it (e.g. types with constructors and
+                ;; destructors, or mutually-recursive functions).
+
+                ;; We do this outside the inner loop for efficiency
+                (define raw-def
+                  (get-def-s raw-name raw))
+
+                (define norm-raw-def
+                  (norm raw-def))
+
+                (define raw-def-names
+                  (map remove-suffix (names-in raw-def)))
+
+                ;; Compare to all normalised names
+                (for-each (lambda (normal-name-enc)
+                            ;; Find the definition of this normalised name
+                            (define normal-def
+                              (get-def-s normal-name-enc
+                                         normal))
+
+                            (define norm-normal-def
+                              (norm normal-def))
+
+                            ;; We only care when these definitions are
+                            ;; alpha-equivalent
+                            (when (equal? norm-raw-def norm-normal-def)
+
+                              ;; All of the names defined in the normal version
+                              ;; should be <= their equivalents in the raw
+                              ;; version
+
+                              (define normal-def-names
+                                (map decode-name (names-in normal-def)))
+
+                              (check-equal? (length raw-def-names)
+                                            (length normal-def-names))
+
+                              (for-each (lambda (raw-normal-pair)
+                                          (define raw
+                                            (first raw-normal-pair))
+
+                                          (define normal
+                                            (second raw-normal-pair))
+
+                                          (with-check-info
+                                            (('raw             raw)
+                                             ('normal          normal)
+                                             ('raw-name        raw-name)
+                                             ('normal-name-enc normal-name-enc)
+                                             ('normal-name     (decode-name normal-name-enc))
+                                             ('raw-def         raw-def)
+                                             ('normal-def      normal-def)
+                                             ('norm-raw-def    norm-raw-def)
+                                             ('norm-normal-def norm-normal-def))
+                                            (check-true
+                                             (string-<= (symbol->string normal)
+                                                        (symbol->string raw)))))
+                                        (zip raw-def-names normal-def-names))))
+                          normal-names))
+              raw-names))
 
   (check-equal? (names-in '(fee fi fo fum))
                 '())
@@ -1437,7 +1535,7 @@ library
 
   (check-equal? (list->set (read-benchmark
                             (replace-strings (format-symbols      redundancies)
-                                               (find-redundancies redundancies))))
+                                             (find-redundancies redundancies))))
                 (list->set `(,constructorZ ,constructorS)))
 
   (let* ([given '((define-fun min1 ((x Int) (y Int)) Int (ite (<= x y) x y))
@@ -1615,9 +1713,6 @@ library
      (('message "Local variables renamed")
       ('sig     sig))
      (check-true (string-contains? sig "local"))))
-
-  (define test-benchmark-files
-    (take (shuffle (theorem-files)) 10))
 
   (test-case "Random files"
     (define files
