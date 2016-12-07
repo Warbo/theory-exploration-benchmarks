@@ -1,4 +1,6 @@
 #lang racket
+(require racket/contract)
+(require racket/contract/combinator)
 (require racket/function)
 (require racket/match)
 (require racket/trace)
@@ -235,6 +237,14 @@
                           (replace-in old replacement b))]
         [_          expr])))
 
+(define (replace-all reps expr)
+  (if (empty? reps)
+      expr
+      (replace-all (cdr reps)
+                   (replace-in (first  (first reps))
+                               (second (first reps))
+                               expr))))
+
 (define (format-symbols syms)
   (if (null? syms)
       ""
@@ -316,7 +326,20 @@
 (define (benchmark-symbols expr)
   (remove-duplicates (expression-symbols expr)))
 
-(define (norm expr)
+(define/contract (norm expr)
+  (-> any/c
+      ;; Our result should be normalised
+      (lambda (result)
+        (all-of (lambda (name)
+                  (or (regexp-match? "^defining-"  (symbol->string name))
+                      (regexp-match? "^normalise-" (symbol->string name))
+                      (raise-user-error
+                       'norm
+                       "Name '~a' wasn't normalised away in:\n~a\n"
+                       name
+                       result)))
+                (names-in result))))
+
   (define norm-func-1 'defining-function-1)
 
   (define (norm-func args body)
@@ -344,6 +367,119 @@
                 (replace-in p v (second rec))))))
 
   (match expr
+    [(list 'define-funs-rec decs defs)
+     (begin
+       (define (norm-mutual dec def)
+         ;; Declarations may or may not be parameterised
+         (define par  (equal? 'par (first dec)))
+         (define pars (when par
+                        (second dec)))
+
+         ;; Pair up each declaration with its definition and treat like a
+         ;; regular function
+         (define new (if par
+                         (norm-func (second (third dec))
+                                    def)
+                         (norm-func (second dec)
+                                    def)))
+
+         (define new-pars
+           (when par
+             (second
+              (foldl (lambda (par name-result)
+                       (define name   (first  name-result))
+                       (define result (second name-result))
+                       (list (next-var name)
+                             (cons (list par name) result)))
+                     (list (next-var new)
+                           '())
+                     pars))))
+
+         (when par
+           (unless (equal? (length pars) (length new-pars))
+             (raise-user-error
+              'norm-mutual
+              "Normalising parameters shouldn't change how many there are. Given:\n~a\nProduced:\n~a\n"
+              pars
+              new-pars)))
+
+         (define final
+           (if par
+               (replace-all new-pars new)
+               new))
+
+         (define final-args
+           (first final))
+
+         (define name
+           (if par
+               (first (third dec))
+               (first dec)))
+
+         (define type
+           (if par
+               (replace-all new-pars (third (third dec)))
+               (third dec)))
+
+         (list
+          (if par
+              ;;         parameters
+              (list 'par (map second new-pars)
+                    (list name final-args type))
+
+              (list name final-args type))
+
+          ;; Body
+          (second final)))
+
+       (define new-decs-defs
+         (map (lambda (dec-def)
+                (norm-mutual (first dec-def) (second dec-def)))
+              (zip decs defs)))
+
+       ;; Split the results back up into declarations and definitions
+       (define new-decs
+         (map first new-decs-defs))
+
+       (unless (equal? (length decs) (length new-decs))
+         (raise-user-error
+          'norm
+          "Normalising recursive functions should keep the same number of declarations, got:\n~a\nproduced:\n~a\n"
+          decs
+          new-decs))
+
+       (define new-defs
+         (map second new-decs-defs))
+
+       (unless (equal? (length defs) (length new-defs))
+         (raise-user-error
+          'norm
+          "Normalising recursive functions should keep the same number of definitions, got:\n~a\nproduced:\n~a\n"
+          defs
+          new-defs))
+
+       ;; Invent a "defining-function-X" name for each name being declared
+       (define names
+         (names-in expr))
+
+       (define new-names
+         (foldl
+          (lambda (name result)
+            (cons (list name
+                        (string->symbol
+                         (string-append "defining-function-"
+                                        (~a (+ 1 (length result))))))
+                  result))
+          '()
+          names))
+
+       ;; Replace all of the declared names in the normalised result
+       (define result
+         (replace-all new-names
+                      (list 'define-funs-rec new-decs new-defs)))
+
+       result)]
+
     [(  list 'define-fun-rec (list 'par p         def))
      (let ([rec (norm-params p def)])
        (list 'define-fun-rec (list 'par (first rec) (second rec))))]
@@ -578,6 +714,11 @@
     [(cons a b) (or (f a) (any-of f b))]
     [_          #f]))
 
+(define (all-of f xs)
+  (match xs
+    [(cons a b) (and (f a) (all-of f b))]
+    [_          #t]))
+
 (define (get-def-s name exprs)
   #;(unless (symbol? name)
     (error "get-def-s expected symbol, given" name))
@@ -586,19 +727,10 @@
     #;(unless (symbol? sym)
       (error "defs-from expected symbol, given" sym))
 
-    (define (find-defs given ty-decs)
-      (map (lambda (dec) (list 'declare-datatypes given (list dec)))
-           (filter (lambda (ty-dec)
-                     (any-of (lambda (con-dec)
-                               (or (equal? (car con-dec) sym)
-                                   (any-of (lambda (des-dec)
-                                             (equal? (car des-dec) sym))
-                                           (cdr con-dec))))
-                             (cdr ty-dec)))
-                   ty-decs)))
-
     (match exp
-      [(list 'declare-datatypes given decs) (find-defs given decs)]
+      [(list 'declare-datatypes given decs) (if (member sym (names-in exp))
+                                                (list exp)
+                                                '())]
       [(cons a b)                           (append (defs-from sym a)
                                                     (defs-from sym b))]
       [_                                    null]))
@@ -766,8 +898,165 @@
           (cons (list (car xs) (car ys))
                 (zip  (cdr xs) (cdr ys))))))
 
-(define (find-redundancies exprs)
-  (define (mk-output expr so-far name-replacements)
+(define (symbol<=? x y)
+  (string<=? (symbol->string x)
+             (symbol->string y)))
+
+(define (symbol<? x y)
+  (string<? (symbol->string x)
+            (symbol->string y)))
+
+(define (definition? x)
+  (and (not (empty? (names-in x)))
+       (not (any-of (lambda (sub-expr)
+                      (not (empty? (names-in sub-expr))))
+                    x))))
+
+(define/contract (find-redundancies raw-exprs)
+  (-> (and/c (*list/c definition?)
+             (lambda (exprs)
+               ;; Make sure we're not given encoded names, since their
+               ;; lexicographic order will differ from the unencoded versions.
+               ;; Strictly speaking, we should allow such names in case the user
+               ;; actually fed in such definitions; however, in practice this
+               ;; is a good indicator that something's wrong in our logic!
+               (all-of (lambda (name)
+                         (not (regexp-match? "[Gg]lobal[0-9a-f]+"
+                                             (symbol->string name))))
+                       (names-in exprs)))
+             (lambda (exprs)
+               ;; Like above, but make sure we're not given normalised names
+               (all-of (lambda (name)
+                         (not (regexp-match? "normalise-var-[0-9]"
+                                             (symbol->string name))))
+                       (names-in exprs))))
+      (*list/c (list/c symbol? symbol?)))
+
+  (define exprs
+    (remove-duplicates raw-exprs))
+
+  (define normalised-def?
+    (and/c definition?
+           (lambda (expr)
+             (all-of (lambda (name)
+                       (or (regexp-match? "^normalise-"
+                                          (symbol->string name))
+                           (regexp-match? "^defining-"
+                                          (symbol->string name))))
+                     (names-in expr)))))
+
+  (define class?
+    (and/c (*list/c (*list/c symbol?))
+           (lambda (class)
+             ;; Each definition should give the same number of names, or else
+             ;; there's no way they'd be alpha equivalent
+             (equal? 1
+                     (length (remove-duplicates (map length class)))))))
+
+  (define/contract (choose-smallest so-far)
+    ;; Choose the smallest name out of the alternatives found in exprs.
+    ;;
+    ;; Example input: '(((Pair mkPair first second)
+    ;;                   (PairOf paired fst snd))
+    ;;                  (declare-datatypes (normalise-var-2 normalise-var-1)
+    ;;                     ((defining-type-1
+    ;;                        (normalise-constructor-1
+    ;;                          (normalise-destructor-2 normalise-var-2)
+    ;;                          (normalise-destroctor-1 normalise-var-1)))))
+    ;;
+    ;; Output (old new) pairs to replace larger names with smaller, e.g. in the
+    ;; above example we'd get '((PairOf Pair)
+    ;;                          (paired mkPair)
+    ;;                          (fst    first)
+    ;;                          (snd    second))
+    (-> (and/c (*list/c (list/c class? normalised-def?))
+
+               ;; Each name in so-far is defined in exprs
+               (lambda (so-far)
+                 (all-of (lambda (name)
+                           (member name (names-in exprs)))
+                         (concat-map (lambda (known)
+                                       (apply append (first known)))
+                                     so-far)))
+               ;; We can find a definition for each name in so-far
+               (lambda (so-far)
+                 (all-of (lambda (name)
+                           (define defs
+                             (get-def-s name exprs))
+
+                           (or (equal? 1 (length defs))
+                               (raise-user-error
+                                'so-far
+                                "Expected all names in so-far to have one definition in exprs, yet for '~a' we found the definitions:\n~a\nThe value of exprs is:\n~a"
+                                name
+                                defs
+                                exprs)))
+                         (concat-map (lambda (known)
+                                       (apply append (first known)))
+                                     so-far)))
+
+               ;; Each class's names come from alpha-equivalent definitions
+               (*list/c (flat-contract-with-explanation
+                         (lambda (known)
+                           (all-of (lambda (name)
+                                     (define def
+                                       (first (get-def-s name exprs)))
+                                     (or (equal? (norm def) (second known))
+                                         (raise-user-error
+                                          'so-far
+                                          "Expected list of '(class def)' pairs, where the names in 'class' have definitions alpha-equivalent to 'def', yet for 'def' of\n~a\nthe name '~a' has definition:\n~a\nwhich normalises to:\n~a\n"
+                                          (second known)
+                                          name
+                                          def
+                                          (norm def))))
+                                   (apply append (first known)))))))
+        (*list/c (and/c (list/c symbol? symbol?)
+                        (lambda (pair)
+                          (symbol<? (second pair) (first pair)))
+                        (lambda (pair)
+                          (and (member (first  pair) (names-in exprs))
+                               (member (second pair) (names-in exprs))))
+                        (lambda (pair)
+                          (equal? (norm (get-def-s (first  pair) exprs))
+                                  (norm (get-def-s (second pair) exprs)))))))
+
+    ;; Pick the lexicographically-smallest names as the replacements
+    (define all-classes
+      (map first so-far))
+
+    (define (pick-replacements class)
+      (if (empty? class)
+          ;; Nothing to replace
+          '()
+          (if (empty? (first class))
+              ;; We've plucked all of the names out of this class
+              '()
+              (let*
+                ;; Pluck the first names from all sets in this class
+                ([these (sort (map first class) symbol<=?)]
+
+                 ;; Pluck out the smallest, which will be the canonical name
+                 [new   (first these)]
+
+                 ;; Define replacements for all non-canonical names
+                 [replacements (map (lambda (old) (list old new))
+                                    (cdr these))])
+
+                ;; Recurse, dropping the names we just processed
+                (append replacements (pick-replacements (map cdr class)))))))
+
+    ;; Make list of replacements, based on smallest element of each class
+    (define/contract result
+      (*list/c (and/c (list/c symbol? symbol?)
+                      (lambda (pair)
+                        (equal? (norm (get-def-s (first  pair) exprs))
+                                (norm (get-def-s (second pair) exprs))))))
+
+      (concat-map pick-replacements all-classes))
+
+    result)
+
+  (define (mk-output expr so-far)
     (let* ([norm-line (norm     expr)]
            [names     (names-in expr)]
            ;; Any existing alpha-equivalent definitions:
@@ -777,53 +1066,26 @@
                               so-far)])
       (if (empty? existing)
           ;; This expr isn't redundant, associate its names with its normal form
-          (list (cons (list names norm-line) so-far)
-                name-replacements)
+          (append so-far (list (list (list names) norm-line)))
 
           ;; This expr is redundant, associate its names with their equivalents
-          (list so-far
-                (append (zip names (first (car existing)))
-                        name-replacements)))))
+          (map (lambda (known)
+                 (if (equal? (second known) norm-line)
+                     (list (cons names (first known))
+                           norm-line)
+                     known))
+               so-far))))
 
-  (define (remove-redundancies exprs so-far name-replacements)
-    ;; TODO: Choose the lexicographically smallest name out of all the
-    ;; equivalents, when replacing
+  (define (remove-redundancies exprs so-far)
     (if (empty? exprs)
-        name-replacements
-        (let* ([result (mk-output (first exprs) so-far name-replacements)]
-               [new-sf (first  result)]
-               [new-nr (second result)])
-          (remove-redundancies (cdr exprs) new-sf new-nr))))
+        so-far
+        (remove-redundancies (cdr exprs)
+                             (mk-output (first exprs) so-far))))
 
-  (remove-redundancies exprs null null))
-
-;; FIXME: Replace redundant string-<= stuff
-
-(define (list-<= x y)
-  (if (empty? x)
-      true
-      (if (empty? y)
-          false
-          (if (< (car x) (car y))
-              true
-              (if (< (car y) (car x))
-                  false
-                  (list-<= (cdr x) (cdr y)))))))
-
-(define (string-<= x y)
-  (define list-x
-    (map char->integer (string->list x)))
-  (define list-y
-    (map char->integer (string->list y)))
-
-  (list-<= list-x list-y))
+  (choose-smallest (remove-redundancies exprs null)))
 
 (define (set-equal? x y)
-  (define (cmp x y)
-    (string-<= (~a x)
-               (~a y)))
-
-  (equal? (sort x cmp) (sort y cmp)))
+  (equal? (list->set x) (list->set y)))
 
 (define (symbols-of-theorems-s expr)
   (filter (lambda (s)
@@ -873,32 +1135,106 @@
          str
          reps))
 
-(define (norm-defs exprs)
-  (define redundancies (find-redundancies exprs))
-  (define replacements (map first redundancies))
-  (define stripped
-    (foldl (lambda (expr result)
-             (let ([keep      #t]
-                   [def-names (names-in expr)])
-               (for-each (lambda (def-name)
-                           (when (member def-name replacements)
-                             (set! keep #f)))
-                         def-names)
-               (if keep
-                   (append result (list expr))
-                   result)))
-           '()
-           exprs))
+(define/contract (norm-defs exprs)
+  (-> (*list/c definition?)
+      (*list/c definition?))
 
   (log "Normalising ~a definitions\n" (length exprs))
-  (define norm
-    (read-benchmark (replace-strings (format-symbols stripped)
-                                     (map (curry map ~a) redundancies))))
 
-  (log "Stripped ~a redundancies\n" (- (length exprs) (length norm)))
-  (if (equal? exprs norm)
-      norm
-      (norm-defs norm)))
+  ;; Find the names of redundant definitions, and a canonical replacement
+  (define/contract redundancies
+    (and/c (*list/c (and/c (list/c symbol? symbol?)
+                           (lambda (pair)
+                             (symbol<? (second pair) (first pair)))))
+           (lambda (redundancies)
+             (all-of (lambda (pair)
+                       (or (not (member (first pair)
+                                        (map second redundancies)))
+                           (raise-user-error
+                            'redundancies
+                            "Redundant name '~a', with canonical replacement '~a', shouldn't appear in the canonical names:\n~a"
+                            (first  pair)
+                            (second pair)
+                            (map second redundancies))))
+                     redundancies)))
+
+    (find-redundancies exprs))
+
+  (log "Found ~a redundancies\n" (length redundancies))
+
+  ;; Switch out all of the redundant names (including in definitions)
+  (define/contract renamed
+    (and/c (*list/c (and/c definition?
+                           (lambda (expr)
+                             (not (any-of (lambda (name)
+                                            (member name (map first redundancies)))
+                                          (names-in expr))))))
+           (flat-contract-with-explanation
+            (lambda (renamed)
+              (or (all-of (lambda (name)
+                            (member name (names-in renamed)))
+                          (map second redundancies))
+                  (lambda (blame)
+                    (raise-blame-error
+                     blame renamed
+                     (list 'expected: "definitions including canonical names"
+                           'given:    "definitions missing canonical names"
+                           "Should have definitions for at least ~a"
+                           "Only found definitions for ~a")
+                     (map second redundancies)
+                     (names-in renamed))))))
+           (flat-contract-with-explanation
+            (lambda (renamed)
+              (or (equal? (length renamed)
+                          (length exprs))
+                  (lambda (blame)
+                    (raise-blame-error
+                     blame renamed
+                     (list 'expected: "~a definitions"
+                           'given:    "~a definitions")
+                     (length exprs)
+                     (length renamed)))))))
+
+    (foldl (lambda (rep exprs)
+             (replace-in (first rep) (second rep) exprs))
+           exprs
+           redundancies))
+
+  (define/contract (strip-acc expr seen-result)
+    (-> definition? (list/c (*list/c symbol?) (*list/c definition?))
+        (list/c (*list/c symbol?) (*list/c definition?)))
+
+    (let* ([seen      (first  seen-result)]
+           [result    (second seen-result)]
+           [def-names (names-in expr)])
+      (if (all-of (lambda (name)
+                    (member name seen))
+                  def-names)
+          (list seen result)
+          (list (append seen def-names)
+                (append result (list expr))))))
+
+  (define/contract stripped
+    (and/c (*list/c definition?)
+           (lambda (stripped)
+             (equal? stripped (remove-duplicates stripped)))
+           (lambda (stripped)
+             (all-of (lambda (name)
+                       (member name (names-in stripped)))
+                     (map second redundancies)))
+           (lambda (stripped)
+             (not (any-of (lambda (name)
+                            (member name (map first redundancies)))
+                          (names-in stripped)))))
+
+    (second (foldl strip-acc
+                   (list '() '())
+                   renamed)))
+
+  (log "Stripped ~a redundancies\n" (- (length exprs) (length stripped)))
+  (if (equal? exprs stripped)
+      stripped
+      (norm-defs stripped)))
 
 (define (defs-to-sig x)
   (mk-signature-s (format-symbols (mk-final-defs-s (string-split x "\n")))))
@@ -1011,6 +1347,7 @@ library
 (module+ test
   (require rackunit)
 
+  ;; Don't give progress information during tests
   (quiet)
 
   ;; Examples used for tests
@@ -1105,7 +1442,8 @@ library
   (define test-files
     (benchmark-files '("grammars/simp_expr_unambig1.smt2"
                        "grammars/simp_expr_unambig4.smt2"
-                       "tip2015/sort_StoogeSort2IsSort.smt2")))
+                       "tip2015/sort_StoogeSort2IsSort.smt2"
+                       "tip2015/sort_BSortPermutes.smt2")))
 
   (define test-defs
     (mk-defs-s test-files))
@@ -1266,11 +1604,18 @@ library
 
     ;; Collect together some definitions, which include some alpha-equivalent
     ;; redundancies
-    (define raw       (qual-all (append test-files test-benchmark-files)))
+    (define files (append test-files
+                          test-benchmark-files
+                          (benchmark-files
+                           '("tip2015/sort_StoogeSort2IsSort.smt2"
+                             "isaplanner/prop_58.smt2"
+                             "tip2015/list_PairUnpair.smt2"))))
+
+    (define raw       (qual-all files))
     (define raw-names (names-in raw))
 
     ;; Remove redundancies
-    (define normal       (mk-final-defs-s test-files))
+    (define normal       (mk-final-defs-s files))
     (define normal-names (names-in normal))
 
     ;; If some raw name is smaller than some normalised name, the two names must
@@ -1283,7 +1628,7 @@ library
 
                 ;; We do this outside the inner loop for efficiency
                 (define raw-def
-                  (get-def-s raw-name raw))
+                  (first (get-def-s raw-name raw)))
 
                 (define norm-raw-def
                   (norm raw-def))
@@ -1295,8 +1640,8 @@ library
                 (for-each (lambda (normal-name-enc)
                             ;; Find the definition of this normalised name
                             (define normal-def
-                              (get-def-s normal-name-enc
-                                         normal))
+                              (first (get-def-s normal-name-enc
+                                                normal)))
 
                             (define norm-normal-def
                               (norm normal-def))
@@ -1333,11 +1678,35 @@ library
                                              ('norm-raw-def    norm-raw-def)
                                              ('norm-normal-def norm-normal-def))
                                             (check-true
-                                             (string-<= (symbol->string normal)
+                                             (string<=? (symbol->string normal)
                                                         (symbol->string raw)))))
                                         (zip raw-def-names normal-def-names))))
                           normal-names))
-              raw-names))
+              raw-names)
+
+    (check-equal? (list->set
+                   (find-redundancies
+                    '((declare-datatypes
+                       (local-a local-b)
+                       ((isaplanner/prop_58.smt2Pair-sentinel
+                         (isaplanner/prop_58.smt2Pair2-sentinel
+                          (isaplanner/prop_58.smt2first-sentinel local-a)
+                          (isaplanner/prop_58.smt2second-sentinel local-b)))))
+                      (declare-datatypes
+                       (local-a local-b)
+                       ((tip2015/sort_StoogeSort2IsSort.smt2Pair
+                         (tip2015/sort_StoogeSort2IsSort.smt2Pair2
+                          (tip2015/sort_StoogeSort2IsSort.smt2first local-a)
+                          (tip2015/sort_StoogeSort2IsSort.smt2second local-b))))))))
+                  (list->set
+                   '((tip2015/sort_StoogeSort2IsSort.smt2Pair
+                      isaplanner/prop_58.smt2Pair-sentinel)
+                     (tip2015/sort_StoogeSort2IsSort.smt2Pair2
+                      isaplanner/prop_58.smt2Pair2-sentinel)
+                     (tip2015/sort_StoogeSort2IsSort.smt2first
+                      isaplanner/prop_58.smt2first-sentinel)
+                     (tip2015/sort_StoogeSort2IsSort.smt2second
+                      isaplanner/prop_58.smt2second-sentinel)))))
 
   (check-equal? (names-in '(fee fi fo fum))
                 '())
@@ -1399,10 +1768,26 @@ library
                                         (foo bar))))
                   (check-sat)))
 
-  (check-equal? (list->set (find-redundancies redundancies))
-                (list->set '((redundantZ1 constructorZ)
-                             (redundantZ2 constructorZ)
-                             (redundantZ3 constructorZ))))
+  (test-case "Find redundancies"
+    ;; Check known expression
+    (check-equal? (list->set (find-redundancies redundancies))
+                  (list->set '((redundantZ1 constructorZ)
+                               (redundantZ2 constructorZ)
+                               (redundantZ3 constructorZ))))
+
+    ;; Ensure we keep the lexicographically-smallest name
+    (check-equal? (list->set (find-redundancies
+                              '((declare-datatypes () ((TB (C1A) (C2C (D1B TB)))))
+                                (declare-datatypes () ((TC (C1C) (C2B (D1A TC)))))
+                                (declare-datatypes () ((TA (C1B) (C2A (D1C TA))))))))
+                  (list->set '((TB  TA)
+                               (TC  TA)
+                               (C1B C1A)
+                               (C1C C1A)
+                               (C2B C2A)
+                               (C2C C2A)
+                               (D1B D1A)
+                               (D1C D1A)))))
 
   (test-case "Normalise"
     (define (check-normal kind def expected)
@@ -2074,9 +2459,4 @@ library
 
     (for-each (lambda (name)
                 (check-equal? (tip-upper-rename name) (symbol->string name)))
-              test-benchmark-upper-names))
-
-  ;; When we remove alpha-equivalent definitions, make sure those remaining are
-  ;; also appear first in lexicographical order
-  #;(test-case "Names normalised"
-    ))
+              test-benchmark-upper-names)))
