@@ -10,10 +10,15 @@ let forPkgs = pkgs:
   let hsVersions = filterAttrs (n: _: elem n [ "ghc7103" "ghc801" ])
                                haskell.packages;
 
-   in mapAttrs (n: v: callPackage ./. {
-                        inherit pkgs;
-                        haskellPackages = v;
-                      })
+      # Remove attributes added by 'callPackage'
+      strip = filterAttrs (n: v: !(elem n [
+                            "override" "overrideDerivation"
+                          ]));
+
+   in mapAttrs (n: v: strip (callPackage ./. {
+                              inherit pkgs;
+                              haskellPackages = v;
+                            }))
                hsVersions;
 
  in listToAttrs (map (system: {

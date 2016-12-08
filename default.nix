@@ -6,7 +6,10 @@ with {
                              then pkgs.haskellPackages
                              else haskellPackages;
 };
+with builtins;
 with pkgs;
+with lib;
+
 let
   shellPipeline = fetchFromGitHub {
     owner  = "willghatch";
@@ -70,8 +73,19 @@ let
     ];
   };
 
+  tip-repo = fetchFromGitHub {
+    owner  = "Warbo";
+    repo   = "benchmarks";
+    rev    = "11c2607";
+    sha256 = "11jlk2qch17yqz8g5jjq1drdvs5n3csw0342j17z5gpl01zaxn07";
+  };
+
 in rec {
-  tip-benchmarks = ./modules/tip-benchmarks/benchmarks;
+
+  # Take from git, to keep things pristine and cacheable
+  tip-benchmarks = runCommand "tip-benchmarks" { repo = tip-repo; } ''
+    cp -r "$repo//benchmarks" "$out"
+  '';
 
   tools = stdenv.mkDerivation (rec {
     name = "te-benchmark";
