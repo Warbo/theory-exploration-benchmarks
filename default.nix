@@ -1,8 +1,13 @@
-{ pkgs ? import <nixpkgs> {} }:
+{ pkgs ? import <nixpkgs> {},
+  haskellPackages ? null }:
 
+with {
+  chosenHaskellPackages = if haskellPackages == null
+                             then pkgs.haskellPackages
+                             else haskellPackages;
+};
 with pkgs;
 let
-
   shellPipeline = fetchFromGitHub {
     owner  = "willghatch";
     repo   = "racket-shell-pipeline";
@@ -54,9 +59,9 @@ let
     name  = "tip-bench-env";
     paths = [
       bash
-      haskellPackages.cabal-install
+      chosenHaskellPackages.cabal-install
       (racketWithDeps [ shellPipeline ])
-      (haskellPackages.ghcWithPackages (hs: [
+      (chosenHaskellPackages.ghcWithPackages (hs: [
         hs.tip-lib
         hs.QuickCheck
         hs.quickspec

@@ -2,18 +2,22 @@
 
 with builtins;
 
-let forSystem = system:
-  with import <nixpkgs> { inherit system; };
+let forPkgs = pkgs:
+  with pkgs;
   with lib;
 
-  # Ignore some Haskell versions, to save memory
-  let discard    = v: !(elem v [ "ghc7103" "ghc801" ]);
+  # Ignore most Haskell versions, to save memory
+  let hsVersions = filterAttrs (n: _: elem n [ "ghc7103" "ghc801" ])
+                               haskell.packages;
 
-      hsVersions = filterAttrs (n: _: !(discard n)) haskell.packages;
+   in mapAttrs (n: v: callPackage ./. {
+                        inherit pkgs;
+                        haskellPackages = v;
+                      })
+               hsVersions;
 
-   in lib.mapAttrs (n: v: callPackage ./. {
-                            haskellPackages = v;
-                          })
-                   hsVersions;
- in listToAttrs (map (system: { name = system; value = forSystem system; })
+ in listToAttrs (map (system: {
+                       name  = system;
+                       value = forPkgs (import <nixpkgs> { inherit system; });
+                     })
                      supportedSystems)
