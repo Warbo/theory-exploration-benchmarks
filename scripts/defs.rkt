@@ -22,6 +22,15 @@
   (when verbose
     (apply eprintf args)))
 
+;; Uses 'define/contract' during testing, and 'define' otherwise. Useful since
+;; 'define/contract' can be very slow, e.g. checking every recursive call.
+(define-syntax (define/test-contract stx)
+  (syntax-case stx ()
+    [(define/test-contract sig contract body ...)
+     (if (and (getenv "PLT_TR_CONTRACTS") #t)
+         #'(define/contract sig contract body ...)
+         #'(define          sig          body ...))]))
+
 (define benchmark-dir
   (or (getenv "BENCHMARKS")
       "No BENCHMARKS env var given"))
@@ -326,7 +335,7 @@
 (define (benchmark-symbols expr)
   (remove-duplicates (expression-symbols expr)))
 
-(define/contract (norm expr)
+(define/test-contract (norm expr)
   (-> any/c
       ;; Our result should be normalised
       (lambda (result)
@@ -719,13 +728,11 @@
     [(cons a b) (and (f a) (all-of f b))]
     [_          #t]))
 
-(define (get-def-s name exprs)
-  #;(unless (symbol? name)
-    (error "get-def-s expected symbol, given" name))
+(define/test-contract (get-def-s name exprs)
+  (-> symbol? any/c any/c)
 
-  (define (defs-from sym exp)
-    #;(unless (symbol? sym)
-      (error "defs-from expected symbol, given" sym))
+  (define/test-contract (defs-from sym exp)
+    (-> symbol? any/c any/c)
 
     (match exp
       [(list 'declare-datatypes given decs) (if (member sym (names-in exp))
@@ -912,7 +919,7 @@
                       (not (empty? (names-in sub-expr))))
                     x))))
 
-(define/contract (find-redundancies raw-exprs)
+(define/test-contract (find-redundancies raw-exprs)
   (-> (and/c (*list/c definition?)
              (lambda (exprs)
                ;; Make sure we're not given encoded names, since their
@@ -953,7 +960,7 @@
              (equal? 1
                      (length (remove-duplicates (map length class)))))))
 
-  (define/contract (choose-smallest so-far)
+  (define/test-contract (choose-smallest so-far)
     ;; Choose the smallest name out of the alternatives found in exprs.
     ;;
     ;; Example input: '(((Pair mkPair first second)
@@ -1046,7 +1053,7 @@
                 (append replacements (pick-replacements (map cdr class)))))))
 
     ;; Make list of replacements, based on smallest element of each class
-    (define/contract result
+    (define/test-contract result
       (*list/c (and/c (list/c symbol? symbol?)
                       (lambda (pair)
                         (equal? (norm (get-def-s (first  pair) exprs))
@@ -1135,14 +1142,14 @@
          str
          reps))
 
-(define/contract (norm-defs exprs)
+(define/test-contract (norm-defs exprs)
   (-> (*list/c definition?)
       (*list/c definition?))
 
   (log "Normalising ~a definitions\n" (length exprs))
 
   ;; Find the names of redundant definitions, and a canonical replacement
-  (define/contract redundancies
+  (define/test-contract redundancies
     (and/c (*list/c (and/c (list/c symbol? symbol?)
                            (lambda (pair)
                              (symbol<? (second pair) (first pair)))))
@@ -1163,7 +1170,7 @@
   (log "Found ~a redundancies\n" (length redundancies))
 
   ;; Switch out all of the redundant names (including in definitions)
-  (define/contract renamed
+  (define/test-contract renamed
     (and/c (*list/c (and/c definition?
                            (lambda (expr)
                              (not (any-of (lambda (name)
@@ -1200,7 +1207,7 @@
            exprs
            redundancies))
 
-  (define/contract (strip-acc expr seen-result)
+  (define/test-contract (strip-acc expr seen-result)
     (-> definition? (list/c (*list/c symbol?) (*list/c definition?))
         (list/c (*list/c symbol?) (*list/c definition?)))
 
@@ -1214,7 +1221,7 @@
           (list (append seen def-names)
                 (append result (list expr))))))
 
-  (define/contract stripped
+  (define/test-contract stripped
     (and/c (*list/c definition?)
            (lambda (stripped)
              (equal? stripped (remove-duplicates stripped)))

@@ -90,7 +90,11 @@ in rec {
 
     doCheck = true;
     checkPhase = ''
-      BENCHMARKS="${tip-benchmarks}" raco test defs.rkt
+      # BENCHMARKS tells the tests where to find their data
+
+      # PLT_TR_CONTRACTS enables contract checking, which is useful but slow
+
+      BENCHMARKS="${tip-benchmarks}" PLT_TR_CONTRACTS=1 raco test defs.rkt
     '';
   });
 
