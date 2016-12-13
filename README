@@ -3,47 +3,78 @@
 This repository contains scripts to create large(ish) benchmarks for theory
 exploration systems. It's based on the Tons of Inductive Problems (TIP) problem
 set, but whilst TIP focuses on depth (proving a given theorem from minimal
-premises), we focus on breadth (presenting many theorems from many premises).
+premises), we focus on breadth (discovering theorems from many premises).
 
 We use Racket, since it's well suited to manipulating the s-expressions defined
 by TIP.
 
 ## How it Works ##
 
-The TIP benchmark repository is included as a git submodule, in the
-`modules/tip-benchmarks` directory. The benchmarks are stored in paths with the
-suffix `.smt2` in the directory `modules/tip-benchmarks/benchmarks`.
-
 Each TIP benchmark defines datatypes, functions and a single (negated) theorem
-statement. We combine the datatypes and functions from all of these benchmarks
-together, and ignore all of the theorem statements.
+statement. These scripts combine the datatypes and functions from all of these
+benchmarks together, and strip out all of the theorem statements.
 
 The result is a large theory, suitable for exploration by tools like QuickSpec
-and IsaCoSy.
+and IsaCoSy, and suitable for passing into the standard tip tools (e.g. for
+translation into various other languages).
 
 Combining all of these theories into one causes a few problems. In particular:
 
  - Multiple files may declare functions or datatypes of the same name. To allow
    for this, we prefix all defined names by the path from which they're taken.
-   We remove the prefix of any names which turns out to be unambiguous.
- - To disambiguate names and ease automation, we give function names the prefix
-   "f", constructors the prefix "C" and types the prefix "T" (the case is
-   important when translating to Haskell).
- - Different files may contain (alpha-)equivalent definitions. We remove these
-   by comparing each definition to those before it, and removing if it's
-   appeared before. We update all references to use the prior version, then
-   compare everything again, until no more removals are possible.
- - To ease automation, we add an extra function for each constructor and
-   destructor, prefixed with "c" and "d" instead of "f".
+   Hence a function called "add" in the file "arithmetic/plus_commutes.smt2"
+   will become "arithmetic/plus_commutes.smt2add".
+ - We may get multiple definitions of the same (alpha-equivalent) values, e.g.
+   if multiple benchmarks define the same natural number type and functions. We
+   find these with an n^2 comparison of all definitions. If a set of equivalent
+   definitions is found, we normalise their names (and references to them) by
+   choosing the smallest name from the set, lexicographically. We then remove
+   all but the first definition. We iterate this process until no more sets are
+   found.
+ - Many definitions have names which aren't suitable for, for example, Haskell;
+   especially when prefixed by their path. The `tip` program will fix this when
+   translating, but that prevents us from relating definitions back to their
+   source. To prevent this, we hex-encode all names, and prefix with either
+   `global` or `Global` (following Haskell's upper/lowercase distinction between
+   types/constructors and functions/destructors).
+ - To ease automation, we add an extra function for each constructor, prefixed
+   with "constructor-".
 
 ## Dependencies ##
 
-Be sure to fetch the `modules/tip-benchmarks` sub-module. You'll also need
-Racket, the `shell-pipeline` Racket package and the `tip` command from the
-`tip-lib` Haskell package. The `cabal` command is required for testing.
+All dependencies can be satisfied automatically by the Nix package manager,
+using the included `default.nix` file. This provides the following attributes:
 
-The repository contains definitions for the Nix package manager, so you can get
-all of these dependencies by running `nix-shell`.
+ - `tools`, which provides our TIP-manipulation scripts
+ - `tip-benchmarks`, which is a specific revision of the TIP benchmarks
+ - `tip-benchmark-smtlib`, which is the result of using the `tools` scripts to
+   combine all of the `tip-benchmarks` together
+
+These definitions are parameterised by the package repository and set of Haskell
+packages to use, which allows easy overriding and aids reproducibility.
+
+If you don't want to use Nix, you'll need `racket` in your `PATH`, with the
+`shell-pipeline` package available.
+
+If you want to generate Haskell code you'll need the `tip` command, from the
+`tip-lib` Haskell package.
+
+You can invoke the test suite using `raco` or `drracket`; the tests also need
+the `cabal` command, and a Haskell environment with the `QuickSpec`,
+`QuickCheck`, `tip-lib` and `testing-feat` packages available.
+
+The preferred way to use these tools is to `import` them into your own Nix
+projects, and . Alternatively, you can enter a shell to run commands manually
+(although this sacrifices the reproducibility offered by Nix):
+
+    nix-shell -p '(import ./. {}).tools'
+
+This will enter a shell with the `tools` available in `PATH`. To 
+
+by run the tools from a shellfrom another Nix project you can just `import` the `default.nix` file
+
+You'll need Racket, the `shell-pipeline` Racket package and the `tip` command
+from the `tip-lib` Haskell package. The `cabal` command is required for testing.
 
 ## Usage ##
 
