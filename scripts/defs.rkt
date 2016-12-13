@@ -41,11 +41,11 @@
 (define benchmark-files
   (curry map benchmark-file))
 
-(define (symbols-in exp)
-  (define native-symbols
-    (list 'Int 'Bool '* '> 'mod 'and 'or 'xor 'iff 'ite 'true 'false 'not
-          'implies 'distinct '@ '= '<= '- '+ '* 'div '=> 'as))
+(define native-symbols
+  (list 'Int 'Bool '* '> 'mod 'and 'or 'xor 'iff 'ite 'true 'false 'not
+        'implies 'distinct '@ '= '<= '- '+ '* 'div '=> 'as))
 
+(define (symbols-in exp)
   (define (case-symbols c)
     (match c
       ;; Remove the symbols occuring in pat from body. This will remove fresh
@@ -71,24 +71,22 @@
 ;; Extract the symbols used by a benchmark expression
 
 (define (expression-constructors exp)
-  (let* ((constructor-symbols (lambda (c)
-           (match c
-             [(cons name vars) (list name)]
-             [_                (error "Unexpected constructor form")])))
+  (define (constructor-symbols c)
+    (match c
+      [(cons name vars) (list name)]
+      [_                (error "Unexpected constructor form")]))
 
-         (constructors-from-def (lambda (given decs)
-           (remove* (symbols-in given)
-                    (symbols-in (foldl (lambda (dec got)
-                                         (append got (match dec
-                                                       [(cons type defs) (symbols-in (map constructor-symbols defs))]
-                                                       [_                (error "Unexpected type definition")])))
-                                       null
-                                       decs))))))
-    (match exp
-      [(list 'declare-datatypes given decs) (constructors-from-def given decs)]
-      [(cons a b)                           (append (expression-constructors a)
-                                                    (expression-constructors b))]
-      [_                                    null])))
+  (define (constructors-from-def decs)
+    (foldl (lambda (dec got)
+             (append got (match dec
+                           [(cons type defs) (map first defs)])))
+           '()
+           decs))
+  (match exp
+    [(list 'declare-datatypes given decs) (constructors-from-def decs)]
+    [(cons a b)                           (append (expression-constructors a)
+                                                  (expression-constructors b))]
+    [_                                    null]))
 
 (define (expression-types exp)
   (define (constructor-types defs)
@@ -187,6 +185,9 @@
          (symbols-in (append (expression-symbols expr)
                              (expression-types   expr)))))
 
+(define (prefix-local s)
+  (string->symbol (string-append "local-" (as-str s))))
+
 (define (prefix-locals expr)
   ;; Turn bindings like (lambda (x Int) (f x)) into
   ;; (lambda (local-x Int) (f local-x)) to prevent conflicts between local and
@@ -226,9 +227,6 @@
       [_ null]))
 
   (define (prefix-all locals expr)
-    (define (prefix-local s)
-      (string->symbol (string-append "local-" (as-str s))))
-
     (if (empty? locals)
         expr
         (prefix-all (cdr locals)
@@ -625,17 +623,18 @@
           (uppercase-names defs)))
 
 (define (tag-constructors x)
-  ;; Tag constructors with 'CONSTRUCTOR' to disambiguate
+  ;; Tag constructors with 'constructor-' to disambiguate
   (foldl (lambda (c y)
-           (replace-in c (prefix-name c "CONSTRUCTOR") y))
+           (replace-in c (prefix-name c "constructor-") y))
          x
          (expression-constructors x)))
 
 (define (tag-types x)
-  ;; Tag types with 'TYPE' to disambiguate
+  ;; Tag types with 'type-' to disambiguate
   (foldl (lambda (t y)
-           (if (symbol? t)
-               (replace-in t (prefix-name t "TYPE") y)
+           (if (and (symbol? t)
+                    (not (member t native-symbols)))
+               (replace-in t (prefix-name t "type-") y)
                y))
          x
          (expression-types x)))
@@ -652,10 +651,10 @@
                  (not (equal? x '(check-sat)))))
           lst))
 
-(define (qual-all given-files)
-  (define (take-from-end n lst)
-    (reverse (take (reverse lst) n)))
+(define (take-from-end n lst)
+  (reverse (take (reverse lst) n)))
 
+(define (qual-all given-files)
   (define given-contents
     (map (lambda (pth)
            (list (string-replace (string-join (take-from-end 2 (string-split pth "/"))
@@ -731,22 +730,19 @@
 (define/test-contract (get-def-s name exprs)
   (-> symbol? any/c any/c)
 
-  (define/test-contract (defs-from sym exp)
-    (-> symbol? any/c any/c)
+  (define/test-contract (defs-from exp)
+    (-> any/c any/c)
 
     (match exp
-      [(list 'declare-datatypes given decs) (if (member sym (names-in exp))
-                                                (list exp)
-                                                '())]
-      [(cons a b)                           (append (defs-from sym a)
-                                                    (defs-from sym b))]
-      [_                                    null]))
+      [(list 'declare-datatypes _ decs) (if (member name (names-in exp))
+                                            (list exp)
+                                            '())]
+      [(cons a b)                       (append (defs-from a)
+                                                (defs-from b))]
+      [_                                null]))
 
-  (remove-duplicates (append (find-sub-exprs name exprs)
-                             (foldl (lambda (expr rest)
-                                      (append (defs-from name expr) rest))
-                                    '()
-                                    exprs))))
+  (remove-duplicates (append (find-sub-exprs name (list exprs))
+                             (concat-map defs-from (list exprs)))))
 
 (define (get-def name str)
   (get-def-s name (read-benchmark str)))
@@ -770,52 +766,61 @@
                                   "")))
 
 (define (add-constructor-funcs x)
-  ;; Adding function for each constructor
-  (let* ([consts (expression-constructors x)])
-    (define (func-for x c)
-      (define (arg-decs-for x)
-        ;; Look through x for any definitions of c, and return its argument list
-        (define (arg-decs-for-ty x)
-          (define (arg-decs-for-con x)
-            (match x
-              [(list name)      (if (equal? name c) (list '())  '())]
-              [(cons name args) (if (equal? name c) (list args) '())]))
+  (define (func-for c)
+    ;; Look through x for a definition of c
+    (define definition
+      (first (get-def-s c x)))
 
-          (concat-map arg-decs-for-con (cdr x)))
+    (define (arg-decs-for x)
+      ;; Get the argument list of c
+      (define (arg-decs-for-ty x)
+        (define (arg-decs-for-con x)
+          (match x
+            [(list name)      (if (equal? name c) (list '())  '())]
+            [(cons name args) (if (equal? name c) (list args) '())]))
 
-        (match x
-          [(list 'declare-datatypes _ decs) (concat-map arg-decs-for-ty decs)]
-          [(cons h t) (append (arg-decs-for h)
-                              (arg-decs-for t))]
-          [_ '()]))
+        (concat-map arg-decs-for-con (cdr x)))
 
-      (define arg-decs
-        (car (arg-decs-for x)))
+      (match definition
+        [(list 'declare-datatypes _ decs) (concat-map arg-decs-for-ty decs)]))
 
-      (define (constructor-type x)
-        (define (constructor-type-ty dec)
-          (concat-map (lambda (con)
-                        (if (equal? (car con) c)
-                            (list (car dec))
-                            '()))
-                      (cdr dec)))
+    (define arg-decs
+      (map (lambda (def)
+             (cons (prefix-local (car def)) (cdr def)))
+           (first (arg-decs-for x))))
 
-        (match x
-          [(list 'declare-datatypes _ decs) (concat-map constructor-type-ty decs)]
-          [(cons a b) (append (constructor-type a)
-                              (constructor-type b))]
-          [_ '()]))
+    (define parameters
+      (match definition
+        [(list 'declare-datatypes ps _) ps]))
 
-      (prefix-locals
-       `(define-fun
-          ,(prefix-name c "constructor")
-          ,arg-decs
-          ,(car (constructor-type x))
-          ,(if (empty? arg-decs)
-               c
-               (cons c (map car (car (arg-decs-for x))))))))
+    (define (constructor-type x)
+      (define (has-constructor dec)
+        (member c (map first (cdr dec))))
 
-    (append x (map (curry func-for x) consts))))
+      (match definition
+        [(list 'declare-datatypes _ decs) (map first (filter has-constructor decs))]))
+
+    (define name
+      (prefix-name c "constructor-"))
+
+    (define type
+      (if (empty? parameters)
+          (first (constructor-type x))
+          (cons (first (constructor-type x)) parameters)))
+
+    (define body
+      (if (empty? arg-decs)
+          `(as ,c ,type)
+          `(as ,(cons c (map car arg-decs)) ,type)))
+
+    (define func
+      (if (empty? parameters)
+          `(define-fun                   ,name ,arg-decs ,type ,body)
+          `(define-fun (par ,parameters (,name ,arg-decs ,type ,body)))))
+
+    func)
+
+  (append x (map func-for (expression-constructors x))))
 
 (define (encode16 str)
   (define chars
@@ -887,15 +892,55 @@
   (string->symbol (string-append "Global"
                                  (encode16 (symbol->string name)))))
 
+(define global-length
+  (string-length "global"))
+
+(define (decode-string s)
+  ;; Replace occurences of "GlobalXXXX" and "globalXXXX" with their decoded
+  ;; variants
+
+  (first
+   (foldl (lambda (pair s-diff)
+            (define s
+              (first s-diff))
+
+            (define diff
+              (second s-diff))
+
+            (define start
+              (+ diff (car pair)))
+
+            (define end
+              (+ diff (cdr pair)))
+
+            (define prefix
+              (substring s 0 start))
+
+            (define suffix
+              (substring s end))
+
+            (define encoded-name
+              (substring s (+ start global-length) end))
+
+            (define name
+              (decode16 encoded-name))
+
+            (define new-diff
+              (- end start (string-length name)))
+
+            (list (string-append prefix name suffix) (- diff new-diff)))
+          (list s 0)
+          (regexp-match-positions* #rx"[Gg]lobal[0-9a-f]+" s))))
+
 (define (prepare x)
   (define (add-check-sat x)
     ;; Add '(check-sat)' as the last line to appease tip-tools
     (append x '((check-sat))))
 
-  ;(tag-types
-    ;(tag-constructors
-      ;(add-constructor-funcs
-  (add-check-sat (encode-names (remove-suffices x))))
+  (add-check-sat
+   (encode-names
+    (add-constructor-funcs
+     (remove-suffices x)))))
 
 (define (zip xs ys)
   (if (empty? xs)
@@ -1266,8 +1311,9 @@
 (define (dump x) (write x (current-error-port)))
 
 (define (mk-signature-s input)
-  (with-temp-file input (lambda (f)
-                          (run-pipeline/out `(tip ,f --haskell-spec)))))
+  #;(dump (string-append "\n\n\n" input "\n\n\n"))
+  (run-pipeline/out `(echo ,input)
+                    '(tip --haskell-spec)))
 
 (define (mk-signature)
   (display (mk-signature-s (port->string (current-input-port)))))
@@ -1360,15 +1406,21 @@ library
   ;; Examples used for tests
   (define nat-def      '(declare-datatypes () ((Nat (Z) (S (p Nat))))))
 
-  (define constructorZ '(define-fun constructorZ ()              Nat Z))
+  (define constructorZ '(define-fun constructor-Z ()              Nat (as Z Nat)))
 
-  (define constructorS '(define-fun constructorS ((local-p Nat)) Nat (S local-p)))
+  (define constructorS '(define-fun constructor-S ((local-p Nat)) Nat (as (S local-p) Nat)))
 
   (define redundancies `(,constructorZ
                          ,constructorS
-                         (define-fun redundantZ1 () Nat Z)
-                         (define-fun redundantZ2 () Nat Z)
-                         (define-fun redundantZ3 () Nat Z)))
+                         (define-fun redundantZ1 () Nat (as Z Nat))
+                         (define-fun redundantZ2 () Nat (as Z Nat))
+                         (define-fun redundantZ3 () Nat (as Z Nat))))
+
+  (define test-benchmark-files
+    (take (shuffle (theorem-files)) 10))
+
+  (define test-benchmark-defs
+    (mk-defs-s test-benchmark-files))
 
   (check-equal? (symbols-in '(lambda ((local1 Nat) (local2 (List Nat)))
                                (free1 local1)))
@@ -1422,7 +1474,7 @@ library
   (check-false (ss-eq? "foo" 'bar))
   (check-false (ss-eq? "foo" "bar"))
 
-  (check-equal? (find-sub-exprs "constructorZ"
+  (check-equal? (find-sub-exprs 'constructor-Z
                                 `(,nat-def ,constructorZ ,constructorS))
                 (list constructorZ))
 
@@ -1555,8 +1607,17 @@ library
                      (check-equal? norms (list norm)))))
                 normalised)))
 
-  (check-equal? (get-def-s 'constructorZ redundancies)
+  (check-equal? (get-def-s 'constructor-Z redundancies)
                 (list constructorZ))
+
+  (test-case "Can find constructors"
+    (for-each (lambda (c)
+                (define found
+                  (get-def-s c test-benchmark-defs))
+                (with-check-info
+                  (('found found))
+                  (check-equal? (length found) 1)))
+              (expression-constructors test-benchmark-defs)))
 
   (for-each (lambda (sym)
     (define def (get-def sym qual))
@@ -1601,9 +1662,6 @@ library
         ('message    "Duplicate removal kept definition intact"))
        (check-equal? def-shape norm-shape))))
     (take (shuffle subset) 5))
-
-  (define test-benchmark-files
-    (take (shuffle (theorem-files)) 10))
 
   (test-case "Smallest name chosen"
     ;; The names which appear after normalising should be the first,
@@ -1778,9 +1836,9 @@ library
   (test-case "Find redundancies"
     ;; Check known expression
     (check-equal? (list->set (find-redundancies redundancies))
-                  (list->set '((redundantZ1 constructorZ)
-                               (redundantZ2 constructorZ)
-                               (redundantZ3 constructorZ))))
+                  (list->set '((redundantZ1 constructor-Z)
+                               (redundantZ2 constructor-Z)
+                               (redundantZ3 constructor-Z))))
 
     ;; Ensure we keep the lexicographically-smallest name
     (check-equal? (list->set (find-redundancies
@@ -1983,31 +2041,43 @@ library
                      (delete-file temp-file)
                      result))))
 
-  (test-case "Form"
-    (define form
-      '(declare-datatypes ()
-         ((Form (& (&_0 Form) (&_1 Form))
-                (Not (Not_0 Form))
-                (Var (Var_0 Int))))))
+  (define form
+    '(declare-datatypes ()
+                        ((Form (& (&_0 Form) (&_1 Form))
+                               (Not (Not_0 Form))
+                               (Var (Var_0 Int))))))
 
+  (test-case "Can get form constructors"
+    (check-equal? (get-def-s '& (list form))
+                  (list form)))
+
+  (test-case "Can prepare form"
+    (check-true (begin
+                  (prepare form)
+                  #t)))
+
+  (test-case "Form defines datatype"
     (define prepared
       (prepare form))
 
     (with-check-info
-     (('prepared prepared)
-      ('message  "Prepared 'Form' input defines a datatype"))
-     (check-not-equal? #f
-                       (member 'declare-datatypes (flatten prepared))))
+      (('prepared prepared)
+       ('message  "Prepared 'Form' input defines a datatype"))
+      (check-not-equal? #f
+                        (member 'declare-datatypes (flatten prepared)))))
 
+  (test-case "Form datatype survives translation"
     (define sig (string-to-haskell form))
 
-    (let ([data-found (regexp-match? "data[ ]+Global[0-9a-f]+[ ]+="
-                                     (string-replace sig "\n" ""))])
-      (with-check-info
-       (('data-found data-found)
-        ('sig        sig)
-        ('message    "'Form' datatype appears in signature"))
-       (check-true data-found))))
+    (define data-found
+      (regexp-match? "data[ ]+Global[0-9a-f]+[ ]+="
+                     (string-replace sig "\n" "")))
+
+    (with-check-info
+      (('data-found data-found)
+       ('sig        sig)
+       ('message    "'Form' datatype appears in signature"))
+      (check-true data-found)))
 
   (test-case "Mutual recursion"
     (define mut '(define-funs-rec
@@ -2089,7 +2159,9 @@ library
     (for-each (lambda (f)
                 (define sig
                   (defs-to-sig f))
-                (check-true (string-contains? sig "QuickSpec")))
+                (with-check-info
+                  (('sig sig))
+                  (check-true (string-contains? sig "QuickSpec"))))
               files))
 
   (test-case "Multiple files"
@@ -2198,38 +2270,39 @@ library
                            syms))))
     (append regressions test-benchmark-files))
 
-  (in-temp-dir
-   (lambda (out-dir)
-     (parameterize-env `([#"FILES"   ,(string->bytes/utf-8
-                                       (string-join test-benchmark-files "\n"))]
-                         [#"OUT_DIR" ,(string->bytes/utf-8
-                                       (path->string out-dir))]
-                         [#"HOME"    ,(string->bytes/utf-8
-                                       (path->string out-dir))])
-       (lambda ()
-         (full-haskell-package-s (format-symbols (mk-final-defs-s test-benchmark-files))
-                                 (path->string out-dir))
+  (test-case "Haskell package made"
+    (in-temp-dir
+     (lambda (out-dir)
+       (parameterize-env `([#"FILES"   ,(string->bytes/utf-8
+                                         (string-join test-benchmark-files "\n"))]
+                           [#"OUT_DIR" ,(string->bytes/utf-8
+                                         (path->string out-dir))]
+                           [#"HOME"    ,(string->bytes/utf-8
+                                         (path->string out-dir))])
+         (lambda ()
+           (full-haskell-package-s (format-symbols (mk-final-defs-s test-benchmark-files))
+                                   (path->string out-dir))
 
-         (parameterize ([current-directory out-dir])
+           (parameterize ([current-directory out-dir])
 
-           (check-true (directory-exists? "src"))
+             (check-true (directory-exists? "src"))
 
-           (check-true (file-exists? "src/A.hs"))
+             (check-true (file-exists? "src/A.hs"))
 
-           (check-true (file-exists? "tip-benchmark-sig.cabal"))
+             (check-true (file-exists? "tip-benchmark-sig.cabal"))
 
-           (check-true (file-exists? "LICENSE"))
+             (check-true (file-exists? "LICENSE"))
 
-           (run-pipeline/out '(cabal configure))
+             (run-pipeline/out '(cabal configure))
 
-           (define out
-             (run-pipeline/out '(echo -e "import A\n:browse")
-                               '(cabal repl -v0)))
+             (define out
+               (run-pipeline/out '(echo -e "import A\n:browse")
+                                 '(cabal repl -v0)))
 
-           ;; If the import fails, we're stuck with
-           ;; the Prelude, which contains classes
-           (check-false (string-contains? out
-                                          "class Functor")))))))
+             ;; If the import fails, we're stuck with
+             ;; the Prelude, which contains classes
+             (check-false (string-contains? out
+                                            "class Functor"))))))))
 
   (define (names-match src expr expect)
     (define names (rec-names expr))
@@ -2466,4 +2539,72 @@ library
 
     (for-each (lambda (name)
                 (check-equal? (tip-upper-rename name) (symbol->string name)))
-              test-benchmark-upper-names)))
+              test-benchmark-upper-names))
+
+  (test-case "Can't reference unbound names"
+    (check-exn #rx"tip: Parse failed: Symbol bar .* not bound"
+               (lambda ()
+                 (mk-signature-s
+                  (format-symbols
+                   '((declare-datatypes
+                      (a)
+                      ((List (Nil) (Cons (head a) (tail (List a))))))
+                     (define-fun
+                       (par (a) (foo ((x (List a))) a
+                                     (as (bar x) a))))
+                     (check-sat)))))))
+
+  (test-case "Can reference destructor names"
+    (check-true (string? (mk-signature-s
+                          (format-symbols
+                           '((declare-datatypes
+                              (a)
+                              ((List (Nil) (Cons (head a) (tail (List a))))))
+                             (define-fun
+                               (par (a) (foo ((x (List a))) a
+                                             (as (head x) a))))
+                             (check-sat)))))))
+
+  (test-case "Can't reuse destructor names"
+    (check-exn #rx"tip: Parse failed: Symbol head .* is already globally bound"
+               (lambda ()
+                 (mk-signature-s
+                  (format-symbols
+                   '((declare-datatypes
+                      (a)
+                      ((List (Nil) (Cons (head a) (tail (List a))))))
+                     (define-fun
+                       (par (a) (head ((x (List a))) a
+                                      (match x
+                                        (case (Cons y zs) y)))))
+                     (check-sat)))))))
+
+  (test-case "Decode strings"
+    (check-equal? (decode-string "foo Global68656c6c6f bar global776f726c64")
+                  "foo hello bar world"))
+
+  (test-case "Bare constructor function type"
+    (check-equal? (add-constructor-funcs '((declare-datatypes
+                                            ()
+                                            ((MyBool (MyTrue) (MyFalse))))))
+                  '((declare-datatypes
+                     ()
+                     ((MyBool (MyTrue) (MyFalse))))
+                    (define-fun constructor-MyTrue  () MyBool (as MyTrue  MyBool))
+                    (define-fun constructor-MyFalse () MyBool (as MyFalse MyBool)))))
+
+  (test-case "Parameterised constructor function type"
+    (check-equal? (add-constructor-funcs '((declare-datatypes
+                                            (local-a)
+                                            ((MyStream (MyCons (myHead local-a)
+                                                               (myTail (MyStream local-a))))))))
+                  '((declare-datatypes
+                     (local-a)
+                     ((MyStream (MyCons (myHead local-a)
+                                        (myTail (MyStream local-a))))))
+                    (define-fun
+                      (par (local-a)
+                        (constructor-MyCons
+                          ((local-myHead local-a) (local-myTail (MyStream local-a)))
+                          (MyStream local-a)
+                          (as (MyCons local-myHead local-myTail) (MyStream local-a)))))))))
