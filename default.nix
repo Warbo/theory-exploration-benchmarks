@@ -22,8 +22,8 @@ let
     name = "racket-with-deps";
 
     buildInputs = [ makeWrapper racket ];
-    racketDeps  = deps;
 
+    inherit deps;
     buildCommand = ''
       # raco writes to HOME, so make sure that's included
       export HOME="$out/etc"
@@ -32,20 +32,26 @@ let
       # Each PKG should be a directory (e.g. pulled from git) containing
       # "collections" as sub-directories. For example if PKG should allow
       # (require utils/printing), it should contain PKG/utils/printing.rkt
-      mkdir -p "$out/share/pkgs"
-      for PKG in $racketDeps
-      do
-        # Make a mutable copy of the package, so we can compile it
-        NAME=$(basename "$PKG")
-        cp -r "$PKG" "$out/share/pkgs/$NAME"
-        chmod +w -R  "$out/share/pkgs/$NAME"
 
-        # raco is Racket's package manager, -D says "treat as a directory of
-        # collections", which is how git repos seem to be arranged.
-        raco link --user -D "$out/share/pkgs/$NAME"
+      # Collect up all packages
+      mkdir -p "$out/share/pkgs"
+      for PKG in $deps
+      do
+        cp -r "$PKG" "$out/share/pkgs/"
       done
 
-      # Compile packages
+      # Make our copies mutable, so we can compile them in-place
+      chmod +w -R  "$out/share/pkgs"
+
+      # Register packages with raco
+      for PKG in "$out/share/pkgs/"*
+      do
+        # raco is Racket's package manager, -D says "treat as a directory of
+        # collections", which is how git repos seem to be arranged.
+        raco link --user -D "$PKG"
+      done
+
+      # Compile registered packages
       raco setup --avoid-main -x -D
 
       # Provide Racket binaries patched to use our modified HOME
@@ -91,7 +97,7 @@ in rec {
     name = "te-benchmark";
     src  = ./scripts;
 
-    buildInputs = [ makeWrapper env ];
+    buildInputs = [ env makeWrapper ];
 
     installPhase = ''
       mkdir -p      "$out/lib"
