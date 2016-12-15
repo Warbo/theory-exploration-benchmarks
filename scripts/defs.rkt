@@ -124,28 +124,29 @@
                                                                (expression-types b))]
          [_                                            null]))
 
+;; Return a list of destructors defined in EXP
+(define (expression-destructors exp)
+    (define (destructor-symbols c)
+      (match c
+        [(cons name vars) (map car vars)]
+        [_                (error "Unexpected destructor form")]))
+
+    (define (destructors-from-def decs)
+      (symbols-in (foldl (lambda (dec got)
+                           (append got (match dec
+                                         [(cons type defs) (symbols-in (map destructor-symbols defs))]
+                                         [_                (error "Unexpected type def")])))
+                         null
+                         decs)))
+    (match exp
+      [(list 'declare-datatypes given decs) (destructors-from-def decs)]
+      [(cons a b)                           (append (expression-destructors a)
+                                                    (expression-destructors b))]
+      [_                                    null]))
+
 ;; Returns all global names defined in the given expression, including
 ;; functions, constructors and destructors, but excluding types
 (define (expression-symbols exp)
-  (define (expression-destructors exp)
-    (let* ((destructor-symbols (lambda (c)
-                                 (match c
-                                   [(cons name vars) (map car vars)]
-                                   [_                (error "Unexpected destructor form")])))
-
-           (destructors-from-def (lambda (decs)
-                                   (symbols-in (foldl (lambda (dec got)
-                                                        (append got (match dec
-                                                                      [(cons type defs) (symbols-in (map destructor-symbols defs))]
-                                                                      [_                (error "Unexpected type def")])))
-                                                      null
-                                                      decs)))))
-      (match exp
-        [(list 'declare-datatypes given decs) (destructors-from-def decs)]
-        [(cons a b)                           (append (expression-destructors a)
-                                                      (expression-destructors b))]
-        [_                                    null])))
-
   (define (expression-funs exp)
     (define (fun-rec-expressions decs defs)
       (match (list decs defs)
@@ -874,6 +875,103 @@
 
   (append x (map func-for (expression-constructors x))))
 
+;; For each destructor defined in X, appends a new function to X which is
+;; equivalent to that destructor: i.e. it performs a pattern-match to return the
+;; relevant argument of the relevant constructor. Note that these functions will
+;; be partial for types with multiple constructors; for example, the "head" and
+;; "tail" destructors for "list" will only match "cons" values.
+(define (add-destructor-funcs x)
+  (define (mk-destructor-func d)
+    (define name
+      (prefix-name d "destructor-"))
+
+    (define (contains-d x)
+      (member d (symbols-in x)))
+
+    ;; The whole 'declare-datatypes expression
+    (define whole-def
+      (first (get-def-s d x)))
+
+    (define parameters
+      (match whole-def
+        [(list 'declare-datatypes ps _) ps]))
+
+    ;; The particular type declaration, e.g. if d is 'head we might get
+    ;; '(List (Nil) (Cons (head a) (tail (List a))))
+    (define type-def
+      (match whole-def
+        [(list 'declare-datatypes _ type-defs)
+         (first (filter contains-d type-defs))]))
+
+    ;; Not applied to any parameters
+    (define type-name
+      (first type-def))
+
+    ;; Type applied to parameters, if any
+    (define input-type
+      (if (empty? parameters)
+          type-name
+          (cons type-name parameters)))
+
+    ;; The particular constructor declaration, e.g. if d is 'head we might get
+    ;; '(Cons (head a) (tail (List a)))
+    (define con-def
+      (first (filter contains-d (cdr type-def))))
+
+    ;; The particular destructor declaration, e.g. if d is 'head we might get
+    ;; '(head a)
+    (define des-def
+      (first (filter contains-d (cdr con-def))))
+
+    (define output-type
+      (second des-def))
+
+    ;; Now we have enough info to build our eta-expanded function
+    (define args
+      `((destructor-arg ,input-type)))
+
+    ;; For example, '(Cons local-head local-tail)
+    (define pattern
+      (cons (car con-def)
+            (map (lambda (des)
+                   (prefix-local (car des)))
+                 (cdr con-def))))
+
+    ;; For example:
+    ;;
+    ;; '(match destructor-arg (case (Cons local-head local-tail) local-head))
+    (define body
+      `(match destructor-arg
+         (case ,pattern ,(prefix-local d))))
+
+    ;; For example:
+    ;;
+    ;; (define-fun (par (a)
+    ;;   (destructor-head ((destructor-arg (List a))) a
+    ;;     (match destructor-arg
+    ;;       (case (Cons local-head local-tail) local-head)))))
+    (define func
+      (if (empty? parameters)
+          `(define-fun       ,name ,args ,output-type ,body)
+          `(define-fun (par ,parameters
+                            (,name ,args ,output-type ,body)))))
+
+    ;; Prefix any parameters which aren't already, to avoid clashing with global
+    ;; names
+    (define unprefixed-parameters
+      (filter (lambda (parameter)
+                (not (regexp-match? #rx"^local-" (symbol->string parameter))))
+              parameters))
+
+    (replace-all (zip unprefixed-parameters
+                      (map prefix-local unprefixed-parameters))
+                 func))
+
+  (foldl (lambda (d expr)
+           (append expr (list (mk-destructor-func d))))
+         x
+         (expression-destructors x)))
+
 ;; Convert STR to a hex encoding of its ASCII bytes
 (define (encode16 str)
   (define chars
@@ -998,7 +1096,8 @@
   (add-check-sat
    (encode-names
     (add-constructor-funcs
-     (remove-suffices x)))))
+     (add-destructor-funcs
+      (remove-suffices x))))))
 
 ;; Creates a list of pairs '((X1 Y1) (X2 Y2) ...) when given a pair of lists
 ;; '(X1 X2 ...) and '(Y1 Y2 ...)
@@ -2700,4 +2799,48 @@ library
                         (constructor-MyCons
                           ((local-myHead local-a) (local-myTail (MyStream local-a)))
                           (MyStream local-a)
-                          (as (MyCons local-myHead local-myTail) (MyStream local-a)))))))))
+                          (as (MyCons local-myHead local-myTail) (MyStream local-a))))))))
+
+  (test-case "Bare destructor function type"
+    (check-equal? (add-destructor-funcs '((declare-datatypes
+                                           ()
+                                           ((Nat (Z) (S (p Nat)))))))
+                  '((declare-datatypes
+                     ()
+                     ((Nat (Z) (S (p Nat)))))
+                    (define-fun destructor-p ((destructor-arg Nat)) Nat
+                      (match destructor-arg
+                        (case (S local-p) local-p))))))
+
+  (test-case "Parameterised destructor function type"
+    (check-equal? (add-destructor-funcs '((declare-datatypes
+                                           (a b)
+                                           ((OneAndMany (One (theOne a))
+                                                        (Many (head b)
+                                                              (tail (OneAndMany a b))))))))
+                  '((declare-datatypes
+                     (a b)
+                     ((OneAndMany (One (theOne a))
+                                  (Many (head b)
+                                        (tail (OneAndMany a b))))))
+                    (define-fun
+                      (par (local-a local-b)
+                           (destructor-theOne
+                            ((destructor-arg (OneAndMany local-a local-b)))
+                            local-a
+                            (match destructor-arg
+                              (case (One local-theOne) local-theOne)))))
+                    (define-fun
+                      (par (local-a local-b)
+                           (destructor-head
+                            ((destructor-arg (OneAndMany local-a local-b)))
+                            local-b
+                            (match destructor-arg
+                              (case (Many local-head local-tail) local-head)))))
+                    (define-fun
+                      (par (local-a local-b)
+                           (destructor-tail
+                            ((destructor-arg (OneAndMany local-a local-b)))
+                            (OneAndMany local-a local-b)
+                            (match destructor-arg
+                              (case (Many local-head local-tail) local-tail)))))))))

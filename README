@@ -37,8 +37,8 @@ Combining all of these theories into one causes a few problems. In particular:
    this, we hex-encode all names, and prefix with either `global` or `Global`
    (following Haskell's upper/lowercase distinction between types/constructors
    and functions/destructors).
- - To ease automation, we add an extra function for each constructor, prefixed
-   with "constructor-".
+ - To ease automation, we add an extra function for each constructor (prefixed
+   with "constructor-") and for each destructor (prefixed with "destructor-").
 
 ## Dependencies ##
 
