@@ -6,8 +6,8 @@ let forPkgs = pkgs:
   with pkgs;
   with lib;
 
-  # Ignore most Haskell versions, to save memory
-  let hsVersions = filterAttrs (n: _: elem n [ "ghc7103" "ghc801" ])
+  # Add more versions to this list if we can get them to work
+  let hsVersions = filterAttrs (n: _: elem n [ "ghc7103" ])
                                haskell.packages;
 
       # Remove attributes added by 'callPackage'
