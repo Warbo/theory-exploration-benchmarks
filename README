@@ -26,17 +26,17 @@ Combining all of these theories into one causes a few problems. In particular:
    will become "arithmetic/plus_commutes.smt2add".
  - We may get multiple definitions of the same (alpha-equivalent) values, e.g.
    if multiple benchmarks define the same natural number type and functions. We
-   find these with an n^2 comparison of all definitions. If a set of equivalent
-   definitions is found, we normalise their names (and references to them) by
-   choosing the smallest name from the set, lexicographically. We then remove
-   all but the first definition. We iterate this process until no more sets are
-   found.
- - Many definitions have names which aren't suitable for, for example, Haskell;
-   especially when prefixed by their path. The `tip` program will fix this when
-   translating, but that prevents us from relating definitions back to their
-   source. To prevent this, we hex-encode all names, and prefix with either
-   `global` or `Global` (following Haskell's upper/lowercase distinction between
-   types/constructors and functions/destructors).
+   find these by normalising each definition and looking for duplicates. If any
+   are found, we keep the first and remove the others; we also switch out the
+   names for whichever of the duplicates occurs first lexicographically, and
+   update all references elsewhere accordingly. We iterate this process until
+   no more duplicates are found, which gives us O(n^3) worst-case time.
+ - Many definitions have names which aren't suitable for targets like Haskell;
+   especially when prefixed by their path. The `tip` program will rename such
+   definitions when translating, but this is difficult to reverse. To prevent
+   this, we hex-encode all names, and prefix with either `global` or `Global`
+   (following Haskell's upper/lowercase distinction between types/constructors
+   and functions/destructors).
  - To ease automation, we add an extra function for each constructor, prefixed
    with "constructor-".
 
@@ -64,32 +64,32 @@ the `cabal` command, and a Haskell environment with the `QuickSpec`,
 `QuickCheck`, `tip-lib` and `testing-feat` packages available.
 
 The preferred way to use these tools is to `import` them into your own Nix
-projects, and . Alternatively, you can enter a shell to run commands manually
+projects. Alternatively, you can enter a shell to run commands manually
 (although this sacrifices the reproducibility offered by Nix):
 
     nix-shell -p '(import ./. {}).tools'
 
-This will enter a shell with the `tools` available in `PATH`. To 
-
-by run the tools from a shellfrom another Nix project you can just `import` the `default.nix` file
-
-You'll need Racket, the `shell-pipeline` Racket package and the `tip` command
-from the `tip-lib` Haskell package. The `cabal` command is required for testing.
+This will enter a shell with the `tools` available in `PATH`.
 
 ## Usage ##
 
-To generate a benchmark from all TIP files, use the `mk_all_defs.sh` script.
-This will send s-expressions to stdout.
+To generate a benchmark from some TIP benchmarks, pipe their filenames into
+`mk_final_defs.rkt`, one per line. This will send the resulting benchmark
+s-expressions to stdout.
 
 To generate a Haskell package from a benchmark, pipe it into
-`full_haskell_package.sh`. Make sure to set the `OUT_DIR` variable to the path
-in which you want the package to be created.
+`full_haskell_package.rkt`. Make sure to set the `OUT_DIR` environment variable
+to a path in which the package will be created.
 
 To test, use Racket's `raco` command:
 
     raco test defs.rkt
 
-Alternatively you can use other interfaces like Dr Racket.
+You'll need to set the `BENCHMARKS` environment variable to a directory of TIP
+benchmarks, and you can force contract checking (a dynamic equivalent to type
+checking) setting the environment variable `PLT_TR_CONTRACTS` to `1`.
+
+Tests can also be run in other ways, e.g. using Dr Racket.
 
 ## Other Uses ##
 
@@ -106,7 +106,7 @@ trivial to score highly by generating "uninteresting" theorems such as:
 
 Such theorems are too dull to bother writing into a benchmark. In comparison,
 more interesting properties like commutativity *are* found in benchmarks, such
-as this from `modules/tip-benchmarks/benchmarks/tip2015/int_add_comm.smt2`:
+as this from `benchmarks/tip2015/int_add_comm.smt2` in the TIP benchmarks repo:
 
     (= (plus x y) (plus y x))
 
