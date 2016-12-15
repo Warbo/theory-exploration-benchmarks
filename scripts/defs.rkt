@@ -41,10 +41,16 @@
 (define benchmark-files
   (curry map benchmark-file))
 
+;; These include keywords of the TIP format, along with definitions like Int and
+;; Bool which (depending on tip options) translate to built-in Haskell values
 (define native-symbols
   (list 'Int 'Bool '* '> 'mod 'and 'or 'xor 'iff 'ite 'true 'false 'not
         'implies 'distinct '@ '= '<= '- '+ '* 'div '=> 'as))
 
+;; Given an arbitrary TIP (sub)expression, return the externally-visible symbols
+;; it contains. This includes globals being defined, globals being used,
+;; functions, types and other values, but does *not* include keywords or bound
+;; local variables (e.g. using 'let or 'lambda)
 (define (symbols-in exp)
   (define (case-symbols c)
     (match c
@@ -68,8 +74,8 @@
                                             (symbols-in b))]
     [_                              (if (symbol? exp) (list exp) null)])))
 
-;; Extract the symbols used by a benchmark expression
-
+;; Return a list of constructors defined in a given expression, e.g. '(Nil Cons)
+;; if given a definition of List
 (define (expression-constructors exp)
   (define (constructor-symbols c)
     (match c
@@ -88,6 +94,8 @@
                                                   (expression-constructors b))]
     [_                                    null]))
 
+;; Return a list of types defined in a given expression, e.g. '(List) if given a
+;; definition of List
 (define (expression-types exp)
   (define (constructor-types defs)
     (match defs
@@ -116,6 +124,8 @@
                                                                (expression-types b))]
          [_                                            null]))
 
+;; Returns all global names defined in the given expression, including
+;; functions, constructors and destructors, but excluding types
 (define (expression-symbols exp)
   (define (expression-destructors exp)
     (let* ((destructor-symbols (lambda (c)
@@ -174,6 +184,7 @@
                    (expression-destructors  exp)
                    (expression-funs         exp))))
 
+;; Prefix all definitions in EXPR with NAME, and prefix all local variables
 (define (qualify name expr)
   (foldl (lambda (sym x)
            (replace-in sym
@@ -185,9 +196,13 @@
          (symbols-in (append (expression-symbols expr)
                              (expression-types   expr)))))
 
+;; Prefixes a local variable name
 (define (prefix-local s)
   (string->symbol (string-append "local-" (as-str s))))
 
+;; Prefix all bound local variables appearing in EXPR, including arguments of
+;; function definitions and lambda functions, let-bound variables and
+;; pattern-match cases
 (define (prefix-locals expr)
   ;; Turn bindings like (lambda (x Int) (f x)) into
   ;; (lambda (local-x Int) (f local-x)) to prevent conflicts between local and
@@ -236,6 +251,7 @@
 
   (prefix-all (locals-in expr) expr))
 
+;; Replace all occurrences of OLD with REPLACEMENT in EXPR
 (define (replace-in old replacement expr)
   (if (equal? old expr)
       replacement
@@ -244,6 +260,7 @@
                           (replace-in old replacement b))]
         [_          expr])))
 
+;; For each (OLD NEW) in REPS, replace OLD with NEW in EXPR
 (define (replace-all reps expr)
   (if (empty? reps)
       expr
@@ -252,17 +269,22 @@
                                (second (first reps))
                                expr))))
 
+;; Format a list of expressions to a string, with one expression per line. The
+;; list's parens aren't included.
 (define (format-symbols syms)
   (if (null? syms)
       ""
       (format "~a\n~a" (car syms) (format-symbols (cdr syms)))))
 
+;; Print a list of expressions to (current-output-port)
 (define (show x)
   (displayln (format-symbols x)))
 
+;; Reverse the characters of a string
 (define (string-reverse s)
   (list->string (reverse (string->list s))))
 
+;; Returns all TIP benchmark files in benchmark-dir
 (define theorem-files
   ;; Directory traversal is expensive; if we have to do it, memoise the result
   (let ([result #f])
@@ -282,14 +304,15 @@
             (member given (map symbol->string (symbols-of-theorem path))))
           (theorem-files)))
 
+;; Reads a list of expressions from the given string
 (define (read-benchmark x)
   (let* ([content (string-append "(\n" x "\n)")])
     (with-input-from-string content
       read)))
 
+;; Return the names of all functions defined in the given expr, including
+;; destructors; i.e. those things which need lowercase initials in Haskell.
 (define (lowercase-names expr)
-  "Return the names of all functions defined in the given expr, including
-   destructors"
   (match expr
     [(list 'define-fun-rec (list 'par _ (list name _ _ _))) (list name)]
     [(list 'define-fun-rec name _ _ _)                      (list name)]
@@ -313,8 +336,9 @@
     [(cons a b) (append (lowercase-names a) (lowercase-names b))]
     [_          '()]))
 
+;; Return the names of all types and constructors defined in the given expr;
+;; i.e. those things which need uppercase initials in Haskell.
 (define (uppercase-names expr)
-  "Return the names of all types and constructors defined in the given expr"
   (match expr
     [(list 'declare-datatypes _ type-decs)
      (append
@@ -330,9 +354,14 @@
     [(cons a b) (append (uppercase-names a) (uppercase-names b))]
     [_          '()]))
 
+;; Symbols used in EXPR. TODO: redundant?
 (define (benchmark-symbols expr)
   (remove-duplicates (expression-symbols expr)))
 
+;; Normalise an expression: all type parameters, local variables, global
+;; definitions, etc. are replaced with sequential names. References to global
+;; names are left intact. This allows easy alpha-equivalence checking: A and B
+;; are alpha-equivalent iff (equal? (norm A) (norm B))
 (define/test-contract (norm expr)
   (-> any/c
       ;; Our result should be normalised
@@ -578,6 +607,8 @@
 
     [_ expr]))
 
+;; Looks through EXPR for the highest sequential name, and returns the next name
+;; in the sequence
 (define (next-var expr)
   (define (var-num x)
     (string->number (substring (symbol->string x) (string-length var-prefix))))
@@ -598,11 +629,14 @@
    (string-append var-prefix
                   (number->string (+ 1 (var-num (max-var expr)))))))
 
+;; Returns a name beginning with PRE and ending with one more than N
 (define (inc-name pre n)
   (string->symbol (string-append pre (number->string (+ 1 n)))))
 
+;; Prefix used when normalising expressions
 (define         var-prefix "normalise-var-")
 
+;; Returns the highest sequential name in EXPR with the given prefix
 (define (max-name pre expr)
   (define (name-num pre x)
     (if (symbol? x)
@@ -618,10 +652,12 @@
                   (if (< ma mb) mb ma))]
     [x          (name-num pre x)]))
 
+;; Returns all names defined in DEFS
 (define (names-in defs)
   (append (lowercase-names defs)
           (uppercase-names defs)))
 
+;; Rename constructors defined in X to begin with "constructor-"
 (define (tag-constructors x)
   ;; Tag constructors with 'constructor-' to disambiguate
   (foldl (lambda (c y)
@@ -629,6 +665,7 @@
          x
          (expression-constructors x)))
 
+;; Rename types in X to begin with "type-"
 (define (tag-types x)
   ;; Tag types with 'type-' to disambiguate
   (foldl (lambda (t y)
@@ -639,21 +676,27 @@
          x
          (expression-types x)))
 
+;; Prefix symbol N with string P
 (define (prefix-name n p)
   (string->symbol (string-append p (symbol->string n))))
 
+;; Apply F to each element of XS, and append the results together
 (define (concat-map f xs)
   (apply append (map f xs)))
 
+;; Remove TIP boilerplate
 (define (trim lst)
   (filter (lambda (x)
             (and (not (equal? (first x) 'assert-not))
                  (not (equal? x '(check-sat)))))
           lst))
 
+;; Returns the last N elements of LST
 (define (take-from-end n lst)
   (reverse (take (reverse lst) n)))
 
+;; Read all files named in GIVEN-FILES, combine their definitions together and
+;; prefix each name with the path of the file it came from
 (define (qual-all given-files)
   (define given-contents
     (map (lambda (pth)
@@ -670,19 +713,19 @@
 
   (trim (apply append qualified-contents)))
 
+;; Apply mk-defs to stdio
 (define (mk-defs)
   (show (mk-defs-s (port->lines (current-input-port)))))
 
+;; Read all files named in GIVEN-FILES, combine their definitions together and
+;; remove alpha-equivalent duplicates
 (define (mk-defs-s given-files)
   (norm-defs (qual-all given-files)))
-
-;; Combine all definitions in files given on stdin
 
 (define (non-empty? x)
   (not (empty? x)))
 
-;; Check each function declaration syntax
-
+;; Equality which allows symbols and strings
 (define (ss-eq? x y)
   (cond ([symbol? x]
          (ss-eq? (symbol->string x) y))
@@ -691,6 +734,7 @@
         (#t
          (equal? x y))))
 
+;; Return any definitions of function F which appear in X
 (define (find-sub-exprs f x)
   (match x
     [(list 'define-fun name _ _ _)                          (if (ss-eq? name f)
@@ -712,21 +756,26 @@
                                                (find-sub-exprs f t))    ]
     [_                                 '()                              ]))
 
+;; Idempotent symbol->string
 (define (as-str x)
   (if (string? x)
       x
       (symbol->string x)))
 
+;; Returns TRUE if any element of XS passes predicate F, FALSE otherwise
 (define (any-of f xs)
   (match xs
     [(cons a b) (or (f a) (any-of f b))]
     [_          #f]))
 
+;; Returns FALSE if any element of XS fails predicate F, TRUE otherwise
 (define (all-of f xs)
   (match xs
     [(cons a b) (and (f a) (all-of f b))]
     [_          #t]))
 
+;; Return any definitions of NAME appearing in EXPRS, where NAME can be of a
+;; function, type, constructor or destructor
 (define/test-contract (get-def-s name exprs)
   (-> symbol? any/c any/c)
 
@@ -744,27 +793,30 @@
   (remove-duplicates (append (find-sub-exprs name (list exprs))
                              (concat-map defs-from (list exprs)))))
 
+;; Applies get-def to a sting of definitions; TODO: remove?
 (define (get-def name str)
   (get-def-s name (read-benchmark str)))
 
-(define (rec-names exprs)
-  (names-in exprs))
-
+;; Strip "-sentinel" once we've finished processing names
 (define (remove-suffix x)
-  ;; Strip "-sentinel"
   (string->symbol
    (string-reverse
     (substring (string-reverse (symbol->string x))
                9))))
 
+;; Removes '-sentinel' suffices. Do this after all other string-based
+;; transformations, since the sentinels prevent us messing with, say, the
+;; symbol "plus2", when we only wanted to change the symbol "plus"
 (define (remove-suffices x)
-  ;; Removes '-sentinel' suffices. Do this after all other string-based
-  ;; transformations, since the sentinels prevent us messing with, say, the
-  ;; symbol "plus2", when we only wanted to change the symbol "plus"
   (read-benchmark (string-replace (format-symbols x)
                                   "-sentinel"
                                   "")))
 
+;; Look through X for constructor definitions, and for each one append to X a
+;; new function definition which simply wraps that constructor. For example, if
+;; X defines a Nat type with constructors Z and S, we add new functions
+;; constructor-Z and constructor-S which are eta-expansions of Z and S,
+;; respectively.
 (define (add-constructor-funcs x)
   (define (func-for c)
     ;; Look through x for a definition of c
@@ -822,6 +874,7 @@
 
   (append x (map func-for (expression-constructors x))))
 
+;; Convert STR to a hex encoding of its ASCII bytes
 (define (encode16 str)
   (define chars
     (string->list str))
@@ -843,6 +896,7 @@
          rawhex))
   (apply string-append padded))
 
+;; Interpret STR as a hex encoding of ASCII bytes, returning the decoded content
 (define (decode16 str)
   (define hex-pairs
     (letrec ([get-pairs (lambda (s)
@@ -862,32 +916,35 @@
 
   (list->string chars))
 
+;; Decode an encoded "globalXXX" or "GlobalXXX" name
 (define (decode-name name)
   (define no-global
     (substring (symbol->string name) 6))
 
   (string->symbol (decode16 no-global)))
 
+;; Replace function names with "globalXXX" where "XXX" is a hex encoding of
+;; the name, and replace type and constructor names with "GlobalXXX" where "XXX"
+;; is a hex encoding of the name. These will survive translation back and forth
+;; between TIP and Haskell.
 (define (encode-names expr)
-  ;; Replace function names with "globalXXX" where "XXX" is a hex encoding of
-  ;; the name
   (define lower-encoded
     (foldl (lambda (name e)
              (replace-in name (encode-lower-name name) e))
            expr
            (lowercase-names expr)))
 
-  ;; Replace type and constructor names with "GlobalXXX" where "XXX" is a hex
-  ;; encoding of the name
   (foldl (lambda (name e)
            (replace-in name (encode-upper-name name) e))
          lower-encoded
          (uppercase-names expr)))
 
+;; Encode a function name for surviving Haskell translation
 (define (encode-lower-name name)
   (string->symbol (string-append "global"
                                  (encode16 (symbol->string name)))))
 
+;; Encode a type or constructor name for surviving Haskell translation
 (define (encode-upper-name name)
   (string->symbol (string-append "Global"
                                  (encode16 (symbol->string name)))))
@@ -895,10 +952,9 @@
 (define global-length
   (string-length "global"))
 
+;; Replace occurences of "GlobalXXXX" and "globalXXXX" in S with their decoded
+;; variants
 (define (decode-string s)
-  ;; Replace occurences of "GlobalXXXX" and "globalXXXX" with their decoded
-  ;; variants
-
   (first
    (foldl (lambda (pair s-diff)
             (define s
@@ -932,6 +988,8 @@
           (list s 0)
           (regexp-match-positions* #rx"[Gg]lobal[0-9a-f]+" s))))
 
+;; Turns a list of definitions X into a form suitable for sending into the tip
+;; tools
 (define (prepare x)
   (define (add-check-sat x)
     ;; Add '(check-sat)' as the last line to appease tip-tools
@@ -942,6 +1000,8 @@
     (add-constructor-funcs
      (remove-suffices x)))))
 
+;; Creates a list of pairs '((X1 Y1) (X2 Y2) ...) when given a pair of lists
+;; '(X1 X2 ...) and '(Y1 Y2 ...)
 (define (zip xs ys)
   (if (empty? xs)
       null
@@ -950,20 +1010,27 @@
           (cons (list (car xs) (car ys))
                 (zip  (cdr xs) (cdr ys))))))
 
+;; Compare symbol names lexicographically
 (define (symbol<=? x y)
   (string<=? (symbol->string x)
              (symbol->string y)))
 
+;; Compare symbol names lexicographically
 (define (symbol<? x y)
   (string<? (symbol->string x)
             (symbol->string y)))
 
+;; Predicate for whether X defines any TIP type/function/etc.
 (define (definition? x)
   (and (not (empty? (names-in x)))
        (not (any-of (lambda (sub-expr)
                       (not (empty? (names-in sub-expr))))
                     x))))
 
+;; Looks for alpha-equivalent definitions in RAW-EXPRS, and returns a list of
+;; name replacements '((OLD1 NEW1) (OLD2 NEW2) ...) which can be used to update
+;; references and remove redundancies. Each NEW name is the smallest,
+;; lexicographically, which makes subsequent comparisons easier.
 (define/test-contract (find-redundancies raw-exprs)
   (-> (and/c (*list/c definition?)
              (lambda (exprs)
@@ -1136,9 +1203,11 @@
 
   (choose-smallest (remove-redundancies exprs null)))
 
+;; Is X a permutation of Y?
 (define (set-equal? x y)
   (equal? (list->set x) (list->set y)))
 
+;; TODO: Clean up
 (define (symbols-of-theorems-s expr)
   (filter (lambda (s)
             (not (member s '(true-sentinel
@@ -1147,12 +1216,15 @@
                              ite-sentinel))))
           (benchmark-symbols expr)))
 
+;; TODO: Clean up
 (define (symbols-of-theorems)
   (displayln (string-join (map ~a (symbols-of-theorems-s
                                    (read-benchmark
                                     (port->string (current-input-port)))))
                           "\n")))
 
+;; Run F with the string S as its input port. Returns whatever F writes to its
+;; output port.
 (define (pipe s f)
   (define o (open-output-string))
   (parameterize ([current-input-port  (open-input-string s)]
@@ -1160,6 +1232,7 @@
     (f))
   (get-output-string o))
 
+;; TODO: Do we need this?
 (define (qualify-given)
   (define given
     (read-benchmark (port->string (current-input-port))))
@@ -1169,6 +1242,7 @@
 
   (show (qualify name given)))
 
+;; TODO: Update to use transformed names, etc.
 (define (theorems-from-symbols-s given-symbols)
   (define (acceptable-theorem thm-path)
     (null? (remove* given-symbols
@@ -1176,17 +1250,28 @@
 
   (filter acceptable-theorem (theorem-files)))
 
+;; TODO: Do we need this?
 (define (theorems-from-symbols)
   (show (theorems-from-symbols-s (port->lines (current-input-port)))))
 
+;; For each (SRC DST) in REPS, replaces SRC with DST in STR
 (define (replace-strings str reps)
-  ;; For each (src dst) in reps, replaces src with dst in str
   (foldl (lambda (pair so-far)
            (string-replace so-far (as-str (first  pair))
                                   (as-str (second pair))))
          str
          reps))
 
+;; Remove redundancies from EXPRS, leaving only alpha-distinct definitions. When
+;; a redundancy is found, we keep the names which appear first lexicographically
+;; and update all references to the removed names. Updating these references may
+;; cause new redundancies to be exposed: for example APPEND1 and APPEND2 might
+;; begin as alpha-distinct, since they reference different globals; but after we
+;; replace all LIST2 references with LIST1, they may become equivalent. For this
+;; reason, we keep looping until no more equivalences can be found. Note that
+;; this has O(n^3) complexity in the worst case: when all definitions are
+;; equivalent, but reference each other such that only two are alpha-equivalent
+;; on each pass.
 (define/test-contract (norm-defs exprs)
   (-> (*list/c definition?)
       (*list/c definition?))
@@ -1294,12 +1379,16 @@
 (define (mk-final-defs)
   (show (mk-final-defs-s (port->lines (current-input-port)))))
 
+;; Read in the files names in GIVEN-FILES and return a combined, normalised TIP
+;; benchmark
 (define (mk-final-defs-s given-files)
   (prepare (mk-defs-s given-files)))
 
 (define temp-file-prefix
   "tebenchmarktemp")
 
+;; Call PROC with a filename argument F, where we create F and write DATA to it
+;; first, then delete F afterwards. Returns the result of PROC.
 (define (with-temp-file data proc)
   (let* ([f      (make-temporary-file (string-append temp-file-prefix "~a"))]
          [result void])
@@ -1308,16 +1397,20 @@
     (delete-file f)
     result))
 
+;; Debug dump to stderr
 (define (dump x) (write x (current-error-port)))
 
+;; Sends a string INPUT through the `tip` program for conversion to Haskell +
+;; QuickSpec
 (define (mk-signature-s input)
-  #;(dump (string-append "\n\n\n" input "\n\n\n"))
   (run-pipeline/out `(echo ,input)
                     '(tip --haskell-spec)))
 
+;; A wrapper around `tip`
 (define (mk-signature)
   (display (mk-signature-s (port->string (current-input-port)))))
 
+;; Run BODY with VARS present in the environment variables
 (define (parameterize-env vars body)
   (let* ([old-env (environment-variables-copy (current-environment-variables))]
          [new-env (foldl (lambda (nv env)
@@ -1332,9 +1425,6 @@
 (define (symbols-from-file f)
   (symbols-of-theorems-s (read-benchmark (file->string f))))
 
-(define (function-name-to-haskell n)
-  n)
-
 (define (types-from-defs)
   (show (symbols-in
          (remove-duplicates
@@ -1342,6 +1432,8 @@
            (expression-types
             (read-benchmark (port->string (current-input-port)))))))))
 
+;; Create a Haskell package in directory DIR containing rendered benchmark
+;; definition STR
 (define (full-haskell-package-s str dir)
   (define hs (mk-signature-s str))
 
@@ -1392,15 +1484,16 @@ library
   (display-to-file "Auto-generated from https://github.com/tip-org/benchmarks, the same LICENSE applies"
                    (string-append dir "/LICENSE")))
 
+;; Commandline wrapper around full-haskell-package-s using stdio and env vars
 (define (full-haskell-package)
   (full-haskell-package-s (port->string (current-input-port))
                           (getenv "OUT_DIR")))
 
-;; Everything from here is tests
+;; Everything below here is tests; run using "raco test"
 (module+ test
   (require rackunit)
 
-  ;; Don't give progress information during tests
+  ;; Suppress normalisation progress messages during tests
   (quiet)
 
   ;; Examples used for tests
@@ -1453,7 +1546,7 @@ library
   (define result
     (filter non-empty?
             (map (lambda (expr)
-                   (filter non-empty? (rec-names (list expr))))
+                   (filter non-empty? (names-in (list expr))))
                  one-liners)))
 
   (let ([all-result (filter non-empty? (map names-in one-liners))])
@@ -2305,7 +2398,7 @@ library
                                             "class Functor"))))))))
 
   (define (names-match src expr expect)
-    (define names (rec-names expr))
+    (define names (names-in expr))
 
     (with-check-info
      (('src     src)
