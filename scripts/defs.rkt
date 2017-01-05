@@ -6,6 +6,7 @@
 (require racket/trace)
 (require shell/pipeline)
 
+(provide decode-string)
 (provide full-haskell-package)
 (provide mk-defs)
 (provide mk-final-defs)
@@ -298,7 +299,7 @@
       result)))
 
 (define (symbols-of-theorem path)
-  (benchmark-symbols (read-benchmark (file->string path))))
+  (benchmark-symbols (file->list path)))
 
 (define (files-with given)
   (filter (lambda (path)
@@ -310,6 +311,10 @@
   (let* ([content (string-append "(\n" x "\n)")])
     (with-input-from-string content
       read)))
+
+;; Reads a list of expressions from the given file
+(define (file->list f)
+  (read-benchmark (file->string f)))
 
 ;; Return the names of all functions defined in the given expr, including
 ;; destructors; i.e. those things which need lowercase initials in Haskell.
@@ -704,7 +709,7 @@
            (list (string-replace (string-join (take-from-end 2 (string-split pth "/"))
                                               "/")
                                  "'" "_tick_")
-                 (read-benchmark (file->string pth))))
+                 (file->list pth)))
          given-files))
 
   (define qualified-contents
@@ -1522,7 +1527,7 @@
       (body))))
 
 (define (symbols-from-file f)
-  (symbols-of-theorems-s (read-benchmark (file->string f))))
+  (symbols-of-theorems-s (file->list f)))
 
 (define (types-from-defs)
   (show (symbols-in
@@ -1587,6 +1592,29 @@ library
 (define (full-haskell-package)
   (full-haskell-package-s (port->string (current-input-port))
                           (getenv "OUT_DIR")))
+
+;; Extracts a list of theorem statements from a given benchmark file. For real
+;; TIP benchmarks this should contain a single theorem, so we enforce this in
+;; the contract. Many of our generated files (e.g. used for translating) do not
+;; contain any theorems, and hence it makes no sense to pass them into this
+;; function. There should never be multiple theorems.
+(define/test-contract (theorems-from-file f)
+  (-> any/c (lambda (result)
+              (or (and (list? result)
+                       (equal? (length result) 1))
+                  (raise-user-error
+                   'result
+                   "Expected a single (negated) theorem in ~a\n. Found ~a"
+                   f
+                   result))))
+
+  (define (get-theorems x)
+    (match x
+      [(list 'assert-not _) (list x)]
+      [(cons h t)           (append (get-theorems h) (get-theorems t))]
+      [_                    '()]))
+
+  (get-theorems (file->list f)))
 
 ;; Everything below here is tests; run using "raco test"
 (module+ test
@@ -2448,7 +2476,7 @@ library
     (define name2 (string-replace name "'" "_tick_"))
     (define syms  (symbols-of-theorems-s
                    (qualify name2
-                            (read-benchmark (file->string file)))))
+                            (file->list file))))
 
     (with-check-info
      (('file    file)
@@ -2654,16 +2682,14 @@ library
   (test-case "Name extraction"
     (check-equal?
      (lowercase-names
-      (read-benchmark
-       (file->string (benchmark-file "tip2015/sort_NStoogeSort2Permutes.smt2"))))
+      (file->list (benchmark-file "tip2015/sort_NStoogeSort2Permutes.smt2")))
      '(head tail first second p zelem zdelete twoThirds third take sort2 null
        zisPermutation length drop splitAt append nstooge2sort2 nstoogesort2
        nstooge2sort1))
 
     (check-equal?
      (uppercase-names
-      (read-benchmark
-       (file->string (benchmark-file "tip2015/sort_NStoogeSort2Permutes.smt2"))))
+      (file->list (benchmark-file "tip2015/sort_NStoogeSort2Permutes.smt2")))
      '(list nil cons Pair Pair2 Nat Z S)))
 
   ;; When TIP translates from its smtlib-like format to Haskell, it performs a
@@ -2843,4 +2869,19 @@ library
                             ((destructor-arg (OneAndMany local-a local-b)))
                             (OneAndMany local-a local-b)
                             (match destructor-arg
-                              (case (Many local-head local-tail) local-tail)))))))))
+                              (case (Many local-head local-tail) local-tail))))))))
+
+  (test-case "Can extract theorems"
+    (for-each (lambda (benchmark-file)
+                (define thms (theorems-from-file benchmark-file))
+
+                (define content (file->list benchmark-file))
+
+                (check-equal? (length thms) 1)
+
+                (with-check-info
+                  (('benchmark-file benchmark-file)
+                   ('thms           thms)
+                   ('content        content))
+                  (check-not-equal? (member (car thms) content) #f)))
+              test-benchmark-files)))
