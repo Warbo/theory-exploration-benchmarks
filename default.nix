@@ -121,6 +121,17 @@ in rec {
 
       BENCHMARKS="${tip-benchmarks}" PLT_TR_CONTRACTS=1 raco test defs.rkt
     '';
+
+    shellHook = ''
+      set -x
+      export BENCHMARKS="${tip-benchmarks}"
+      set +x
+
+      echo "NOTE: Checking Racket contracts is slow so it's disabled by default"
+      echo "To enable/disable contract checking, use PLT_TR_CONTRACTS, e.g."
+      echo "export PLT_TR_CONTRACTS=1"
+      echo "unset  PLT_TR_CONTRACTS"
+    '';
   });
 
   tip-benchmark-smtlib = runCommand "mk-smtlib"
