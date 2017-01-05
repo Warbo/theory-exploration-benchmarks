@@ -1370,15 +1370,39 @@
 ;; a redundancy is found, we keep the names which appear first lexicographically
 ;; and update all references to the removed names. Updating these references may
 ;; cause new redundancies to be exposed: for example APPEND1 and APPEND2 might
-;; begin as alpha-distinct, since they reference different globals; but after we
-;; replace all LIST2 references with LIST1, they may become equivalent. For this
-;; reason, we keep looping until no more equivalences can be found. Note that
-;; this has O(n^3) complexity in the worst case: when all definitions are
-;; equivalent, but reference each other such that only two are alpha-equivalent
-;; on each pass.
-(define/test-contract (norm-defs exprs)
+;; appear alpha-distinct, since one references LIST1 and the other LIST2; if we
+;; find that LIST1 and LIST2 are equivalent, we'll remove LIST2 and replace any
+;; references to it with LIST1; this will make APPEND2 equivalent to APPEND1, so
+;; it should be removed.
+;; For this reason, we keep looping until no more equivalences can be found.
+;; Note that this has O(n^3) complexity in the worst case: when all definitions
+;; are equivalent, but reference each other such that only two are
+;; alpha-equivalent on each pass.
+(define (norm-defs exprs)
+  (first (normed-and-replacements exprs '())))
+
+;; Given a list of definitions, returns the name of those which are
+;; alpha-equivalent '((DUPE1 CANON1) (DUPE2 CANON2) ...), where each DUPEi is
+;; the name of a definition that's equivalent to the definition named by CANONi.
+;;
+;; When we find a set of duplicate definitions, we choose the lexicographically-
+;; smallest name to be the canonical one.
+;;
+;; Note that we take the *transitive closure* when equivalence-checking: for
+;; each equivalent pair A and B that we find, we check for equivalence *given
+;; that A and B are equivalent*, and so on recursively, until we can't find any
+;; more.
+(define (replacements-closure exprs)
+  (second (normed-and-replacements exprs '())))
+
+;; Removes redundant alpha-equivalent definitions from EXPRS, resulting in a
+;; normalised form given as the first element of the result.
+;; Also keeps track of the replacements it's made in the process, taking those
+;; seen so far as argument REPS and returning an augmented list as the second
+;; element of the result.
+(define/test-contract (normed-and-replacements exprs reps)
   (-> (*list/c definition?)
-      (*list/c definition?))
+      (list/c (*list/c definition?) (*list/c (list/c symbol? symbol?))))
 
   (log "Normalising ~a definitions\n" (length exprs))
 
@@ -1473,9 +1497,44 @@
                    renamed)))
 
   (log "Stripped ~a redundancies\n" (- (length exprs) (length stripped)))
+
+  (define/test-contract replacement-closure
+    (and/c (*list/c (list/c symbol? symbol?))
+
+           (lambda (replacement-closure)
+             (all-of (lambda (pair1)
+                       (all-of (lambda (pair2)
+                                 (when (equal? (first  pair1)
+                                               (second pair2))
+                                   (error "'old' entry also appears as 'new'"
+                                          'pair1 pair1
+                                          'pair2 pair2))
+                                 #t)
+                               replacement-closure)
+                       replacement-closure)))
+
+           (lambda (replacement-closure)
+             (all-of (lambda (pair)
+                       (or (symbol<? (second pair) (first pair))
+                           (error "Replacement not canonical"
+                                  'pair pair)))
+                     replacement-closure)))
+
+    (foldl (lambda (rep existing)
+             (cons rep
+                   (map (lambda (pair)
+                          ;; If rep = '(old new) and pair = '(ancient old),
+                          ;; replace pair with '(ancient new)
+                          (if (equal? (first rep) (second pair))
+                              (list (first pair) (second rep))
+                              pair))
+                        existing)))
+           reps
+           redundancies))
+
   (if (equal? exprs stripped)
-      stripped
-      (norm-defs stripped)))
+      (list                    stripped replacement-closure)
+      (normed-and-replacements stripped replacement-closure)))
 
 (define (defs-to-sig x)
   (mk-signature-s (format-symbols (mk-final-defs-s (string-split x "\n")))))
@@ -1615,6 +1674,30 @@ library
       [_                    '()]))
 
   (get-theorems (file->list f)))
+
+(define benchmark-theorems
+  ;; This is constant but expensive, so we hide it inside a lambda and memoise
+  (let ([result #f])
+    (lambda ()
+      (when (equal? #f result)
+        (set! result
+          (make-immutable-hash
+           (foldl (lambda (f rest)
+                    (cons (cons f (first (theorems-from-file f)))
+                          rest))
+                  '()
+                  (theorem-files)))))
+      result)))
+
+(define (theorem-of f)
+  (hash-ref (benchmark-theorems) f
+            (lambda ()
+              (raise-arguments-error
+               'theorem-of
+               "No theorem found"
+               "given-file" f
+               "benchmark-dir (from BENCHMARKS)" benchmark-dir
+               "benchmark-theorems" (benchmark-theorems)))))
 
 ;; Everything below here is tests; run using "raco test"
 (module+ test
@@ -2387,7 +2470,7 @@ library
   (test-case "Multiple files"
     (define files
       (string-join (benchmark-files '("tip2015/tree_SwapAB.smt2"
-                                      "tip2015/list_z_count_nub.smt2"))
+                                      "tip2015/list_SelectPermutations.smt2"))
                    "\n"))
 
     (define sig
@@ -2468,8 +2551,7 @@ library
               (check-false (string-contains? out "class Functor")))))))))
 
   (define regressions
-    (benchmark-files '("tip2015/list_elem_map.smt2"
-                       "tip2015/propositional_AndCommutative.smt2")))
+    (benchmark-files '("tip2015/propositional_AndCommutative.smt2")))
 
   (for-each (lambda (file)
     (define name  (last (string-split file "/")))
@@ -2625,9 +2707,9 @@ library
     (let* ([f    (benchmark-file "tip2015/int_right_distrib.smt2")]
            [syms (symbols-from-file f)])
 
-      (should-have syms 'constructor '(Pos Neg Z S P N))
+      (should-have syms 'constructor '(Pos Neg Zero Succ P N))
 
-      (should-have syms 'destructor  '(p P_0 N_0))
+      (should-have syms 'destructor  '(pred P_0 N_0))
 
       (should-have syms 'function '(toInteger sign plus2 opposite
                                     timesSign mult minus plus absVal
@@ -2683,8 +2765,8 @@ library
     (check-equal?
      (lowercase-names
       (file->list (benchmark-file "tip2015/sort_NStoogeSort2Permutes.smt2")))
-     '(head tail first second p zelem zdelete twoThirds third take sort2 null
-       zisPermutation length drop splitAt append nstooge2sort2 nstoogesort2
+     '(head tail first second p twoThirds third take sort2 null length elem drop
+       splitAt delete isPermutation append nstooge2sort2 nstoogesort2
        nstooge2sort1))
 
     (check-equal?
@@ -2877,11 +2959,21 @@ library
 
                 (define content (file->list benchmark-file))
 
-                (check-equal? (length thms) 1)
+                (with-check-info
+                  (('benchmark-file benchmark-file)
+                   ('thms           thms))
+                  (check-equal? (length thms) 1))
 
                 (with-check-info
                   (('benchmark-file benchmark-file)
                    ('thms           thms)
                    ('content        content))
                   (check-not-equal? (member (car thms) content) #f)))
-              test-benchmark-files)))
+              (append test-benchmark-files (theorem-files))))
+
+  (test-case "Have benchmark theorems"
+    (for-each (lambda (benchmark-file)
+                (check-not-equal? (theorem-of benchmark-file)
+                                  #f))
+              test-benchmark-files))
+  )

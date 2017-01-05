@@ -80,17 +80,17 @@ let
   };
 
   tip-repo = fetchFromGitHub {
-    owner  = "Warbo";
+    owner  = "tip-org";
     repo   = "benchmarks";
-    rev    = "11c2607";
-    sha256 = "11jlk2qch17yqz8g5jjq1drdvs5n3csw0342j17z5gpl01zaxn07";
+    rev    = "fae25da";
+    sha256 = "08zm9a8dlwqm6bnd5z8714j5365pklwh4lkgcnhq0ns1lq0njp3l";
   };
 
 in rec {
 
   # Take from git, to keep things pristine and cacheable
   tip-benchmarks = runCommand "tip-benchmarks" { repo = tip-repo; } ''
-    cp -r "$repo//benchmarks" "$out"
+    cp -r "$repo/benchmarks" "$out"
   '';
 
   tools = stdenv.mkDerivation (rec {
