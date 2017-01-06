@@ -1698,9 +1698,57 @@ library
                "benchmark-dir (from BENCHMARKS)" benchmark-dir
                "benchmark-theorems" (benchmark-theorems)))))
 
-#;(define normalised-theorems
-  ;; Constant, but expensive
-  )
+(define (qual-thm filename thm)
+  (define (thm-locals expr)
+    (match expr
+      [(list 'assert-not x)     (thm-locals x)]
+      [(list 'par params body)  (append params (thm-locals body))]
+      [(list 'forall vars body) (append (map first vars)
+                                        (thm-locals body))]
+      [(cons x y)               (append (thm-locals x) (thm-locals y))]
+      [_                        '()]))
+
+  (define (thm-names expr)
+    (match expr
+      [(list 'assert-not x)     (thm-names x)]
+      [(list 'forall vars body) (append (concat-map (lambda (var)
+                                                      (symbols-in (second var)))
+                                                    vars)
+                                        (thm-names body))]
+      [(list 'par _ body)       (thm-names body)]
+      [(cons x y)               (append (thm-names x) (thm-names y))]
+      [_                        (symbols-in expr)]))
+
+  (define thm-globals
+    (remove* (thm-locals thm) (thm-names thm)))
+
+  (replace-all (map (lambda (g)
+                      (list g
+                            (string->symbol (string-append filename
+                                                           (symbol->string g)
+                                                           "-sentinel"))))
+                    thm-globals)
+               thm))
+
+(define normalised-theorems
+  (memo (lambda ()
+          (define/test-contract replacements
+            (*list/c (list/c symbol? symbol?))
+
+            (replacements-closure (qual-all (theorem-files))))
+
+          (make-immutable-hash
+           (hash-map (benchmark-theorems)
+                     (lambda (f thm)
+                       (cons f (replace-all replacements (qual-thm f thm)))))))))
+
+(define (normed-theorem-of f)
+  (hash-ref (normalised-theorems) f
+            (lambda ()
+              (raise-arguments-error
+               'normed-theorem-of
+               "No theorem found"
+               "given-file" f))))
 
 ;; Everything below here is tests; run using "raco test"
 (module+ test
@@ -2994,4 +3042,18 @@ library
                                              (names-in test-benchmark-defs)))
                 (check-not-equal? #f (member (second rep)
                                              (names-in test-benchmark-defs))))
-              test-replacements)))
+              test-replacements))
+
+  (test-case "Normalise theorems"
+    (define (structure-of expr)
+      (match expr
+        [(cons x y) (cons (structure-of x) (structure-of y))]
+        [_          #f]))
+
+    (for-each (lambda (benchmark-file)
+                (define unnormed
+                  (theorem-of benchmark-file))
+                (define normed
+                  (normed-theorem-of benchmark-file))
+                (check-equal? (structure-of unnormed) (structure-of normed)))
+              test-benchmark-files)))
