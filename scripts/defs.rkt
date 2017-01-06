@@ -1406,6 +1406,7 @@
 ;; element of the result.
 (define/test-contract (normed-and-replacements exprs reps)
   (-> (*list/c definition?)
+      (*list/c (list/c symbol? symbol?))
       (list/c (*list/c definition?) (*list/c (list/c symbol? symbol?))))
 
   (log "Normalising ~a definitions\n" (length exprs))
@@ -1514,8 +1515,8 @@
                                           'pair1 pair1
                                           'pair2 pair2))
                                  #t)
-                               replacement-closure)
-                       replacement-closure)))
+                               replacement-closure))
+                     replacement-closure))
 
            (lambda (replacement-closure)
              (all-of (lambda (pair)
