@@ -286,17 +286,21 @@
 (define (string-reverse s)
   (list->string (reverse (string->list s))))
 
-;; Returns all TIP benchmark files in benchmark-dir
-(define theorem-files
-  ;; Directory traversal is expensive; if we have to do it, memoise the result
+;; Memoise a function
+(define (memo init)
   (let ([result #f])
     (lambda ()
       (when (equal? #f result)
-        (set! result
-              (map path->string
-                   (filter (lambda (x) (string-suffix? (path->string x) ".smt2"))
-                      (sequence->list (in-directory benchmark-dir))))))
+        (set! result (init)))
       result)))
+
+;; Returns all TIP benchmark files in benchmark-dir
+(define theorem-files
+  ;; Directory traversal is expensive; if we have to do it, memoise the result
+  (memo (lambda ()
+          (map path->string
+               (filter (lambda (x) (string-suffix? (path->string x) ".smt2"))
+                       (sequence->list (in-directory benchmark-dir)))))))
 
 (define (symbols-of-theorem path)
   (benchmark-symbols (file->list path)))
@@ -1663,8 +1667,7 @@ library
                        (equal? (length result) 1))
                   (raise-user-error
                    'result
-                   "Expected a single (negated) theorem in ~a\n. Found ~a"
-                   f
+                   "Expected a single (negated) theorem. Found ~a"
                    result))))
 
   (define (get-theorems x)
@@ -1676,18 +1679,13 @@ library
   (get-theorems (file->list f)))
 
 (define benchmark-theorems
-  ;; This is constant but expensive, so we hide it inside a lambda and memoise
-  (let ([result #f])
-    (lambda ()
-      (when (equal? #f result)
-        (set! result
+  (memo (lambda ()
           (make-immutable-hash
            (foldl (lambda (f rest)
                     (cons (cons f (first (theorems-from-file f)))
                           rest))
                   '()
-                  (theorem-files)))))
-      result)))
+                  (theorem-files))))))
 
 (define (theorem-of f)
   (hash-ref (benchmark-theorems) f
@@ -1698,6 +1696,10 @@ library
                "given-file" f
                "benchmark-dir (from BENCHMARKS)" benchmark-dir
                "benchmark-theorems" (benchmark-theorems)))))
+
+#;(define normalised-theorems
+  ;; Constant, but expensive
+  )
 
 ;; Everything below here is tests; run using "raco test"
 (module+ test
@@ -2976,4 +2978,19 @@ library
                 (check-not-equal? (theorem-of benchmark-file)
                                   #f))
               test-benchmark-files))
-  )
+
+  (test-case "Have replacements"
+    (define defs '((define-fun min1 ((x Int) (y Int)) Int (ite (<= x y) x y))
+                   (define-fun min2 ((a Int) (b Int)) Int (ite (<= a b) a b))))
+    (check-equal? (list->set (replacements-closure defs))
+                  (list->set '((min2 min1))))
+
+    (define test-replacements
+      (replacements-closure (qual-all test-benchmark-files)))
+
+    (for-each (lambda (rep)
+                (check-false         (member (first rep)
+                                             (names-in test-benchmark-defs)))
+                (check-not-equal? #f (member (second rep)
+                                             (names-in test-benchmark-defs))))
+              test-replacements)))
