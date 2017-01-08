@@ -191,7 +191,7 @@
   (foldl (lambda (sym x)
            (replace-in sym
                        (string->symbol (string-append name
-                                                      (as-str sym)
+                                                      (symbol->string sym)
                                                       "-sentinel"))
                        x))
          (prefix-locals expr)
@@ -276,7 +276,7 @@
 (define (format-symbols syms)
   (if (null? syms)
       ""
-      (format "~a\n~a" (car syms) (format-symbols (cdr syms)))))
+      (format "~s\n~a" (car syms) (format-symbols (cdr syms)))))
 
 ;; Print a list of expressions to (current-output-port)
 (define (show x)
@@ -710,9 +710,8 @@
 (define (qual-all given-files)
   (define given-contents
     (map (lambda (pth)
-           (list (string-replace (string-join (take-from-end 2 (string-split pth "/"))
+           (list (string-join (take-from-end 2 (string-split pth "/"))
                                               "/")
-                                 "'" "_tick_")
                  (file->list pth)))
          given-files))
 
@@ -848,7 +847,8 @@
 
     (define arg-decs
       (map (lambda (def)
-             (cons (prefix-local (car def)) (cdr def)))
+             (cons (prefix-local (without-filename (car def)))
+                   (cdr def)))
            (first (arg-decs-for x))))
 
     (define parameters
@@ -883,6 +883,12 @@
     func)
 
   (append x (map func-for (expression-constructors x))))
+
+;; Strips off any filename prefix from a symbol, in case it can't be written
+;; verbatim as a symbol (TIP doesn't support escaping in symbol names like
+;; Racket does, so this prevents Racket writing |foo| and TIP crashing)
+(define (without-filename s)
+  (string->symbol (last (string-split (symbol->string s) ".smt2"))))
 
 ;; For each destructor defined in X, appends a new function to X which is
 ;; equivalent to that destructor: i.e. it performs a pattern-match to return the
@@ -943,7 +949,7 @@
     (define pattern
       (cons (car con-def)
             (map (lambda (des)
-                   (prefix-local (car des)))
+                   (prefix-local (without-filename (car des))))
                  (cdr con-def))))
 
     ;; For example:
@@ -951,7 +957,7 @@
     ;; '(match destructor-arg (case (Cons local-head local-tail) local-head))
     (define body
       `(match destructor-arg
-         (case ,pattern ,(prefix-local d))))
+         (case ,pattern ,(prefix-local (without-filename d)))))
 
     ;; For example:
     ;;
@@ -1566,7 +1572,9 @@
     result))
 
 ;; Debug dump to stderr
-(define (dump x) (write x (current-error-port)))
+(define (dump x)
+  (write x (current-error-port))
+  x)
 
 ;; Sends a string INPUT through the `tip` program for conversion to Haskell +
 ;; QuickSpec
@@ -1698,7 +1706,7 @@ library
                "benchmark-dir (from BENCHMARKS)" benchmark-dir
                "benchmark-theorems" (benchmark-theorems)))))
 
-(define (qual-thm filename thm)
+(define (theorem-globals thm)
   (define (thm-locals expr)
     (match expr
       [(list 'assert-not x)     (thm-locals x)]
@@ -1719,15 +1727,16 @@ library
       [(cons x y)               (append (thm-names x) (thm-names y))]
       [_                        (symbols-in expr)]))
 
-  (define thm-globals
+
     (remove* (thm-locals thm) (thm-names thm)))
 
+(define (qual-thm filename thm)
   (replace-all (map (lambda (g)
                       (list g
                             (string->symbol (string-append filename
                                                            (symbol->string g)
                                                            "-sentinel"))))
-                    thm-globals)
+                    (theorem-globals thm))
                thm))
 
 (define normalised-theorems
@@ -1740,7 +1749,9 @@ library
           (make-immutable-hash
            (hash-map (benchmark-theorems)
                      (lambda (f thm)
-                       (cons f (replace-all replacements (qual-thm f thm)))))))))
+                       (cons f (remove-suffices
+                                (replace-all replacements
+                                             (qual-thm f thm))))))))))
 
 (define (normed-theorem-of f)
   (hash-ref (normalised-theorems) f
@@ -1750,12 +1761,44 @@ library
                "No theorem found"
                "given-file" f))))
 
+(define (theorem-types expr)
+  (match expr
+    [(list 'forall vars body) (append (theorem-types body)
+                                      (concat-map (lambda (var)
+                                                    (symbols-in (second var)))
+                                                  vars))]
+    [(list 'as x t)           (append (theorem-types x)
+                                      (symbols-in t))]
+    [(list 'lambda vars body) (append (theorem-types body)
+                                      (concat-map (lambda (var)
+                                                    (symbols-in (second var)))
+                                                  vars))]
+    [(cons x y)               (append (theorem-types x) (theorem-types y))]
+    [_                        '()]))
+
+(define (theorem-deps-of f)
+  (define normed (normed-theorem-of f))
+
+  (remove* (theorem-types normed) (theorem-globals normed)))
+
 ;; Everything below here is tests; run using "raco test"
 (module+ test
   (require rackunit)
 
   ;; Suppress normalisation progress messages during tests
   (quiet)
+
+  ;; Select specific test-cases based on regex
+  (define test-case-regex
+    ;; Match everything if no regex given
+    (let ([given (or (getenv "PLT_TEST_REGEX") "")])
+      (match given
+        ["" #rx".*"]
+        [_  (regexp given)])))
+
+  (define-syntax-rule (def-test-case name body ...)
+    (when (regexp-match? test-case-regex name)
+      (test-case name body ...)))
 
   ;; Examples used for tests
   (define nat-def      '(declare-datatypes () ((Nat (Z) (S (p Nat))))))
@@ -1776,13 +1819,14 @@ library
   (define test-benchmark-defs
     (mk-defs-s test-benchmark-files))
 
-  (check-equal? (symbols-in '(lambda ((local1 Nat) (local2 (List Nat)))
-                               (free1 local1)))
-                '(free1))
+  (def-test-case "List manipulation"
+    (check-equal? (symbols-in '(lambda ((local1 Nat) (local2 (List Nat)))
+                                 (free1 local1)))
+                  '(free1))
 
-  (check-equal? (concat-map (lambda (x) (list x x x))
-                            '(fee fi fo fum))
-                '(fee fee fee fi fi fi fo fo fo fum fum fum))
+    (check-equal? (concat-map (lambda (x) (list x x x))
+                              '(fee fi fo fum))
+                  '(fee fee fee fi fi fi fo fo fo fum fum fum)))
 
   (check-equal? (add-constructor-funcs (list nat-def))
                 `(,nat-def ,constructorZ ,constructorS))
@@ -1861,7 +1905,7 @@ library
   (define test-defs
     (mk-defs-s test-files))
 
-  (test-case "Real symbols qualified"
+  (def-test-case "Real symbols qualified"
     (let* ([fs (benchmark-files '("tip2015/propositional_AndCommutative.smt2"
                                   "tip2015/propositional_Sound.smt2"
                                   "tip2015/propositional_Okay.smt2"
@@ -1947,7 +1991,7 @@ library
                                                 "-sentinel"))))
               syms))
 
-  (test-case "No alpha-equivalent duplicates in result"
+  (def-test-case "No alpha-equivalent duplicates in result"
     (let ([normalised (norm test-defs)])
       (for-each (lambda (norm)
                   (define norms
@@ -1964,7 +2008,7 @@ library
   (check-equal? (get-def-s 'constructor-Z redundancies)
                 (list constructorZ))
 
-  (test-case "Can find constructors"
+  (def-test-case "Can find constructors"
     (for-each (lambda (c)
                 (define found
                   (get-def-s c test-benchmark-defs))
@@ -2017,7 +2061,7 @@ library
        (check-equal? def-shape norm-shape))))
     (take (shuffle subset) 5))
 
-  (test-case "Smallest name chosen"
+  (def-test-case "Smallest name chosen"
     ;; The names which appear after normalising should be the first,
     ;; lexicographically, from each alpha-equivalent group
 
@@ -2187,7 +2231,7 @@ library
                                         (foo bar))))
                   (check-sat)))
 
-  (test-case "Find redundancies"
+  (def-test-case "Find redundancies"
     ;; Check known expression
     (check-equal? (list->set (find-redundancies redundancies))
                   (list->set '((redundantZ1 constructor-Z)
@@ -2208,7 +2252,7 @@ library
                                (D1B D1A)
                                (D1C D1A)))))
 
-  (test-case "Normalise"
+  (def-test-case "Normalise"
     (define (check-normal kind def expected)
       (define canon
         (norm def))
@@ -2401,16 +2445,16 @@ library
                                (Not (Not_0 Form))
                                (Var (Var_0 Int))))))
 
-  (test-case "Can get form constructors"
+  (def-test-case "Can get form constructors"
     (check-equal? (get-def-s '& (list form))
                   (list form)))
 
-  (test-case "Can prepare form"
+  (def-test-case "Can prepare form"
     (check-true (begin
                   (prepare form)
                   #t)))
 
-  (test-case "Form defines datatype"
+  (def-test-case "Form defines datatype"
     (define prepared
       (prepare form))
 
@@ -2420,7 +2464,7 @@ library
       (check-not-equal? #f
                         (member 'declare-datatypes (flatten prepared)))))
 
-  (test-case "Form datatype survives translation"
+  (def-test-case "Form datatype survives translation"
     (define sig (string-to-haskell form))
 
     (define data-found
@@ -2433,7 +2477,7 @@ library
        ('message    "'Form' datatype appears in signature"))
       (check-true data-found)))
 
-  (test-case "Mutual recursion"
+  (def-test-case "Mutual recursion"
     (define mut '(define-funs-rec
                    ((models  ((x Bool)
                               (y Int))
@@ -2495,20 +2539,20 @@ library
          (check-true def-found)))
      (list "models" "models2" "models5"))))
 
-  (test-case "Single files"
+  (def-test-case "Single files"
     (define files (map (lambda (suf)
                          (benchmark-file suf))
-                       '("isaplanner/prop_54.smt2"
-                         "tip2015/propositional_AndIdempotent.smt2"
-                         "tip2015/propositional_AndCommutative.smt2"
-                         "tip2015/mccarthy91_M2.smt2"
-                         "isaplanner/prop_36.smt2"
-                         "tip2015/sort_MSortTDPermutes.smt2"
+                       '(;"isaplanner/prop_54.smt2"
+                         ;"tip2015/propositional_AndIdempotent.smt2"
+                         ;"tip2015/propositional_AndCommutative.smt2"
+                         ;"tip2015/mccarthy91_M2.smt2"
+                         ;"isaplanner/prop_36.smt2"
+                         ;"tip2015/sort_MSortTDPermutes.smt2"
                          "tip2015/tree_sort_SortPermutes'.smt2"
-                         "tip2015/sort_StoogeSort2Permutes.smt2"
-                         "tip2015/sort_StoogeSortPermutes.smt2"
-                         "tip2015/polyrec_seq_index.smt2"
-                         "tip2015/sort_QSortPermutes.smt2")))
+                         ;"tip2015/sort_StoogeSort2Permutes.smt2"
+                         ;"tip2015/sort_StoogeSortPermutes.smt2"
+                         ;"tip2015/polyrec_seq_index.smt2"
+                         #;"tip2015/sort_QSortPermutes.smt2")))
 
     (for-each (lambda (f)
                 (define sig
@@ -2518,7 +2562,7 @@ library
                   (check-true (string-contains? sig "QuickSpec"))))
               files))
 
-  (test-case "Multiple files"
+  (def-test-case "Multiple files"
     (define files
       (string-join (benchmark-files '("tip2015/tree_SwapAB.smt2"
                                       "tip2015/list_SelectPermutations.smt2"))
@@ -2532,7 +2576,7 @@ library
       ('sig     sig))
      (check-true (string-contains? sig "local"))))
 
-  (test-case "Random files"
+  (def-test-case "Random files"
     (define files
       (string-join test-benchmark-files "\n"))
 
@@ -2556,7 +2600,7 @@ library
     (check-equal? a c)
     (check-equal? b "foo"))
 
-  (test-case "Module tests"
+  (def-test-case "Module tests"
     (define files
       (string-join test-benchmark-files "\n"))
 
@@ -2623,7 +2667,7 @@ library
                            syms))))
     (append regressions test-benchmark-files))
 
-  (test-case "Haskell package made"
+  (def-test-case "Haskell package made"
     (in-temp-dir
      (lambda (out-dir)
        (parameterize-env `([#"FILES"   ,(string->bytes/utf-8
@@ -2732,7 +2776,7 @@ library
                      (case (Pair2 ys zs) (append ys (stoogesort2 zs))))))
                '(stooge2sort2 stoogesort2 stooge2sort1))
 
-  (test-case "Symbol lookup"
+  (def-test-case "Symbol lookup"
     (define (contains lst elem)
       (not (empty? (filter (curry equal? elem)
                            lst))))
@@ -2812,7 +2856,7 @@ library
     (check-equal? (string-trim (pipe (file->string f) types-from-defs))
                   "Nat"))
 
-  (test-case "Name extraction"
+  (def-test-case "Name extraction"
     (check-equal?
      (lowercase-names
       (file->list (benchmark-file "tip2015/sort_NStoogeSort2Permutes.smt2")))
@@ -2828,7 +2872,7 @@ library
   ;; When TIP translates from its smtlib-like format to Haskell, it performs a
   ;; renaming step, to ensure that all names are valid Haskell identifiers. We
   ;; need to ensure that the names we produce don't get altered by this step.
-  (test-case "Name preservation"
+  (def-test-case "Name preservation"
     (define test-benchmark-defs
       (mk-final-defs-s test-benchmark-files))
 
@@ -2892,7 +2936,7 @@ library
                 (check-equal? (tip-upper-rename name) (symbol->string name)))
               test-benchmark-upper-names))
 
-  (test-case "Can't reference unbound names"
+  (def-test-case "Can't reference unbound names"
     (check-exn #rx"tip: Parse failed: Symbol bar .* not bound"
                (lambda ()
                  (mk-signature-s
@@ -2905,7 +2949,7 @@ library
                                      (as (bar x) a))))
                      (check-sat)))))))
 
-  (test-case "Can reference destructor names"
+  (def-test-case "Can reference destructor names"
     (check-true (string? (mk-signature-s
                           (format-symbols
                            '((declare-datatypes
@@ -2916,7 +2960,7 @@ library
                                              (as (head x) a))))
                              (check-sat)))))))
 
-  (test-case "Can't reuse destructor names"
+  (def-test-case "Can't reuse destructor names"
     (check-exn #rx"tip: Parse failed: Symbol head .* is already globally bound"
                (lambda ()
                  (mk-signature-s
@@ -2930,11 +2974,11 @@ library
                                         (case (Cons y zs) y)))))
                      (check-sat)))))))
 
-  (test-case "Decode strings"
+  (def-test-case "Decode strings"
     (check-equal? (decode-string "foo Global68656c6c6f bar global776f726c64")
                   "foo hello bar world"))
 
-  (test-case "Bare constructor function type"
+  (def-test-case "Bare constructor function type"
     (check-equal? (add-constructor-funcs '((declare-datatypes
                                             ()
                                             ((MyBool (MyTrue) (MyFalse))))))
@@ -2944,7 +2988,7 @@ library
                     (define-fun constructor-MyTrue  () MyBool (as MyTrue  MyBool))
                     (define-fun constructor-MyFalse () MyBool (as MyFalse MyBool)))))
 
-  (test-case "Parameterised constructor function type"
+  (def-test-case "Parameterised constructor function type"
     (check-equal? (add-constructor-funcs '((declare-datatypes
                                             (local-a)
                                             ((MyStream (MyCons (myHead local-a)
@@ -2960,7 +3004,7 @@ library
                           (MyStream local-a)
                           (as (MyCons local-myHead local-myTail) (MyStream local-a))))))))
 
-  (test-case "Bare destructor function type"
+  (def-test-case "Bare destructor function type"
     (check-equal? (add-destructor-funcs '((declare-datatypes
                                            ()
                                            ((Nat (Z) (S (p Nat)))))))
@@ -2971,7 +3015,7 @@ library
                       (match destructor-arg
                         (case (S local-p) local-p))))))
 
-  (test-case "Parameterised destructor function type"
+  (def-test-case "Parameterised destructor function type"
     (check-equal? (add-destructor-funcs '((declare-datatypes
                                            (a b)
                                            ((OneAndMany (One (theOne a))
@@ -3004,7 +3048,7 @@ library
                             (match destructor-arg
                               (case (Many local-head local-tail) local-tail))))))))
 
-  (test-case "Can extract theorems"
+  (def-test-case "Can extract theorems"
     (for-each (lambda (benchmark-file)
                 (define thms (theorems-from-file benchmark-file))
 
@@ -3022,13 +3066,13 @@ library
                   (check-not-equal? (member (car thms) content) #f)))
               (append test-benchmark-files (theorem-files))))
 
-  (test-case "Have benchmark theorems"
+  (def-test-case "Have benchmark theorems"
     (for-each (lambda (benchmark-file)
                 (check-not-equal? (theorem-of benchmark-file)
                                   #f))
               test-benchmark-files))
 
-  (test-case "Have replacements"
+  (def-test-case "Have replacements"
     (define defs '((define-fun min1 ((x Int) (y Int)) Int (ite (<= x y) x y))
                    (define-fun min2 ((a Int) (b Int)) Int (ite (<= a b) a b))))
     (check-equal? (list->set (replacements-closure defs))
@@ -3044,7 +3088,7 @@ library
                                              (names-in test-benchmark-defs))))
               test-replacements))
 
-  (test-case "Normalise theorems"
+  (def-test-case "Normalise theorems"
     (define (structure-of expr)
       (match expr
         [(cons x y) (cons (structure-of x) (structure-of y))]
@@ -3055,5 +3099,45 @@ library
                   (theorem-of benchmark-file))
                 (define normed
                   (normed-theorem-of benchmark-file))
-                (check-equal? (structure-of unnormed) (structure-of normed)))
-              test-benchmark-files)))
+
+                (check-equal? (structure-of unnormed) (structure-of normed))
+
+                (check-false (string-contains? (format-symbols normed)
+                                               "-sentinel")))
+              test-benchmark-files))
+
+  (def-test-case "Theorem deps"
+    (for-each (lambda (name-cases)
+                (for-each (lambda (f-deps)
+                            (define absolute-path
+                              (benchmark-file (first f-deps)))
+
+                            (define (prefix s)
+                              (string->symbol (string-append absolute-path
+                                                             (symbol->string s))))
+
+                            (define prefixed
+                              (map prefix (second f-deps)))
+
+                            (with-check-info
+                              (('sort          (first name-cases))
+                               ('absolute-path absolute-path)
+                               ('deps          (second f-deps))
+                               ('prefixed      prefixed))
+                              (check-equal? (list->set (theorem-deps-of
+                                                        absolute-path))
+                                            (list->set prefixed))))
+                          (second name-cases)))
+              '(("Simple"
+                 (("tip2015/sort_NStoogeSort2Permutes.smt2"
+                   (isPermutation nstoogesort2))
+
+                  ("tip2015/tree_sort_SortPermutes'.smt2"
+                   (isPermutation tsort))))
+
+                ("With constructors"
+                 (("tip2015/propositional_AndCommutative.smt2"
+                   (valid &))
+
+                  ("tip2015/nat_pow_one.smt2"
+                   (pow S Z))))))))

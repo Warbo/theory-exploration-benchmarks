@@ -123,15 +123,14 @@ in rec {
     '';
 
     shellHook = ''
-      set -x
-      export BENCHMARKS="${tip-benchmarks}"
-      set +x
-
       {
-        echo "NOTE: Checking Racket contracts is slow so it's disabled by default"
-        echo "To enable/disable contract checking, use PLT_TR_CONTRACTS, e.g."
-        echo "export PLT_TR_CONTRACTS=1"
-        echo "unset  PLT_TR_CONTRACTS"
+        echo "Setting BENCHMARKS to ${tip-benchmarks}"
+        export BENCHMARKS="${tip-benchmarks}"
+
+        echo "NOTE: Checking Racket contracts is slow so disabled by default"
+        echo "To enable contract checking, set PLT_TR_CONTRACTS to 1"
+
+        echo "Use PLT_TEST_REGEX to limit the cases run during testing"
       } 1>&2
     '';
   });
