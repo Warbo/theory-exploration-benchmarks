@@ -4,6 +4,7 @@
 (require racket/function)
 (require racket/match)
 (require racket/trace)
+(require grommet/crypto/hash/md5)
 (require shell/pipeline)
 
 (provide decode-string)

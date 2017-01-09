@@ -18,6 +18,21 @@ let
     sha256 = "06z5bhmvpdhy4bakh30fzha4s0xp2arjq8h9cyi65b1y18cd148x";
   };
 
+  # Dependency of grommet
+  grip =  fetchFromGitHub {
+    owner  = "RayRacine";
+    repo   = "grip";
+    rev    = "ec498f6";
+    sha256 = "06ax30r70sz2hq0dzyassczcdkpmcd4p62zx0jwgc2zp3v0wl89l";
+  };
+
+  grommet = fetchFromGitHub {
+    owner  = "RayRacine";
+    repo   = "grommet";
+    rev    = "50f1b6a";
+    sha256 = "1rb7i8jx7gg2rm5flnql0hja4ph11p7i38ryxd04yqw50l0xj59v";
+  };
+
   racketWithDeps = deps: stdenv.mkDerivation {
     name = "racket-with-deps";
 
@@ -69,7 +84,7 @@ let
     paths = [
       bash
       chosenHaskellPackages.cabal-install
-      (racketWithDeps [ shellPipeline ])
+      (racketWithDeps [ grip grommet shellPipeline ])
       (chosenHaskellPackages.ghcWithPackages (hs: [
         hs.tip-lib
         hs.QuickCheck
