@@ -286,18 +286,26 @@
 (define (string-reverse s)
   (list->string (reverse (string->list s))))
 
-;; Memoise a function
-(define (memo init)
+;; Memoise a nullary function
+(define (memo0 init)
   (let ([result #f])
     (lambda ()
       (when (equal? #f result)
         (set! result (init)))
       result)))
 
+;; Memoise a unary function
+(define (memo1 init)
+  (let ([results (make-hash)])
+    (lambda (arg)
+      (hash-ref! results
+                 arg
+                 (lambda () (init arg))))))
+
 ;; Returns all TIP benchmark files in benchmark-dir
 (define theorem-files
   ;; Directory traversal is expensive; if we have to do it, memoise the result
-  (memo (lambda ()
+  (memo0 (lambda ()
           (map path->string
                (filter (lambda (x) (string-suffix? (path->string x) ".smt2"))
                        (sequence->list (in-directory benchmark-dir)))))))
@@ -705,14 +713,16 @@
 (define (take-from-end n lst)
   (reverse (take (reverse lst) n)))
 
+;; The last part of a path, which is enough to distinguish a TIP benchmark
+(define (path-end s)
+  (string-join (take-from-end 2 (string-split s "/")) "/"))
+
 ;; Read all files named in GIVEN-FILES, combine their definitions together and
 ;; prefix each name with the path of the file it came from
 (define (qual-all given-files)
   (define given-contents
     (map (lambda (pth)
-           (list (string-join (take-from-end 2 (string-split pth "/"))
-                                              "/")
-                 (file->list pth)))
+           (list (path-end pth) (file->list pth)))
          given-files))
 
   (define qualified-contents
@@ -1389,7 +1399,7 @@
 ;; are equivalent, but reference each other such that only two are
 ;; alpha-equivalent on each pass.
 (define (norm-defs exprs)
-  (first (normed-and-replacements exprs '())))
+  (first (normed-and-replacements exprs)))
 
 ;; Given a list of definitions, returns the name of those which are
 ;; alpha-equivalent '((DUPE1 CANON1) (DUPE2 CANON2) ...), where each DUPEi is
@@ -1403,14 +1413,20 @@
 ;; that A and B are equivalent*, and so on recursively, until we can't find any
 ;; more.
 (define (replacements-closure exprs)
-  (second (normed-and-replacements exprs '())))
+  (second (normed-and-replacements exprs)))
 
 ;; Removes redundant alpha-equivalent definitions from EXPRS, resulting in a
 ;; normalised form given as the first element of the result.
-;; Also keeps track of the replacements it's made in the process, taking those
-;; seen so far as argument REPS and returning an augmented list as the second
-;; element of the result.
-(define/test-contract (normed-and-replacements exprs reps)
+;; Also keeps track of the replacements it's made in the process, returning them
+;; as the second element of the result.
+(define normed-and-replacements
+  ;; All of the hard work is done inside normed-and-replacements-inner, but that
+  ;; function is recursive, so memoising it would fill the lookup table with
+  ;; intermediate results.
+  (memo1 (lambda (exprs)
+           (normed-and-replacements-inner exprs '()))))
+
+(define/test-contract (normed-and-replacements-inner exprs reps)
   (-> (*list/c definition?)
       (*list/c (list/c symbol? symbol?))
       (list/c (*list/c definition?) (*list/c (list/c symbol? symbol?))))
@@ -1544,8 +1560,8 @@
            redundancies))
 
   (if (equal? exprs stripped)
-      (list                    stripped replacement-closure)
-      (normed-and-replacements stripped replacement-closure)))
+      (list                          stripped replacement-closure)
+      (normed-and-replacements-inner stripped replacement-closure)))
 
 (define (defs-to-sig x)
   (mk-signature-s (format-symbols (mk-final-defs-s (string-split x "\n")))))
@@ -1688,7 +1704,7 @@ library
   (get-theorems (file->list f)))
 
 (define benchmark-theorems
-  (memo (lambda ()
+  (memo0 (lambda ()
           (make-immutable-hash
            (foldl (lambda (f rest)
                     (cons (cons f (first (theorems-from-file f)))
@@ -1733,25 +1749,51 @@ library
 (define (qual-thm filename thm)
   (replace-all (map (lambda (g)
                       (list g
-                            (string->symbol (string-append filename
+                            (string->symbol (string-append (path-end filename)
                                                            (symbol->string g)
                                                            "-sentinel"))))
                     (theorem-globals thm))
                thm))
 
 (define normalised-theorems
-  (memo (lambda ()
-          (define/test-contract replacements
-            (*list/c (list/c symbol? symbol?))
+  (memo0 (lambda ()
+           (define qualified
+             (qual-all (theorem-files)))
 
-            (replacements-closure (qual-all (theorem-files))))
+           ;; First get replacements used in definitions
+           (define replacements
+             (replacements-closure qualified))
 
-          (make-immutable-hash
-           (hash-map (benchmark-theorems)
-                     (lambda (f thm)
-                       (cons f (remove-suffices
-                                (replace-all replacements
-                                             (qual-thm f thm))))))))))
+           ;; Also replace constructors with constructor functions, skipping
+           ;; constructors which are redundant
+
+           (define all-constructors
+             (expression-constructors qualified))
+
+           (define constructor-replacements
+             (map (lambda (c)
+                    (list c (prefix-name c "constructor-")))
+                  (remove* (map first replacements)
+                           all-constructors)))
+
+           ;; Update replacements to use constructor functions rather than
+           ;; constructors
+           (define final-replacements
+             (append constructor-replacements
+                     (map (lambda (rep)
+                            (if (member (second rep)
+                                        (map first constructor-replacements))
+                                (list (first rep) (prefix-name (second rep)
+                                                               "constructor-"))
+                                rep))
+                          replacements)))
+
+           (make-immutable-hash
+            (hash-map (benchmark-theorems)
+                      (lambda (f thm)
+                        (cons f (remove-suffices
+                                 (replace-all final-replacements
+                                              (qual-thm f thm))))))))))
 
 (define (normed-theorem-of f)
   (hash-ref (normalised-theorems) f
@@ -1779,7 +1821,23 @@ library
 (define (theorem-deps-of f)
   (define normed (normed-theorem-of f))
 
-  (remove* (theorem-types normed) (theorem-globals normed)))
+  ;; Includes all (canonical) types and constructors
+  (define uppercase (uppercase-names (norm-defs (qual-all (theorem-files)))))
+
+  (define constructors
+    (expression-constructors (norm-defs (qual-all (theorem-files)))))
+
+  ;; Remove types
+  (define raw-names (remove* (theorem-types normed) (theorem-globals normed)))
+
+  (foldl (lambda (name existing)
+           ;; Prefix constructors, so we use the function instead
+           (cons (if (member name constructors)
+                     (prefix-name name "constructor-")
+                     name)
+                 existing))
+         '()
+         raw-names))
 
 ;; Everything below here is tests; run using "raco test"
 (module+ test
@@ -3113,31 +3171,40 @@ library
                               (benchmark-file (first f-deps)))
 
                             (define (prefix s)
-                              (string->symbol (string-append absolute-path
-                                                             (symbol->string s))))
+                              (string->symbol
+                               (string-append (first f-deps)
+                                              (symbol->string s))))
 
-                            (define prefixed
-                              (map prefix (second f-deps)))
+                            (define calc-deps
+                              (theorem-deps-of absolute-path))
 
                             (with-check-info
                               (('sort          (first name-cases))
                                ('absolute-path absolute-path)
                                ('deps          (second f-deps))
-                               ('prefixed      prefixed))
-                              (check-equal? (list->set (theorem-deps-of
-                                                        absolute-path))
-                                            (list->set prefixed))))
+                               ('calc-deps     calc-deps))
+                              (check-equal? (list->set calc-deps)
+                                            (list->set (second f-deps)))))
                           (second name-cases)))
-              '(("Simple"
+              `(("Simple"
                  (("tip2015/sort_NStoogeSort2Permutes.smt2"
-                   (isPermutation nstoogesort2))
+                   (tip2015/list_SelectPermutations.smt2isPermutation
+                    tip2015/sort_NStoogeSort2Count.smt2nstoogesort2))
 
                   ("tip2015/tree_sort_SortPermutes'.smt2"
-                   (isPermutation tsort))))
+                   ,(list (quote |tip2015/heap_SortPermutes'.smt2isPermutation|)
+                          (quote |tip2015/tree_sort_SortPermutes'.smt2tsort|)))))
 
                 ("With constructors"
                  (("tip2015/propositional_AndCommutative.smt2"
-                   (valid &))
+                   (tip2015/propositional_AndCommutative.smt2valid
+                    constructor-tip2015/propositional_AndCommutative.smt2&))
+
+                  ("tip2015/propositional_AndIdempotent.smt2"
+                   (tip2015/propositional_AndCommutative.smt2valid
+                    constructor-tip2015/propositional_AndCommutative.smt2&))
 
                   ("tip2015/nat_pow_one.smt2"
-                   (pow S Z))))))))
+                   (prod/prop_35.smt2exp
+                    constructor-isaplanner/prop_01.smt2S
+                    constructor-isaplanner/prop_01.smt2Z))))))))
