@@ -4,7 +4,7 @@
 (require racket/function)
 (require racket/match)
 (require racket/trace)
-(require grommet/crypto/hash/md5)
+(require grommet/crypto/hash/sha256)
 (require shell/pipeline)
 
 (provide decode-string)
@@ -1840,6 +1840,25 @@ library
          '()
          raw-names))
 
+;; Deterministically, but unpredictably, select a sample of NAMES. We select
+;; SIZE names, whilst REP provides entropy for the sampling.
+(define (sample size rep names)
+  ;; Our algorithm requires the SHA256 of each name, peppered to ensure each
+  ;; round gets different results.
+  (define (peppered-hash name)
+    (sha256 (format "sample-size-~a-selection-round-~a-~a" size rep name)))
+
+  ;; Sort names by lexicographical order of their hashes, which gives us a
+  ;; reproducible, deterministic shuffle
+  (define sorted
+    (sort (map (lambda (n) (list n (peppered-hash n)))
+               names)
+          (lambda (x y)
+            (not (bytes>? (second x) (second y))))))
+
+  ;; Our sample is just the prefix of the shuffled list
+  (map first (take sorted size)))
+
 ;; Everything below here is tests; run using "raco test"
 (module+ test
   (require rackunit)
@@ -3208,4 +3227,15 @@ library
                   ("tip2015/nat_pow_one.smt2"
                    (prod/prop_35.smt2exp
                     constructor-isaplanner/prop_01.smt2S
-                    constructor-isaplanner/prop_01.smt2Z))))))))
+                    constructor-isaplanner/prop_01.smt2Z)))))))
+
+  (def-test-case "Sampling"
+
+    (define names
+      '(a b c d e f g h i j k l m n o p q r s t u v w x y z))
+
+    ;; Sampling is deterministic, so these shouldn't change
+
+    (check-equal? (sample 5 0 names) '(j t q w a))
+
+    (check-equal? (sample 5 1 names) '(y x i u j))))
