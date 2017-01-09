@@ -14,7 +14,6 @@
 (provide mk-signature)
 (provide qualify-given)
 (provide symbols-of-theorems)
-(provide theorems-from-symbols)
 (provide types-from-defs)
 
 (define verbose #t)
@@ -303,21 +302,29 @@
                  arg
                  (lambda () (init arg))))))
 
-;; Returns all TIP benchmark files in benchmark-dir
-(define theorem-files
+;; Returns *all* TIP benchmark files in benchmark-dir.
+;; NOTE: Try to use theorem-files instead, as that will be smaller during tests
+(define all-theorem-files
   ;; Directory traversal is expensive; if we have to do it, memoise the result
   (memo0 (lambda ()
           (map path->string
                (filter (lambda (x) (string-suffix? (path->string x) ".smt2"))
                        (sequence->list (in-directory benchmark-dir)))))))
 
+;; The benchmark files we'll be using. Use all by default.
+(define theorem-files
+  all-theorem-files)
+
+;; Override the theorem files to be used. This only really exists for making the
+;; test suite quicker; in particular, don't try changing this once processing
+;; has started, since old values may be memoised somewhere.
+;;
+;; REMEMBER: theorem-files should be a thunk returning a list, not a list!
+(define (set-theorem-files! proc)
+  (set! theorem-files proc))
+
 (define (symbols-of-theorem path)
   (benchmark-symbols (file->list path)))
-
-(define (files-with given)
-  (filter (lambda (path)
-            (member given (map symbol->string (symbols-of-theorem path))))
-          (theorem-files)))
 
 ;; Reads a list of expressions from the given string
 (define (read-benchmark x)
@@ -1367,18 +1374,6 @@
 
   (show (qualify name given)))
 
-;; TODO: Update to use transformed names, etc.
-(define (theorems-from-symbols-s given-symbols)
-  (define (acceptable-theorem thm-path)
-    (null? (remove* given-symbols
-                    (symbols-of-theorem thm-path))))
-
-  (filter acceptable-theorem (theorem-files)))
-
-;; TODO: Do we need this?
-(define (theorems-from-symbols)
-  (show (theorems-from-symbols-s (port->lines (current-input-port)))))
-
 ;; For each (SRC DST) in REPS, replaces SRC with DST in STR
 (define (replace-strings str reps)
   (foldl (lambda (pair so-far)
@@ -1615,9 +1610,6 @@
     (parameterize ([current-environment-variables new-env])
       (body))))
 
-(define (symbols-from-file f)
-  (symbols-of-theorems-s (file->list f)))
-
 (define (types-from-defs)
   (show (symbols-in
          (remove-duplicates
@@ -1819,26 +1811,66 @@ library
     [(cons x y)               (append (theorem-types x) (theorem-types y))]
     [_                        '()]))
 
-(define (theorem-deps-of f)
-  (define normed (normed-theorem-of f))
+(define theorem-deps-of
+  (memo1 (lambda (f)
+           (define normed (normed-theorem-of f))
 
-  ;; Includes all (canonical) types and constructors
-  (define uppercase (uppercase-names (norm-defs (qual-all (theorem-files)))))
+           ;; Includes all (canonical) types and constructors
+           (define uppercase (uppercase-names (norm-defs (qual-all (theorem-files)))))
 
-  (define constructors
-    (expression-constructors (norm-defs (qual-all (theorem-files)))))
+           (define constructors
+             (expression-constructors (norm-defs (qual-all (theorem-files)))))
 
-  ;; Remove types
-  (define raw-names (remove* (theorem-types normed) (theorem-globals normed)))
+           ;; Remove types
+           (define raw-names (remove* (theorem-types normed) (theorem-globals normed)))
 
-  (foldl (lambda (name existing)
-           ;; Prefix constructors, so we use the function instead
-           (cons (if (member name constructors)
-                     (prefix-name name "constructor-")
-                     name)
-                 existing))
-         '()
-         raw-names))
+           (foldl (lambda (name existing)
+                    ;; Prefix constructors, so we use the function instead
+                    (cons (if (member name constructors)
+                              (prefix-name name "constructor-")
+                              name)
+                          existing))
+                  '()
+                  raw-names))))
+
+(define all-theorem-deps
+  (memo0 (lambda ()
+           (map (lambda (f) (list f (list->set (theorem-deps-of f))))
+                (theorem-files)))))
+
+;; Does S contain all dependencies required by some theorem statement?
+(define (sample-admits-conjecture? s)
+  (any-of (lambda (f-deps)
+            (subset? (second f-deps) s))
+          (all-theorem-deps)))
+
+;; Given a list of names SAMPLE, find which theorem statements depend on all of
+;; those names (and possibly more). We return the union of all of these
+;; theorems' dependencies, minus the contents of SAMPLE. Hence appending one of
+;; the resulting names to SAMPLE will produce a sample that's closer to
+;; fulfilling the dependencies of some theorem.
+;;
+;; NOTE: We also take a SIZE parameter, which is the maximum size that we allow
+;; a sample to become. We remove from consideration all of those theorems which
+;; have more than SIZE dependencies, since they'll be impossible to satisfy with
+;; such a sample, and hence their dependencies shouldn't be selected.
+;;
+;; NOTE: Before calling this, you should probably check if S already contains
+;; enough names, using sample-admits-conjecture?
+(define (possible-sample-extensions sample size)
+  ;; Find theorems which SAMPLE can be extended to admit
+  (define possible-theorems
+    (filter (lambda (f-deps)
+              (and (subset? sample (second f-deps))
+                   (<= (set-count (second f-deps)) size)))
+            (all-theorem-deps)))
+
+  ;; All dependencies of those theorems
+  (define all-deps
+    (apply set-union (map second possible-theorems)))
+
+  ;; Remove the contents of SAMPLE from those dependencies
+  (set-subtract all-deps (list->set sample)))
 
 ;; Deterministically, but unpredictably, select a sample of NAMES. We select
 ;; SIZE names, whilst REP provides entropy for the sampling.
@@ -1866,6 +1898,32 @@ library
   ;; Suppress normalisation progress messages during tests
   (quiet)
 
+  ;; Files which appear directly in some of our tests; these must be included in
+  ;; our theorem-files list. Access these files using testing-file to ensure
+  ;; they're being included.
+  (define required-testing-files
+    (benchmark-files '("isaplanner/prop_01.smt2"
+                       "prod/prop_35.smt2"
+                       "tip2015/heap_SortPermutes'.smt2"
+                       "tip2015/list_SelectPermutations.smt2"
+                       "tip2015/nat_pow_one.smt2"
+                       "tip2015/propositional_AndCommutative.smt2"
+                       "tip2015/propositional_AndIdempotent.smt2"
+                       "tip2015/sort_NStoogeSort2Count.smt2"
+                       "tip2015/sort_NStoogeSort2Permutes.smt2"
+                       "tip2015/tree_sort_SortPermutes'.smt2")))
+
+  (define (testing-file f)
+    (unless (member (benchmark-file f) required-testing-files)
+      (error "Testing file not in required list" f))
+    f)
+
+  ;; Use a subset sub-set of files to speed up testing; include a random
+  ;; selection to asymptotically preserve coverage
+  (let ([subset (take (shuffle (theorem-files)) 10)])
+    (set-theorem-files! (lambda ()
+                          (append required-testing-files subset))))
+
   ;; Select specific test-cases based on regex
   (define test-case-regex
     ;; Match everything if no regex given
@@ -1891,11 +1949,8 @@ library
                          (define-fun redundantZ2 () Nat (as Z Nat))
                          (define-fun redundantZ3 () Nat (as Z Nat))))
 
-  (define test-benchmark-files
-    (take (shuffle (theorem-files)) 10))
-
   (define test-benchmark-defs
-    (mk-defs-s test-benchmark-files))
+    (mk-defs-s (theorem-files)))
 
   (def-test-case "List manipulation"
     (check-equal? (symbols-in '(lambda ((local1 Nat) (local2 (List Nat)))
@@ -2146,7 +2201,7 @@ library
     ;; Collect together some definitions, which include some alpha-equivalent
     ;; redundancies
     (define files (append test-files
-                          test-benchmark-files
+                          (theorem-files)
                           (benchmark-files
                            '("tip2015/sort_StoogeSort2IsSort.smt2"
                              "isaplanner/prop_58.smt2"
@@ -2656,7 +2711,7 @@ library
 
   (def-test-case "Random files"
     (define files
-      (string-join test-benchmark-files "\n"))
+      (string-join (theorem-files) "\n"))
 
     (define sig
       (defs-to-sig files))
@@ -2680,7 +2735,7 @@ library
 
   (def-test-case "Module tests"
     (define files
-      (string-join test-benchmark-files "\n"))
+      (string-join (theorem-files) "\n"))
 
     (in-temp-dir
      (lambda (dir)
@@ -2689,7 +2744,7 @@ library
                            [#"OUT_DIR" ,(string->bytes/utf-8 out-dir)])
          (lambda ()
            (full-haskell-package-s
-            (format-symbols (mk-final-defs-s test-benchmark-files))
+            (format-symbols (mk-final-defs-s (theorem-files)))
             out-dir)
 
            (with-check-info
@@ -2743,19 +2798,19 @@ library
                              (and (not (empty? sym))
                                   (not (string-contains? (~a sym) name2))))
                            syms))))
-    (append regressions test-benchmark-files))
+    (append regressions (theorem-files)))
 
   (def-test-case "Haskell package made"
     (in-temp-dir
      (lambda (out-dir)
        (parameterize-env `([#"FILES"   ,(string->bytes/utf-8
-                                         (string-join test-benchmark-files "\n"))]
+                                         (string-join (theorem-files) "\n"))]
                            [#"OUT_DIR" ,(string->bytes/utf-8
                                          (path->string out-dir))]
                            [#"HOME"    ,(string->bytes/utf-8
                                          (path->string out-dir))])
          (lambda ()
-           (full-haskell-package-s (format-symbols (mk-final-defs-s test-benchmark-files))
+           (full-haskell-package-s (format-symbols (mk-final-defs-s (theorem-files)))
                                    (path->string out-dir))
 
            (parameterize ([current-directory out-dir])
@@ -2855,6 +2910,9 @@ library
                '(stooge2sort2 stoogesort2 stooge2sort1))
 
   (def-test-case "Symbol lookup"
+    (define (symbols-from-file f)
+      (names-in (file->list f)))
+
     (define (contains lst elem)
       (not (empty? (filter (curry equal? elem)
                            lst))))
@@ -2888,11 +2946,6 @@ library
                                     timesSign mult minus plus absVal
                                     times))
 
-      (should-not-have syms 'type '(Nat     Nat-sentinel
-                                    Sign    Sign-sentinel
-                                    Integer Integer-sentinel
-                                    =>      =>-sentinel))
-
       (should-not-have syms 'variable '(x  x-sentinel
                                         y  y-sentinel
                                         z  z-sentinel
@@ -2910,17 +2963,7 @@ library
                                         assert-not        assert-not-sentinel
                                         forall            forall-sentinel
                                         =                 =-sentinel
-                                        check-sat         check-sat-sentinel))
-
-      (define theorems
-        (theorems-from-symbols-s syms))
-
-      (with-check-info
-       (('theorems theorems)
-        ('f        f)
-        ('syms     syms)
-        ('message  "Theorem allowed by its own symbols"))
-       (check-true (contains theorems f))))
+                                        check-sat         check-sat-sentinel)))
 
     (let* ([f    (benchmark-file "tip2015/list_PairEvens.smt2")]
            [syms (symbols-from-file f)])
@@ -2952,7 +2995,7 @@ library
   ;; need to ensure that the names we produce don't get altered by this step.
   (def-test-case "Name preservation"
     (define test-benchmark-defs
-      (mk-final-defs-s test-benchmark-files))
+      (mk-final-defs-s (theorem-files)))
 
     (define test-benchmark-lower-names
       ;; A selection of names, which will be lowercase in Haskell
@@ -3142,13 +3185,13 @@ library
                    ('thms           thms)
                    ('content        content))
                   (check-not-equal? (member (car thms) content) #f)))
-              (append test-benchmark-files (theorem-files))))
+              (append (theorem-files) (theorem-files))))
 
   (def-test-case "Have benchmark theorems"
     (for-each (lambda (benchmark-file)
                 (check-not-equal? (theorem-of benchmark-file)
                                   #f))
-              test-benchmark-files))
+              (theorem-files)))
 
   (def-test-case "Have replacements"
     (define defs '((define-fun min1 ((x Int) (y Int)) Int (ite (<= x y) x y))
@@ -3157,7 +3200,7 @@ library
                   (list->set '((min2 min1))))
 
     (define test-replacements
-      (replacements-closure (qual-all test-benchmark-files)))
+      (replacements-closure (qual-all (theorem-files))))
 
     (for-each (lambda (rep)
                 (check-false         (member (first rep)
@@ -3182,7 +3225,7 @@ library
 
                 (check-false (string-contains? (format-symbols normed)
                                                "-sentinel")))
-              test-benchmark-files))
+              (theorem-files)))
 
   (def-test-case "Theorem deps"
     (for-each (lambda (name-cases)
@@ -3206,25 +3249,44 @@ library
                               (check-equal? (list->set calc-deps)
                                             (list->set (second f-deps)))))
                           (second name-cases)))
+
+              ;; Cases are grouped by type, e.g. whether they require
+              ;; constructor function replacement.
+              ;; Each case has a filename and a list of expected dependencies;
+              ;; we use testing-file to ensure these files are included in the
+              ;; subset of files we're testing with. Since some names might
+              ;; normalise differently in the presence of files with
+              ;; lexicographically-smaller paths, we also ensure the canonical
+              ;; definitions are included (inside the begin blocks).
               `(("Simple"
-                 (("tip2015/sort_NStoogeSort2Permutes.smt2"
+                 ((,(begin
+                      (testing-file "tip2015/list_SelectPermutations.smt2")
+                      (testing-file "tip2015/sort_NStoogeSort2Count.smt2")
+                      (testing-file "tip2015/sort_NStoogeSort2Permutes.smt2"))
                    (tip2015/list_SelectPermutations.smt2isPermutation
                     tip2015/sort_NStoogeSort2Count.smt2nstoogesort2))
 
-                  ("tip2015/tree_sort_SortPermutes'.smt2"
+                  (,(begin
+                      (testing-file "tip2015/heap_SortPermutes'.smt2")
+                      (testing-file "tip2015/tree_sort_SortPermutes'.smt2"))
                    ,(list (quote |tip2015/heap_SortPermutes'.smt2isPermutation|)
                           (quote |tip2015/tree_sort_SortPermutes'.smt2tsort|)))))
 
                 ("With constructors"
-                 (("tip2015/propositional_AndCommutative.smt2"
+                 ((,(testing-file "tip2015/propositional_AndCommutative.smt2")
                    (tip2015/propositional_AndCommutative.smt2valid
                     constructor-tip2015/propositional_AndCommutative.smt2&))
 
-                  ("tip2015/propositional_AndIdempotent.smt2"
+                  (,(begin
+                      (testing-file "tip2015/propositional_AndCommutative.smt2")
+                      (testing-file "tip2015/propositional_AndIdempotent.smt2"))
                    (tip2015/propositional_AndCommutative.smt2valid
                     constructor-tip2015/propositional_AndCommutative.smt2&))
 
-                  ("tip2015/nat_pow_one.smt2"
+                  (,(begin
+                      (testing-file "prod/prop_35.smt2")
+                      (testing-file "isaplanner/prop_01.smt2")
+                      (testing-file "tip2015/nat_pow_one.smt2"))
                    (prod/prop_35.smt2exp
                     constructor-isaplanner/prop_01.smt2S
                     constructor-isaplanner/prop_01.smt2Z)))))))
@@ -3234,8 +3296,27 @@ library
     (define names
       '(a b c d e f g h i j k l m n o p q r s t u v w x y z))
 
-    ;; Sampling is deterministic, so these shouldn't change
+    ;; There's no deep reason for these values, they're just the results spat
+    ;; out when this test was added. Since sampling is deterministic, these
+    ;; shouldn't change, unless e.g. we change the pepper.
 
     (check-equal? (sample 5 0 names) '(j t q w a))
 
-    (check-equal? (sample 5 1 names) '(y x i u j))))
+    (check-equal? (sample 5 1 names) '(y x i u j)))
+
+  (def-test-case "Smart sampling"
+    (define all-deps
+      (apply set-union (map second (all-theorem-deps))))
+
+    ;; No theorem can depend on more than all of the dependencies, hence use
+    ;; (set-count all-deps) as sample size
+    (check-equal? (list->set (possible-sample-extensions (list->set '())
+                                                         (set-count all-deps)))
+                  (list->set all-deps)
+                  "Empty samples can be extended with anything")
+
+    (for-each (lambda (f-deps)
+                (check-true (sample-admits-conjecture?
+                             (second f-deps))
+                            "A theorem's deps admit at least one theorem"))
+              (all-theorem-deps))))
