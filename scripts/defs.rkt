@@ -32,6 +32,21 @@
          #'(define/contract sig contract body ...)
          #'(define          sig          body ...))]))
 
+;; Memoise a value, so it's only computed if needed and the result is reused on
+;; subsequent calls. Note that the resulting value will be a function, which
+;; needs to be called to get the value.
+(define-syntax-rule (memo0 name body ...)
+  (define name
+    (let ([result #f]
+          [called #f])
+      (lambda ()
+        (when (equal? #f called)
+          (log (format "Forced ~a\n" name))
+          (set! result (let () body ...))
+          (set! called #t)
+          (log (format "Finished ~a\n" name)))
+        result))))
+
 (define benchmark-dir
   (or (getenv "BENCHMARKS")
       "No BENCHMARKS env var given"))
@@ -286,14 +301,6 @@
 (define (string-reverse s)
   (list->string (reverse (string->list s))))
 
-;; Memoise a nullary function
-(define (memo0 init)
-  (let ([result #f])
-    (lambda ()
-      (when (equal? #f result)
-        (set! result (init)))
-      result)))
-
 ;; Memoise a unary function
 (define (memo1 init)
   (let ([results (make-hash)])
@@ -304,12 +311,10 @@
 
 ;; Returns *all* TIP benchmark files in benchmark-dir.
 ;; NOTE: Try to use theorem-files instead, as that will be smaller during tests
-(define all-theorem-files
-  ;; Directory traversal is expensive; if we have to do it, memoise the result
-  (memo0 (lambda ()
-          (map path->string
-               (filter (lambda (x) (string-suffix? (path->string x) ".smt2"))
-                       (sequence->list (in-directory benchmark-dir)))))))
+(memo0 all-theorem-files
+       (map path->string
+            (filter (lambda (x) (string-suffix? (path->string x) ".smt2"))
+                    (sequence->list (in-directory benchmark-dir)))))
 
 ;; The benchmark files we'll be using. Use all by default.
 (define theorem-files
@@ -1700,14 +1705,13 @@ library
 
   (get-theorems (file->list f)))
 
-(define benchmark-theorems
-  (memo0 (lambda ()
-          (make-immutable-hash
-           (foldl (lambda (f rest)
-                    (cons (cons f (first (theorems-from-file f)))
-                          rest))
-                  '()
-                  (theorem-files))))))
+(memo0 benchmark-theorems
+       (make-immutable-hash
+        (foldl (lambda (f rest)
+                 (cons (cons f (first (theorems-from-file f)))
+                       rest))
+               '()
+               (theorem-files))))
 
 (define (theorem-of f)
   (hash-ref (benchmark-theorems) f
@@ -1735,7 +1739,7 @@ library
       [(list 'forall vars body) (append (concat-map (lambda (var)
                                                       (symbols-in (second var)))
                                                     vars)
-                                        (thm-names body))]
+                                        (symbols-in body))]
       [(list 'par _ body)       (thm-names body)]
       [(cons x y)               (append (thm-names x) (thm-names y))]
       [_                        (symbols-in expr)]))
@@ -1752,45 +1756,44 @@ library
                     (theorem-globals thm))
                thm))
 
-(define normalised-theorems
-  (memo0 (lambda ()
-           (define qualified
-             (qual-all (theorem-files)))
+(memo0 normalised-theorems
+       (define qualified
+         (qual-all (theorem-files)))
 
-           ;; First get replacements used in definitions
-           (define replacements
-             (replacements-closure qualified))
+       ;; First get replacements used in definitions
+       (define replacements
+         (replacements-closure qualified))
 
-           ;; Also replace constructors with constructor functions, skipping
-           ;; constructors which are redundant
+       ;; Also replace constructors with constructor functions, skipping
+       ;; constructors which are redundant
 
-           (define all-constructors
-             (expression-constructors qualified))
+       (define all-constructors
+         (expression-constructors qualified))
 
-           (define constructor-replacements
-             (map (lambda (c)
-                    (list c (prefix-name c "constructor-")))
-                  (remove* (map first replacements)
-                           all-constructors)))
+       (define constructor-replacements
+         (map (lambda (c)
+                (list c (prefix-name c "constructor-")))
+              (remove* (map first replacements)
+                       all-constructors)))
 
-           ;; Update replacements to use constructor functions rather than
-           ;; constructors
-           (define final-replacements
-             (append constructor-replacements
-                     (map (lambda (rep)
-                            (if (member (second rep)
-                                        (map first constructor-replacements))
-                                (list (first rep) (prefix-name (second rep)
-                                                               "constructor-"))
-                                rep))
-                          replacements)))
+       ;; Update replacements to use constructor functions rather than
+       ;; constructors
+       (define final-replacements
+         (append constructor-replacements
+                 (map (lambda (rep)
+                        (if (member (second rep)
+                                    (map first constructor-replacements))
+                            (list (first rep) (prefix-name (second rep)
+                                                           "constructor-"))
+                            rep))
+                      replacements)))
 
-           (make-immutable-hash
-            (hash-map (benchmark-theorems)
-                      (lambda (f thm)
-                        (cons f (remove-suffices
-                                 (replace-all final-replacements
-                                              (qual-thm f thm))))))))))
+       (make-immutable-hash
+        (hash-map (benchmark-theorems)
+                  (lambda (f thm)
+                    (cons f (remove-suffices
+                             (replace-all final-replacements
+                                          (qual-thm f thm))))))))
 
 (define (normed-theorem-of f)
   (hash-ref (normalised-theorems) f
@@ -1815,32 +1818,38 @@ library
     [(cons x y)               (append (theorem-types x) (theorem-types y))]
     [_                        '()]))
 
+(memo0 normed-qualified-theorem-files
+       (norm-defs (qual-all (theorem-files))))
+
 (define theorem-deps-of
   (memo1 (lambda (f)
+           (log (format "Forcing theorem deps of ~a\n" f))
            (define normed (normed-theorem-of f))
 
            ;; Includes all (canonical) types and constructors
-           (define uppercase (uppercase-names (norm-defs (qual-all (theorem-files)))))
+           (define uppercase (uppercase-names normed-qualified-theorem-files))
 
            (define constructors
-             (expression-constructors (norm-defs (qual-all (theorem-files)))))
+             (expression-constructors normed-qualified-theorem-files))
 
            ;; Remove types
            (define raw-names (remove* (theorem-types normed) (theorem-globals normed)))
 
-           (foldl (lambda (name existing)
-                    ;; Prefix constructors, so we use the function instead
-                    (cons (if (member name constructors)
-                              (prefix-name name "constructor-")
-                              name)
-                          existing))
-                  '()
-                  raw-names))))
+           (define result
+             (foldl (lambda (name existing)
+                      ;; Prefix constructors, so we use the function instead
+                      (cons (if (member name constructors)
+                                (prefix-name name "constructor-")
+                                name)
+                            existing))
+                    '()
+                    raw-names))
+           (log "Finished theorem deps of ~a\n" f)
+           result)))
 
-(define all-theorem-deps
-  (memo0 (lambda ()
-           (map (lambda (f) (list f (list->set (theorem-deps-of f))))
-                (theorem-files)))))
+(memo0 all-theorem-deps
+       (map (lambda (f) (list f (list->set (theorem-deps-of f))))
+            (theorem-files)))
 
 ;; Does S contain all dependencies required by some theorem statement?
 (define (sample-admits-conjecture? s)
@@ -1962,6 +1971,8 @@ library
   (when (empty? constraints)
     (error (format "Couldn't find deps for sample size ~a" size)))
 
+  (log "Converted all theorem dependencies into constraints\n")
+
   ;; Constraints containing few names are more likely to be chosen by uniform
   ;; sampling than those containing many names, and hence are more likely to be
   ;; generated by the rejection sampling procedure. Rather than working with
@@ -1993,6 +2004,8 @@ library
     (map (lambda (c)
            (list c (/ constraint-lcm (set-count c))))
          constraints))
+
+  (log "Calculated frequency for each constraint\n")
 
   ;; Now we know the relative chances, we can choose a constraint, following the
   ;; same distribution as if we'd used rejection sampling.
@@ -2047,6 +2060,8 @@ library
                    intervals)
       [(list (list c _ _)) c]))
 
+  (log "Shuffling names\n")
+
   ;; Now we need to pad our constraint with uniformly chosen names. To do this,
   ;; we shuffle all of the names and choose from the start of the list.
   (define shuffled
@@ -2056,7 +2071,37 @@ library
     (take (remove* (set->list chosen-constraint) shuffled)
           (- size (set-count chosen-constraint))))
 
+  (log "Obtained sample\n")
+
   (list->set (append (set->list chosen-constraint) padding)))
+
+;; Normalised benchmark from given BENCHMARKS
+(memo0 final-benchmark-defs
+       (mk-final-defs-s (theorem-files)))
+
+;; All function names defined in given BENCHMARKS. NOTE: These will be
+;; hex-encoded.
+(memo0 lowercase-benchmark-names
+       (lowercase-names (final-benchmark-defs)))
+
+;; Sample using the names and theorems from BENCHMARKS
+(define (sample-from-benchmarks size rep)
+
+  ;; Theorem deps aren't hex encoded, so sample with decoded versions
+  (define all-canonical-function-names
+    (map decode-name (lowercase-benchmark-names)))
+
+  (define sampled
+    (sample size rep
+            all-canonical-function-names
+            (map second (all-theorem-deps))))
+
+  ;; Hex encode sample so it's usable with e.g. Haskell translation
+  (map-set encode-lower-name sampled ))
+
+;; Map a function F over the elements of a set S
+(define (map-set f s)
+  (list->set (set-map s f)))
 
 ;; Everything below here is tests; run using "raco test"
 (module+ test
@@ -3491,6 +3536,14 @@ library
   (def-test-case "Smart sampling"
     (define all-deps
       (apply set-union (map second (all-theorem-deps))))
+
+    (define sampled
+      (map-set decode-name (sample-from-benchmarks 10 0)))
+
+    (with-check-info
+      (('sampled sampled))
+      (check-true (sample-admits-conjecture? sampled)
+                  "Sampling from benchmark files should admit their theorems"))
 
     (for-each (lambda (f-deps)
                 (define deps (second f-deps))
