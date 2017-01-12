@@ -115,22 +115,31 @@ in rec {
     buildInputs = [ env makeWrapper ];
 
     installPhase = ''
-      mkdir -p      "$out/lib"
-      cp    *.sh    "$out/lib/"
-      cp    *.rkt   "$out/lib/"
+      # Install Racket scripts
+      mkdir -p    "$out/lib"
+      cp    *.rkt "$out/lib/"
 
+      # Compile Racket scripts to bytecode for speed
+      raco make "$out/lib/"*.rkt
+
+      # For each Racket script, add a wrapper to PATH, without the .rkt suffix
       mkdir -p "$out/bin"
-
-      for EXT in "sh" "rkt"
+      for F in "$out/lib"/*.rkt
       do
-        for F in "$out/lib"/*."$EXT"
-        do
-          NAME=$(basename "$F" ".$EXT")
-          makeWrapper "$F" "$out/bin/$NAME" \
-            --prefix PATH : "${env}/bin"    \
-            --set PWD "$out/lib"            \
-            --set BENCHMARKS_FALLBACK "${tip-benchmarks}"
-        done
+        NAME=$(basename "$F" .rkt)
+
+        # Write a one-liner to invoke this script, since shebangs don't seem to
+        # use the bytecode
+        echo -e "#!/usr/bin/env bash\nexec racket '$F'" > "$out/bin/$NAME"
+        chmod +x "$out/bin/$NAME"
+
+        # Wrap the one-liner so we can provide an appropriate environment.
+        # Set PLT_COMPILED_FILE_CHECK to avoid checking bytecode timestamps.
+        wrapProgram "$out/bin/$NAME"           \
+          --prefix PATH : "${env}/bin"         \
+          --set PWD "$out/lib"                 \
+          --set PLT_COMPILED_FILE_CHECK exists \
+          --set BENCHMARKS_FALLBACK "${tip-benchmarks}"
       done
     '';
 
