@@ -172,6 +172,6 @@ in rec {
       buildInputs = [ tools ];
     }
     ''
-      find "${tip-benchmarks}" -name "*.smt2" | mk_final_defs.rkt > "$out"
+      find "${tip-benchmarks}" -name "*.smt2" | mk_final_defs > "$out"
     '';
 }
