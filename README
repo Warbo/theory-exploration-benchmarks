@@ -107,7 +107,7 @@ To generate a Haskell package from a benchmark, pipe the benchmark into
 to a path in which the package will be created.
 
 To sample a selection of function names from the combined benchmarks, use the
-`choose_samples` tool. This takes two arguments: the size of the desired sample
+`choose_sample` tool. This takes two arguments: the size of the desired sample
 and an "index" number, used for entropy. The sampling process is deterministic,
 so re-running with the same benchmark set, the same sample size and the same
 index will produce the same sample. To get a different sample, use a different

@@ -4,7 +4,7 @@
 (require (file "defs.rkt"))
 
 (define (usage)
-  (log "Usage: choose_samples <N> <M>\nWhere N and M are natural numbers.\nN \
+  (log "Usage: choose_sample <N> <M>\nWhere N and M are natural numbers.\nN \
 is the size of the sample and M is the index of the sample. Samples are chosen \
 deterministically (but unpredictably) using hashes, so M is required to get \
 multiple samples of the same size.\n")

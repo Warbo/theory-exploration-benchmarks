@@ -119,14 +119,18 @@ in rec {
       cp    *.sh    "$out/lib/"
       cp    *.rkt   "$out/lib/"
 
-      mkdir -p    "$out/bin"
-      for F in "$out/lib"/*.sh "$out/lib"/*.rkt
+      mkdir -p "$out/bin"
+
+      for EXT in "sh" "rkt"
       do
-        NAME=$(basename "$F")
-        makeWrapper "$F" "$out/bin/$NAME" \
-          --prefix PATH : "${env}/bin"    \
-          --set PWD "$out/lib"            \
-          --set BENCHMARKS_FALLBACK "${tip-benchmarks}"
+        for F in "$out/lib"/*."$EXT"
+        do
+          NAME=$(basename "$F" ".$EXT")
+          makeWrapper "$F" "$out/bin/$NAME" \
+            --prefix PATH : "${env}/bin"    \
+            --set PWD "$out/lib"            \
+            --set BENCHMARKS_FALLBACK "${tip-benchmarks}"
+        done
       done
     '';
 
