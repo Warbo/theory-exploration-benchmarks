@@ -1848,34 +1848,6 @@ library
             (subset? (second f-deps) s))
           (all-theorem-deps)))
 
-;; Given a list of names SAMPLE, find which theorem statements depend on all of
-;; those names (and possibly more). We return the union of all of these
-;; theorems' dependencies, minus the contents of SAMPLE. Hence appending one of
-;; the resulting names to SAMPLE will produce a sample that's closer to
-;; fulfilling the dependencies of some theorem.
-;;
-;; NOTE: We also take a SIZE parameter, which is the maximum size that we allow
-;; a sample to become. We remove from consideration all of those theorems which
-;; have more than SIZE dependencies, since they'll be impossible to satisfy with
-;; such a sample, and hence their dependencies shouldn't be selected.
-;;
-;; NOTE: Before calling this, you should probably check if S already contains
-;; enough names, using sample-admits-conjecture?
-(define (possible-sample-extensions sample size)
-  ;; Find theorems which SAMPLE can be extended to admit
-  (define possible-theorems
-    (filter (lambda (f-deps)
-              (and (subset? sample (second f-deps))
-                   (<= (set-count (second f-deps)) size)))
-            (all-theorem-deps)))
-
-  ;; All dependencies of those theorems
-  (define all-deps
-    (apply set-union (map second possible-theorems)))
-
-  ;; Remove the contents of SAMPLE from those dependencies
-  (set-subtract all-deps (list->set sample)))
-
 ;; Deterministically, but unpredictably, shuffle the given NAMES. KEYGEN turns
 ;; a name into a hash, and we perform the shuffle by sorting the hashes.
 (define (deterministic-shuffle keygen names)
@@ -1889,7 +1861,76 @@ library
 ;; Deterministically, but unpredictably, select a sample of NAMES. The sample
 ;; size is given by SIZE, whilst REP provides entropy for making the choices
 ;; (e.g. you can run with REP as 0, 1, 2, etc. to get different results).
-(define (sample size rep names)
+(define/test-contract (sample size rep names given-constraints)
+  (->i ([size              integer?]
+        [rep               integer?]
+        [names             (*list/c symbol?)]
+        [given-constraints
+         (names size)
+         (lambda (given-constraints)
+           (unless (list? given-constraints)
+             (raise-user-error
+              'sample
+              "Expected constraints list, got ~a" given-constraints))
+           (when (empty? given-constraints)
+             (raise-user-error
+              'sample
+              "No constraints given"))
+           (for-each
+            (lambda (constraint)
+              (unless (set? constraint)
+                (raise-user-error
+                 'sample
+                 "Expected constraint to be set, got ~a" constraint))
+              (when (empty? (set->list constraint))
+                (raise-user-error
+                 'sample
+                 "Empty constraint given"))
+              (for-each
+               (lambda (name)
+                 (unless (member name names)
+                   (raise-user-error
+                    'sample
+                    "Constraint ~a contains names not in ~a"
+                    constraint
+                    names)))
+               (set->list constraint)))
+            given-constraints)
+           (when (empty? (filter (lambda (c)
+                                   (<= (set-count c) size))
+                                 given-constraints))
+             (raise-user-error
+              'sample
+              "Sample size ~a too small for constraints ~a"
+              size given-constraints))
+           #t)])
+       [result (names given-constraints size)
+               (lambda (result)
+                 (unless (set? result)
+                   (raise-user-error
+                    'sample
+                    "Expected sample to be a set, produced: ~a" result))
+                 (unless (equal? (set-count result) size)
+                   (raise-user-error
+                    'sample
+                    "Expected sample to have size ~a, produced: ~a"
+                    size result))
+                 (for-each
+                  (lambda (name)
+                    (unless (member name names)
+                      (raise-user-error
+                       'sample
+                       "Expected sampled names to be in ~a, produced: ~a"
+                       names result)))
+                  (set->list result))
+                 (when (empty? (filter (lambda (c)
+                                         (subset? c result))
+                                       given-constraints))
+                   (raise-user-error
+                    'sample
+                    "Sample ~a isn't a superset of any ~a"
+                    result given-constraints)))])
+
   ;; We get "deterministic randomness" by using this hash function. Before
   ;; hashing, we prefix the given value with the given SIZE and REP, so
   ;; different sample parameters will produce different outputs, but the same
@@ -1916,9 +1957,9 @@ library
   (define constraints
     (remove-duplicates (filter (lambda (c)
                                  (<= (set-count c) size))
-                               (all-theorem-deps))))
+                               given-constraints)))
 
-  (when (null constraints)
+  (when (empty? constraints)
     (error (format "Couldn't find deps for sample size ~a" size)))
 
   ;; Constraints containing few names are more likely to be chosen by uniform
@@ -1936,11 +1977,12 @@ library
 
   ;; To make the sums easy, we choose M to be the *least common multiple* of the
   ;; lengths: a number which all the lengths divide into without a remainder.
-  (define (lcm args)
-    (match args
-      [(list x)             x]
-      [(cons x (cons y zs)) (lcm (cons (* x (/ y (gcd x y)))
-                                       zs))]))
+  (define lcm
+    (lambda args
+      (match args
+        [(list x)             x]
+        [(cons x (cons y zs)) (apply lcm (cons (* x (/ y (gcd x y)))
+                                               zs))])))
 
   (define constraint-lcm
     (apply lcm (map set-count constraints)))
@@ -1971,9 +2013,10 @@ library
                    0
                    (third (first prev))))
 
-             (list (first c-freq)               ;; constraint
-                   start                        ;; interval start
-                   (+ start (second c-freq))))  ;; interval end
+             (cons (list (first c-freq)               ;; constraint
+                         start                        ;; interval start
+                         (+ start (second c-freq)))  ;; interval end
+                   prev))
            '()
            (sort constraint-freqs
                  (lambda (c1 c2)
@@ -2010,10 +2053,10 @@ library
     (deterministic-shuffle get-hash names))
 
   (define padding
-    (take (remove* chosen-constraint shuffled)
+    (take (remove* (set->list chosen-constraint) shuffled)
           (- size (set-count chosen-constraint))))
 
-  (append chosen-constraint padding))
+  (list->set (append (set->list chosen-constraint) padding)))
 
 ;; Everything below here is tests; run using "raco test"
 (module+ test
@@ -3420,41 +3463,54 @@ library
     (define names
       '(a b c d e f g h i j k l m n o p q r s t u v w x y z))
 
+    (define name-constraints
+      (map (lambda (x) (list->set (list x)))
+           names))
+
     ;; There's no deep reason for these values, they're just the results spat
     ;; out when this test was added. Since sampling is deterministic, these
-    ;; shouldn't change, unless e.g. we change the pepper.
+    ;; shouldn't change, unless e.g. we change the hashing function.
 
-    (check-equal? (sample 5 0 names) '(j t q w a))
+    (check-equal? (sample 5 0 names name-constraints)
+                  (list->set '(a j q t w)))
 
-    (check-equal? (sample 5 1 names) '(y x i u j))
+    (check-equal? (sample 5 1 names name-constraints)
+                  (list->set '(i t u x y)))
 
     ;; Check invariants over a selection of values
     (for-each (lambda (size)
                 (for-each (lambda (rep)
-                            (define s (sample size rep names))
+                            (define s (sample size rep names name-constraints))
 
-                            (check-true (subset? s names))
+                            (check-true (subset? s (list->set names)))
 
-                            (check-equal? size (set-count s))
-
-                            ;; Not invariant, but highly likely
-                            (check-equal? (remove-duplicates s)))
+                            (check-equal? size (set-count s)))
                           (range 0 10)))
-              (range 0 10)))
+              (range 1 10)))
 
   (def-test-case "Smart sampling"
     (define all-deps
       (apply set-union (map second (all-theorem-deps))))
 
-    ;; No theorem can depend on more than all of the dependencies, hence use
-    ;; (set-count all-deps) as sample size
-    (check-equal? (list->set (possible-sample-extensions (list->set '())
-                                                         (set-count all-deps)))
-                  (list->set all-deps)
-                  "Empty samples can be extended with anything")
-
     (for-each (lambda (f-deps)
-                (check-true (sample-admits-conjecture?
-                             (second f-deps))
-                            "A theorem's deps admit at least one theorem"))
+                (define deps (second f-deps))
+
+                (check-true (sample-admits-conjecture? deps)
+                            "A theorem's deps admit at least one theorem")
+
+                (check-equal? deps
+                              (sample (set-count deps)
+                                      0
+                                      (set->list deps)
+                                      (list->set (list deps)))
+                              "Sampling just from deps returns those deps")
+
+                (check-equal? deps
+                              (sample (set-count deps)
+                                      0
+                                      (append (set->list deps)
+                                              '(a b c d e f g h i j k l m
+                                                n o p q r s t u v w x y z))
+                                      (list->set (list deps)))
+                              "Sampling with one deps constraint returns deps"))
               (all-theorem-deps))))
