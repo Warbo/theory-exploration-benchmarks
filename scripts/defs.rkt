@@ -51,9 +51,10 @@
 
 (define benchmark-dir
   (or (getenv "BENCHMARKS")
+      (getenv "BENCHMARKS_FALLBACK")
       (raise-user-error
        'benchmark-dir
-       "No BENCHMARKS env var given")))
+       "No BENCHMARKS_FALLBACK env var found; should be set by Nix")))
 
 (define benchmark-file
   (curry string-append benchmark-dir "/"))

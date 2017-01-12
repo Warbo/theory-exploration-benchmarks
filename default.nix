@@ -123,8 +123,10 @@ in rec {
       for F in "$out/lib"/*.sh "$out/lib"/*.rkt
       do
         NAME=$(basename "$F")
-        makeWrapper "$F" "$out/bin/$NAME" --prefix PATH : "${env}/bin" \
-                                          --set PWD "$out/lib"
+        makeWrapper "$F" "$out/bin/$NAME" \
+          --prefix PATH : "${env}/bin"    \
+          --set PWD "$out/lib"            \
+          --set BENCHMARKS_FALLBACK "${tip-benchmarks}"
       done
     '';
 
@@ -139,13 +141,15 @@ in rec {
 
     shellHook = ''
       {
-        echo "Setting BENCHMARKS to ${tip-benchmarks}"
-        export BENCHMARKS="${tip-benchmarks}"
+        echo "Setting BENCHMARKS_FALLBACK to ${tip-benchmarks}"
+        echo "This can be overridden by providing BENCHMARKS"
+        export BENCHMARKS_FALLBACK="${tip-benchmarks}"
 
-        echo "NOTE: Checking Racket contracts is slow so disabled by default"
+        echo "NOTE: We don't check Racket contracts because it's slow."
         echo "To enable contract checking, set PLT_TR_CONTRACTS to 1"
 
-        echo "Use PLT_TEST_REGEX to limit the cases run during testing"
+        echo "Test with 'raco test scripts/defs.rkt'"
+        echo "Use PLT_TEST_REGEX to limit the test cases which are run."
       } 1>&2
     '';
   });
