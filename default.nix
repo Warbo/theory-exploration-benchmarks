@@ -174,4 +174,14 @@ in rec {
     ''
       find "${tip-benchmarks}" -name "*.smt2" | mk_final_defs > "$out"
     '';
+
+  tip-benchmark-haskell = stdenv.mkDerivation {
+    name         = "tip-benchmarks-haskell";
+    buildInputs  = [ tools ];
+    buildCommand = ''
+      export OUT_DIR="$out"
+      mkdir "$OUT_DIR"
+      full_haskell_package < "${tip-benchmark-smtlib}"
+    '';
+  };
 }
