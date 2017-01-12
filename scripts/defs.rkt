@@ -3502,7 +3502,7 @@ library
                               (sample (set-count deps)
                                       0
                                       (set->list deps)
-                                      (list->set (list deps)))
+                                      (list deps))
                               "Sampling just from deps returns those deps")
 
                 (check-equal? deps
@@ -3511,6 +3511,6 @@ library
                                       (append (set->list deps)
                                               '(a b c d e f g h i j k l m
                                                 n o p q r s t u v w x y z))
-                                      (list->set (list deps)))
+                                      (list deps))
                               "Sampling with one deps constraint returns deps"))
               (all-theorem-deps))))
