@@ -49,7 +49,9 @@
 
 (define benchmark-dir
   (or (getenv "BENCHMARKS")
-      "No BENCHMARKS env var given"))
+      (raise-user-error
+       'benchmark-dir
+       "No BENCHMARKS env var given")))
 
 (define benchmark-file
   (curry string-append benchmark-dir "/"))
@@ -309,24 +311,25 @@
                  arg
                  (lambda () (init arg))))))
 
-;; Returns *all* TIP benchmark files in benchmark-dir.
-;; NOTE: Try to use theorem-files instead, as that will be smaller during tests
-(memo0 all-theorem-files
-       (map path->string
-            (filter (lambda (x) (string-suffix? (path->string x) ".smt2"))
-                    (sequence->list (in-directory benchmark-dir)))))
-
-;; The benchmark files we'll be using. Use all by default.
+;; Use this thunk to find the set of paths we're benchmarking.
 (define theorem-files
-  all-theorem-files)
+  (let ()
+    ;; By default, use all  files in benchmark-dir.
+    (memo0 all-theorem-files
+           (sort (map path->string
+                      (filter (lambda (x) (string-suffix? (path->string x) ".smt2"))
+                              (sequence->list (in-directory benchmark-dir))))
+                 string<=?))
+    all-theorem-files))
 
-;; Override the theorem files to be used. This only really exists for making the
-;; test suite quicker; in particular, don't try changing this once processing
-;; has started, since old values may be memoised somewhere.
+;; Override the theorem files to be used. If you're going to use this, do it
+;; before computing anything, to prevent stale values being memoised. Basically
+;; only exists for making the test suite quicker.
 ;;
 ;; REMEMBER: theorem-files should be a thunk returning a list, not a list!
 (define (set-theorem-files! proc)
-  (set! theorem-files proc))
+  (set! theorem-files (lambda ()
+                        (sort (proc) string<=?))))
 
 (define (symbols-of-theorem path)
   (benchmark-symbols (file->list path)))
@@ -1579,18 +1582,10 @@
 (define (mk-final-defs-s given-files)
   (prepare (mk-defs-s given-files)))
 
+;; Prefix used to identify temporary files as ours. Note that we purposefully
+;; duplicate this in cache-to-disk, to defend against bad things.
 (define temp-file-prefix
   "tebenchmarktemp")
-
-;; Call PROC with a filename argument F, where we create F and write DATA to it
-;; first, then delete F afterwards. Returns the result of PROC.
-(define (with-temp-file data proc)
-  (let* ([f      (make-temporary-file (string-append temp-file-prefix "~a"))]
-         [result void])
-    (display-to-file data f #:exists 'replace)
-    (set! result (proc f))
-    (delete-file f)
-    result))
 
 ;; Debug dump to stderr
 (define (dump x)
@@ -2084,20 +2079,116 @@ library
 (memo0 lowercase-benchmark-names
        (lowercase-names (final-benchmark-defs)))
 
+(define/test-contract (bytes->hex bs)
+  (-> bytes?
+      (lambda (result)
+        (unless (string? result)
+          (raise-user-error
+           'bytes-to-hex
+           "Should have made a string, actually made ~a" result))
+        (for-each (lambda (char)
+                    (unless (member char (string->list "0123456789abcdef"))
+                      (raise-user-error
+                       'bytes-to-hex
+                       "Should have outputted hex characters, gave ~a" result)))
+                  (string->list result))))
+  (foldl (lambda (byte rest)
+           (string-append (number->string byte 16) rest))
+         ""
+         (bytes->list bs)))
+
+;; The path we'll cache data to, if necessary. This is a thunk to delay it in
+;; case theorem-files gets overridden.
+(define cache-path
+  (lambda ()
+    (string-append "/tmp/" temp-file-prefix "-cache-"
+                   (bytes->hex (sha256 (~a (theorem-files)))))))
+
+;; Replace the on-disk cache with DATA
+(define (cache-to-disk data)
+  (log "Writing data to cache\n")
+
+  ;; Don't create an unbounded number of files; the check is performed here,
+  ;; since we're about to modify the filesystem anyway.
+  (define existing
+    (filter (lambda (name)
+              (string-prefix? (some-system-path->string name)
+                              (string-append temp-file-prefix)))
+            (directory-list "/tmp")))
+
+  (when (> (length existing) 1000)
+    (log (format "Cache too big, deleting some files matching /tmp/~a*\n"
+                  temp-file-prefix))
+    (for-each (lambda (name)
+                ;; To prevent accidentally deleting /tmp, we statically force
+                ;; the prefix to be present
+                (define suffix
+                  (substring (some-system-path->string name)
+                             (length temp-file-prefix)))
+                (delete-directory/files
+                 (string-append "/tmp/tebenchmarktemp" suffix)))
+              (take existing 100)))
+
+  ;; Write our data
+  (define out
+    (open-output-file (cache-path) #:exists 'replace))
+  (write data out)
+  (close-output-port out))
+
+;; Check if cached data exists for these parameters
+(define (have-cached-data?)
+  (file-exists? (cache-path)))
+
+;; Read data from cache file
+(define (get-cached-data)
+  (unless (have-cached-data?)
+    (raise-user-error
+     'get-cached-data
+     "Cache file ~a doesn't exist" (cache-path)))
+
+  (define in   (open-input-file (cache-path)))
+  (define data (read in))
+  (close-input-port in)
+  data)
+
+;; Checks if we have cached data, if so then we return that. If not, we run the
+;; thunk PROC, cache the result to disk, then return the result.
+(define (cached-or-calc proc)
+  (unless (have-cached-data?)
+    (log "No cached data found, calculating from scratch\n")
+    (cache-to-disk (proc)))
+  (get-cached-data))
+
 ;; Sample using the names and theorems from BENCHMARKS
 (define (sample-from-benchmarks size rep)
 
-  ;; Theorem deps aren't hex encoded, so sample with decoded versions
+  ;; Cache data in /tmp, so sampling isn't as expensive
+  (define data
+    (cached-or-calc (lambda ()
+                      `((all-canonical-function-names
+                         ;; Theorem deps aren't hex encoded, so sample with
+                         ;; decoded versions
+                         ,(map decode-name (lowercase-benchmark-names)))
+
+                        ;; read/write doesn't work for sets :(
+                        (theorem-deps
+                         ,(map (lambda (t-d)
+                                 (set->list (second t-d)))
+                               (all-theorem-deps)))))))
+
   (define all-canonical-function-names
-    (map decode-name (lowercase-benchmark-names)))
+    (second (assoc 'all-canonical-function-names data)))
+
+  (define theorem-deps
+    (map list->set (second (assoc 'theorem-deps data))))
 
   (define sampled
     (sample size rep
             all-canonical-function-names
-            (map second (all-theorem-deps))))
+            theorem-deps))
 
   ;; Hex encode sample so it's usable with e.g. Haskell translation
-  (map-set encode-lower-name sampled ))
+  (map-set encode-lower-name sampled))
 
 ;; Map a function F over the elements of a set S
 (define (map-set f s)
@@ -2933,10 +3024,6 @@ library
       ('sig     sig)
       ('message "Made Haskell for random files"))
      (check-true (string-contains? sig "QuickSpec"))))
-
-  (check-equal? (with-temp-file "foo\nbar\nbaz"
-                                file->string)
-                "foo\nbar\nbaz")
 
   (let ([a (getenv "HOME")]
         [b (parameterize-env '([#"HOME" #"foo"])
