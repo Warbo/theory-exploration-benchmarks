@@ -18,12 +18,15 @@
 (provide symbols-of-theorems)
 (provide types-from-defs)
 
-(define verbose #t)
-(define (quiet)
-  (set! verbose #f))
-(define (log . args)
-  (when verbose
-    (apply eprintf args)))
+(define-values (quiet log)
+  (let ([verbose #t])
+    (values (lambda ()
+              (unless (getenv "DEBUG")
+                (set! verbose #f)))
+
+            (lambda args
+              (when verbose
+                (apply eprintf args))))))
 
 ;; Uses 'define/contract' during testing, and 'define' otherwise. Useful since
 ;; 'define/contract' can be very slow, e.g. checking every recursive call.

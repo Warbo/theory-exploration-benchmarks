@@ -130,7 +130,7 @@ in rec {
       done
     '';
 
-    doCheck = true;
+    doCheck    = getEnv "SKIP_TESTS" == "";
     checkPhase = ''
       # BENCHMARKS tells the tests where to find their data
 
