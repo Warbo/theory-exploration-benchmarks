@@ -9,10 +9,12 @@
 
 (provide decode-string)
 (provide full-haskell-package)
+(provide log)
 (provide mk-defs)
 (provide mk-final-defs)
 (provide mk-signature)
 (provide qualify-given)
+(provide sample-from-benchmarks)
 (provide symbols-of-theorems)
 (provide types-from-defs)
 
