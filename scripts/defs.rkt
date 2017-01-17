@@ -2200,6 +2200,11 @@ library
 (define (map-set f s)
   (list->set (set-map s f)))
 
+(define/test-contract (precision found wanted)
+  (-> set? set? real?)
+  (/ (set-count (set-intersect found wanted))
+     (set-count found)))
+
 ;; Everything below here is tests; run using "raco test"
 (module+ test
   (require rackunit)
@@ -3659,4 +3664,11 @@ library
                                                 n o p q r s t u v w x y z))
                                       (list deps))
                               "Sampling with one deps constraint returns deps"))
-              (all-theorem-deps))))
+              (all-theorem-deps)))
+
+  (def-test-case "Precision"
+    (check-equal? (/ 1 10)
+                  (precision (list->set '(a b c d e f g h i j))
+                             (list->set '(j k l m n o p q r s t u v w x y z)))))
+
+  )
