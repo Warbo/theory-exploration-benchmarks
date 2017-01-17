@@ -2205,6 +2205,11 @@ library
   (/ (set-count (set-intersect found wanted))
      (set-count found)))
 
+(define/test-contract (recall found wanted)
+  (-> set? set? real?)
+  (/ (set-count (set-intersect wanted found))
+     (set-count wanted)))
+
 ;; Everything below here is tests; run using "raco test"
 (module+ test
   (require rackunit)
@@ -3671,4 +3676,9 @@ library
                   (precision (list->set '(a b c d e f g h i j))
                              (list->set '(j k l m n o p q r s t u v w x y z)))))
 
+  (def-test-case "Recall"
+    (check-equal? (/ 1 2)
+                  (recall (list->set '(a b c d e f g h i j k l m))
+                          (list->set '(a b c d e f g h i j k l m
+                                       n o p q r s t u v w x y z)))))
   )
