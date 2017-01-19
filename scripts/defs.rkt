@@ -2517,6 +2517,7 @@ library
         (benchmark-files '("grammars/packrat_unambigPackrat.smt2"
                            "isaplanner/prop_01.smt2"
                            "isaplanner/prop_15.smt2"
+                           "isaplanner/prop_43.smt2"
                            "isaplanner/prop_44.smt2"
                            "isaplanner/prop_84.smt2"
                            "prod/prop_35.smt2"
@@ -4074,16 +4075,27 @@ library
 
                 (define eqs (equation-from f))
 
+                (define (strip-args expr)
+                  (match expr
+                    [(list 'forall vars body) body]
+                    [(list 'lambda vars body) body]
+                    [(cons x y)               (cons (strip-args x)
+                                                    (strip-args y))]
+                    [x                        x]))
+
                 (define seems-valid
                   (cond
                     ;; Equations must contain =
                     [(not (member '= (flatten thm))) #f]
 
-                    ;; If => appears before (has a longer tail than) = then it's
-                    ;; conditional
-                    [(and (member '=> (flatten thm))
-                          (> (length (member '=> (flatten thm)))
-                             (length (member '=  (flatten thm))))) #f]
+                    ;; If we see a '=> before a '= then *either* the equation is
+                    ;; conditional, *or* there's a function type somewhere in
+                    ;; the arguments. We strip off arguments functions to
+                    ;; discard this latter case.
+                    [(let ([syms (flatten (strip-args thm))])
+                       (and (member '=> syms)
+                            (> (length (member '=> syms))
+                               (length (member '=  syms))))) #f]
 
                     [else #t]))
 
