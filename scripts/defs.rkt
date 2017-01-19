@@ -69,7 +69,8 @@
 ;; Bool which (depending on tip options) translate to built-in Haskell values
 (define native-symbols
   (list 'Int 'Bool '* '> 'mod 'and 'or 'xor 'iff 'ite 'true 'false 'not
-        'implies 'distinct '@ '= '<= '- '+ '* 'div '=> 'as))
+        'implies 'distinct '@ '= '<= '- '+ '* 'div '=> 'as 'forall 'assert-not
+        'lambda 'case 'match))
 
 ;; Given an arbitrary TIP (sub)expression, return the externally-visible symbols
 ;; it contains. This includes globals being defined, globals being used,
@@ -1537,7 +1538,8 @@
                    (list '() '())
                    renamed)))
 
-  (log "Stripped ~a redundancies\n" (- (length exprs) (length stripped)))
+  (log "Stripped ~a definitions containing redundancies\n"
+       (- (length exprs) (length stripped)))
 
   (define/test-contract replacement-closure
     (and/c (*list/c (list/c symbol? symbol?))
@@ -2201,14 +2203,240 @@ library
   (list->set (set-map s f)))
 
 (define/test-contract (precision found wanted)
-  (-> set? set? real?)
+  (-> set? set? rational?)
   (/ (set-count (set-intersect found wanted))
      (set-count found)))
 
 (define/test-contract (recall found wanted)
-  (-> set? set? real?)
+  (-> set? set? rational?)
   (/ (set-count (set-intersect wanted found))
      (set-count wanted)))
+
+(define (tip-theorem-to-equation thm)
+  thm)
+
+;; Lexicographic comparison of two structures. We only focus on nested lists of
+;; symbols.
+(define (lex<=? x y)
+  (cond
+   ;; Compare symbols lexicographically
+   [(and (symbol? x) (symbol? y)) (symbol<=? x y)]
+
+   ;; Symbols are smaller than other structures
+   [(symbol? x) #t]
+   [(symbol? y) #f]
+
+   ;; Numbers are the second-smallest type (only Reals, due to <='s contract).
+   [(and (real? x) (real? y)) (<= x y)]
+   [(real? x) #t]
+   [(real? y) #f]
+
+   ;; Strings are next
+   [(and (string? x) (string? y)) (string<=? x y)]
+   [(string? x) #t]
+   [(string? y) #f]
+
+   ;; If they're not symbols or strings, they must be lists
+   [(not (list? x)) (error (format "Expected list, got ~s" x))]
+   [(not (list? y)) (error (format "Expected list, got ~s" y))]
+
+   ;; Empty lists are the smallest lists
+   [(empty? x) #t]
+   [(empty? y) #f]
+
+   ;; Recurse on first elements; if not <=, they can't be equal wither, so stop.
+   [(not (lex<=? (first x) (first y))) #f]
+
+   ;; (first x) <= (first y), but are they equal? If not symmetric, we can stop.
+   [(not (lex<=? (first y) (first x))) #t]
+
+   ;; First elements are equal, recurse to the rest of the lists
+   [else (lex<=? (rest x) (rest y))]))
+
+;; Check if an expression represents an equation in normal form. Normal form
+;; requires the equal expressions to be in lexicographic order, and for the
+;; variable indices of both, when arranged in post-order of their first
+;; occurrence, to count up sequentially from 0.
+(define (equation? expr)
+  (match expr
+    [(list '~= lhs rhs) (and (expression? lhs)
+                             (expression? rhs)
+                             (lex<=? lhs rhs)
+                             (canonical-variables? expr))]
+    [_ #f]))
+
+;; Check if an equation's variable indices are in canonical order
+(define (canonical-variables? eq)
+  (match eq
+    [(list '~= lhs rhs) (foldl (lambda (type so-far)
+                                 (and so-far
+                                      (canonical-variables-for-type? eq type)))
+                               #t
+                               (remove-duplicates
+                                (append (all-variable-types-of lhs)
+                                        (all-variable-types-of rhs))))]))
+
+;; Whether the variables of the given type, appearing in the given equation,
+;; have their indices in canonical order
+(define (canonical-variables-for-type? eq type)
+  (define indices (indices-of eq type))
+  (equal? indices (range (length indices))))
+
+;; All variable indices of the given type which occur in the given equation, in
+;; post-order of their first occurrence
+(define (indices-of eq type)
+  (match eq
+    [(list ~= lhs rhs) (remove-duplicates
+                        (append (all-indices-of lhs type)
+                                (all-indices-of rhs type)))]))
+
+;; All variable indices of the given type which occur in an expression
+(define (all-indices-of expr type)
+  (match expr
+    [(list 'variable index t) (if (equal? t type)
+                                  (list index)
+                                  '())]
+    [(list 'apply lhs rhs)    (append (all-indices-of lhs type)
+                                      (all-indices-of rhs type))]
+    [(cons x y)               (append (all-indices-of x   type)
+                                      (all-indices-of y   type))]
+    [_                        '()]))
+
+;; All of the types which have variables in the given expression
+(define (all-variable-types-of expr)
+  (remove-duplicates
+   (match expr
+     [(list 'variable _ type) (list type)]
+     [(list 'apply lhs rhs)   (append (all-variable-types-of lhs)
+                                      (all-variable-types-of rhs))]
+     [_                       '()])))
+
+;; Check if a Racket expression encodes an expression (as used in equations)
+(define (expression? expr)
+  (match expr
+    [(list 'constant name type)  (and (symbol? name)
+                                      (string? type))]
+    [(list 'variable index type) (and (integer? index)
+                                      (>= index 0)
+                                      (string? type))]
+    [(list 'apply lhs rhs)       (and (expression? lhs)
+                                      (expression? rhs))]
+    [_                           #f]))
+
+;; Try to convert the normalised theorem from the given file into an equation.
+;; Returns a list of results, i.e. containing a single element upon success or
+;; empty upon failure.
+(define (equation-from f)
+  (theorem-to-equation (normed-theorem-of f)))
+
+;; Turns a list, such as '(f x y) into nested unary applications, like
+;; '(apply (apply f x) y)
+(define (insert-applies lst)
+  (match lst
+    [(list 'variable _ _) lst]
+    [(list 'constant _ _) lst]
+    [(list 'apply    _ _) lst]
+    ['()                  lst]
+    [(list x)             (list x)]
+    [(cons x '())         (list x)]
+    [(list f x)           (list 'apply f x)]
+    [(? list?)            (insert-applies (cons (list 'apply (first lst)
+                                                      (second lst))
+                                                (rest (rest lst))))]))
+
+;; Converts a TIP expression into one suitable for use in an equation
+(define (to-expression x)
+  ;; Turns a list '((a) (b) (c) ...) into '((a b c ...)). If any of the lists is
+  ;; empty, we return an empty list as a result. Lets us use empty/singleton
+  ;; lists like optional values.
+  (define (concat-first-elements acc lst)
+    (if (empty? lst)
+        (list acc)
+        (if (empty? (first lst))
+            '()
+            (concat-first-elements (append acc (first lst))
+                                   (rest lst)))))
+
+    (match x
+      [(list '= _ _)            '()]
+      [(list 'lambda vars body) (to-expression (make-variables vars body))]
+      [(list 'variable _ _)     (list x)]
+      [(list 'constant _ _)     (list x)]
+      [(list 'apply    _ _)     (list x)]
+
+      ;; Assume that any other symbol is a constant. We don't handle types yet,
+      ;; so no need to bother inferring one.
+      [(? symbol?)              (list (list 'constant x "unknown"))]
+
+      ;; Catch-all for lists; try to convert all elements into expressions, if
+      ;; that succeeds then collect up the results and insert-applies.
+      [(? list?)                (match (concat-first-elements
+                                        '() (map to-expression x))
+                                  ['() '()]
+                                  [(list exprs) (list (insert-applies exprs))])]))
+
+;; Replaces occurrences of the variables VARS in BODY with variables suitable
+;; for use in an equation
+(define (make-variables vars body)
+  (foldl (lambda (var body)
+           (define type
+             (format "~s" (second var)))
+
+           (define indices
+             (all-indices-of body type))
+
+           (define idx
+             (if (empty? indices)
+                 0
+                 (+ 1 (apply max indices))))
+
+           (replace-in (first var)
+                       (list 'variable idx type)
+                       body))
+         body
+         vars))
+
+;; To to convert the given theorem expression into an equation. Returns an empty
+;; list on failure, or a single-element list on success.
+(define (theorem-to-equation expr)
+  (match expr
+    ;; Unwrap assert-not
+    [(list 'assert-not thm)   (theorem-to-equation thm)]
+
+    ;; Replace occurrences of universally-quantified variables with variable
+    ;; expressions
+    [(list 'forall vars body) (theorem-to-equation (make-variables vars body))]
+
+    ;; We don't currently handle types, so we can strip off type-level variables
+    [(list 'par _ body)       (theorem-to-equation body)]
+
+    ;; We've found an equation, convert the inner terms
+    [(list '= lhs rhs) (let ([x (to-expression lhs)]
+                             [y (to-expression rhs)])
+                         (if (or (empty? x) (empty? y))
+                             '()
+                             (if (lex<=? (first x) (first y))
+                                 (list (list '~= (first x) (first y)))
+                                 (list (list '~= (first y) (first x))))))]
+
+    ;; Non-equations; some of these could be solved by, e.g., an SMT solver
+
+    ;; Implications/conditional statements
+    [(list '=> _ _) '()]
+
+    ;; Negation
+    [(list 'not _) '()]
+
+    ;; Inequalities
+    [(list 'distinct _ _) '()]
+
+    ;; Catch-all for theorems which call arbitrary functions/constants; we avoid
+    ;; matching native symbols, since we don't want to swallow up potentially
+    ;; translatable theorems
+    [(? (lambda (x)
+          (and (list? x)
+               (symbol? (first x))
+               (not (member (first x) native-symbols))))) '()]))
 
 ;; Everything below here is tests; run using "raco test"
 (module+ test
@@ -2217,31 +2445,45 @@ library
   ;; Suppress normalisation progress messages during tests
   (quiet)
 
-  ;; Files which appear directly in some of our tests; these must be included in
-  ;; our theorem-files list. Access these files using testing-file to ensure
-  ;; they're being included.
-  (define required-testing-files
-    (benchmark-files '("isaplanner/prop_01.smt2"
-                       "prod/prop_35.smt2"
-                       "tip2015/heap_SortPermutes'.smt2"
-                       "tip2015/list_SelectPermutations.smt2"
-                       "tip2015/nat_pow_one.smt2"
-                       "tip2015/propositional_AndCommutative.smt2"
-                       "tip2015/propositional_AndIdempotent.smt2"
-                       "tip2015/sort_NStoogeSort2Count.smt2"
-                       "tip2015/sort_NStoogeSort2Permutes.smt2"
-                       "tip2015/tree_sort_SortPermutes'.smt2")))
+  ;; For testing, we override theorem-files to only return a subset of the
+  ;; benchmarks; this makes testing faster. If a test requires some particular
+  ;; benchmark to be included, wrap the filename in testing-file to make sure
+  ;; it's being included.
+  (define testing-file
+    (let ()
+      ;; We always include the following files, since they're either required by
+      ;; one of our tests, or they're edge-cases/regressions which we want to
+      ;; ensure are getting regularly tested.
+      (define required-testing-files
+        (benchmark-files '("grammars/packrat_unambigPackrat.smt2"
+                           "isaplanner/prop_01.smt2"
+                           "isaplanner/prop_15.smt2"
+                           "isaplanner/prop_44.smt2"
+                           "isaplanner/prop_84.smt2"
+                           "prod/prop_35.smt2"
+                           "tip2015/fermat_last.smt2"
+                           "tip2015/heap_SortPermutes'.smt2"
+                           "tip2015/list_SelectPermutations.smt2"
+                           "tip2015/nat_pow_one.smt2"
+                           "tip2015/propositional_AndCommutative.smt2"
+                           "tip2015/propositional_AndIdempotent.smt2"
+                           "tip2015/sort_NStoogeSort2Count.smt2"
+                           "tip2015/sort_NStoogeSort2Permutes.smt2"
+                           "tip2015/tree_sort_SortPermutes'.smt2")))
+      ;; Select a random subset of files to include, to
+      ;; asymptotically preserve coverage.
+      (define subset (take (shuffle (theorem-files)) 10))
 
-  (define (testing-file f)
-    (unless (member (benchmark-file f) required-testing-files)
-      (error "Testing file not in required list" f))
-    f)
+      ;; Override theorem-files to return these chosen files
+      (set-theorem-files! (lambda ()
+                            (append required-testing-files subset)))
 
-  ;; Use a subset sub-set of files to speed up testing; include a random
-  ;; selection to asymptotically preserve coverage
-  (let ([subset (take (shuffle (theorem-files)) 10)])
-    (set-theorem-files! (lambda ()
-                          (append required-testing-files subset))))
+      ;; The definition of testing-file; checks if the given file is in our
+      ;; selected list.
+      (lambda (f)
+        (unless (member (benchmark-file f) required-testing-files)
+          (error "Testing file not in required list" f))
+        f)))
 
   ;; Select specific test-cases based on regex
   (define test-case-regex
@@ -3681,4 +3923,117 @@ library
                   (recall (list->set '(a b c d e f g h i j k l m))
                           (list->set '(a b c d e f g h i j k l m
                                        n o p q r s t u v w x y z)))))
-  )
+
+  (def-test-case "Comparisons"
+    (check-true  (lex<=? 'a       'b))
+    (check-true  (lex<=? 'a       'a))
+    (check-true  (lex<=? 'a       '()))
+    (check-true  (lex<=? '()      '()))
+    (check-true  (lex<=? '()      '(a)))
+    (check-true  (lex<=? '(a)     '(b)))
+    (check-true  (lex<=? '(a)     '(a)))
+    (check-true  (lex<=? '(a b c) '(a c b)))
+
+    (check-false (lex<=? 'b       'a))
+    (check-false (lex<=? '()      'a))
+    (check-false (lex<=? '(a)     '()))
+    (check-false (lex<=? '(b)     '(a)))
+    (check-false (lex<=? '(a c b) '(a b c))))
+
+  (def-test-case "Equations"
+    (check-true  (equation? '(~= (apply (constant f "Int -> Int")
+                                        (variable 0 "Int"))
+                                 (apply (constant g "Bool -> Int")
+                                        (variable 0 "Bool"))))
+                 "Valid equation accepted")
+
+    (check-false (equation? '(~= (apply (constant b "Int -> Int")
+                                        (variable 0 "Int"))
+                                 (apply (constant a "Bool -> Int")
+                                        (variable 0 "Bool"))))
+                 "Reject expressions in non-lexicographical order")
+
+    (check-false (equation? '(~= (apply (constant f "Int -> Int")
+                                        (variable 1 "Int"))
+                                 (apply (constant g "Bool -> Int")
+                                        (variable 1 "Bool"))))
+                 "Reject variables not starting from 0")
+
+    (check-false (equation? '(~= (apply (apply (constant f "Int -> Int -> Bool")
+                                               (variable 1 "Int"))
+                                        (variable 0 "Int"))
+                                 (apply (constant g "Int -> Bool")
+                                        (variable 0 "Int"))))
+                 "Reject variables in the wrong order")
+
+    (check-equal? (equation-from
+                   (benchmark-file
+                    (testing-file "grammars/packrat_unambigPackrat.smt2")))
+                  '()
+                  "Theorem which isn't equation doesn't get converted")
+
+    (check-true (list? (map testing-file
+                            '("grammars/packrat_unambigPackrat.smt2"
+                              "isaplanner/prop_44.smt2"
+                              "isaplanner/prop_01.smt2"
+                              "isaplanner/prop_15.smt2")))
+                "Files containing normal forms are included")
+    (check-equal? (equation-from
+                   (benchmark-file
+                    (testing-file "isaplanner/prop_84.smt2")))
+
+                  '((~=
+                     (apply (apply (constant grammars/packrat_unambigPackrat.smt2append "unknown")
+                                   (apply (apply (constant isaplanner/prop_44.smt2zip "unknown")
+                                                 (apply (apply (constant isaplanner/prop_01.smt2take "unknown")
+                                                               (apply (constant isaplanner/prop_15.smt2len "unknown")
+                                                                      (variable 0 "(grammars/packrat_unambigPackrat.smt2list b)")))
+                                                        (variable 0 "(grammars/packrat_unambigPackrat.smt2list a)")))
+                                          (variable 0 "(grammars/packrat_unambigPackrat.smt2list b)")))
+                            (apply (apply (constant isaplanner/prop_44.smt2zip "unknown")
+                                          (apply (apply (constant isaplanner/prop_01.smt2drop "unknown")
+                                                        (apply (constant isaplanner/prop_15.smt2len "unknown")
+                                                               (variable 0 "(grammars/packrat_unambigPackrat.smt2list b)")))
+                                                 (variable 0 "(grammars/packrat_unambigPackrat.smt2list a)")))
+                                   (variable 1 "(grammars/packrat_unambigPackrat.smt2list b)")))
+
+                     (apply (apply (constant isaplanner/prop_44.smt2zip "unknown")
+                                   (variable 0 "(grammars/packrat_unambigPackrat.smt2list a)"))
+                            (apply (apply (constant grammars/packrat_unambigPackrat.smt2append "unknown")
+                                          (variable 0 "(grammars/packrat_unambigPackrat.smt2list b)"))
+                                   (variable 1 "(grammars/packrat_unambigPackrat.smt2list b)")))))
+
+                  "Theorem which is equation gets converted")
+
+    (for-each (lambda (f)
+                (check-true (< (length (equation-from f)) 2)
+                            "Extracting equations doesn't crash"))
+              (theorem-files))
+
+    (for-each (lambda (f)
+                (define thm (normed-theorem-of f))
+
+                (define eqs (equation-from f))
+
+                (define seems-valid
+                  (cond
+                    ;; Equations must contain =
+                    [(not (member '= (flatten thm))) #f]
+
+                    ;; If => appears before (has a longer tail than) = then it's
+                    ;; conditional
+                    [(and (member '=> (flatten thm))
+                          (> (length (member '=> (flatten thm)))
+                             (length (member '=  (flatten thm))))) #f]
+
+                    [else #t]))
+
+                (with-check-info
+                  (('f           f)
+                   ('thm         thm)
+                   ('eqs         eqs)
+                   ('seems-valid seems-valid))
+                  (check-equal? (length eqs)
+                                (if seems-valid 1 0)
+                                "Can extract equations from unconditional =")))
+              (theorem-files))))
