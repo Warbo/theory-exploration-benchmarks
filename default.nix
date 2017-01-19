@@ -154,15 +154,17 @@ in rec {
 
     shellHook = ''
       {
-        echo "Setting BENCHMARKS_FALLBACK to ${tip-benchmarks}"
-        echo "This can be overridden by providing BENCHMARKS"
+        echo "Setting BENCHMARKS_FALLBACK env varto ${tip-benchmarks}"
+        echo "This can be overridden by providing a BENCHMARKS env var"
         export BENCHMARKS_FALLBACK="${tip-benchmarks}"
 
         echo "NOTE: We don't check Racket contracts because it's slow."
-        echo "To enable contract checking, set PLT_TR_CONTRACTS to 1"
+        echo "To enable contract checking, set PLT_TR_CONTRACTS env var to 1"
 
         echo "Test with 'raco test scripts/defs.rkt'"
-        echo "Use PLT_TEST_REGEX to limit the test cases which are run."
+        echo "Use PLT_TEST_REGEX env var to limit the test cases which are run."
+
+        echo "For more information during tests, set DEBUG env var"
       } 1>&2
     '';
   });
