@@ -2373,6 +2373,14 @@ library
                                   ['() '()]
                                   [(list exprs) (list (insert-applies exprs))])]))
 
+(define (next-index-for body type)
+  (define indices
+    (filter integer? (all-indices-of body type)))
+
+  (if (empty? indices)
+      0
+      (+ 1 (apply max indices))))
+
 ;; Replaces occurrences of the variables VARS in BODY with variables suitable
 ;; for use in an equation
 (define (make-variables vars body)
@@ -2380,13 +2388,8 @@ library
            (define type
              (format "~s" (second var)))
 
-           (define indices
-             (all-indices-of body type))
-
            (define idx
-             (if (empty? indices)
-                 0
-                 (+ 1 (apply max indices))))
+             (next-index-for body type))
 
            (replace-in (first var)
                        (list 'variable idx type)
@@ -2442,6 +2445,12 @@ library
 (define/test-contract (parse-json-equation str)
   (-> string? (or/c (list/c equation?)
                     empty?))
+  (with-handlers ([exn:fail:read? (lambda (e) '())])
+    (parse-equation (string->jsexpr str))))
+
+(define/test-contract (parse-equation raw-eq)
+  (-> string? (or/c (list/c equation?)
+                    empty?))
 
   ;; Cause a read error, which we'll turn into an empty result
   (define (fail msg . args)
@@ -2475,9 +2484,6 @@ library
   ;; Catch read exceptions from string->jsexpr, but also lets us short-circuit
   ;; when we find a problem with the input.
   (with-handlers ([exn:fail:read? (lambda (e) '())])
-    (define raw-eq
-      (string->jsexpr str))
-
     (unless (equal? (get-key raw-eq 'relation) "~=")
       (fail "Not an equation object"))
 
@@ -2493,9 +2499,57 @@ library
     (define rhs
       (json-to-expr raw-rhs))
 
-    (list (if (lex<=? lhs rhs)
-              `(~= ,lhs ,rhs)
-              `(~= ,rhs ,lhs)))))
+    (list (make-normal-equation lhs rhs))))
+
+(define (make-normal-equation lhs rhs)
+
+  ;; Re-numbers the variables in an equation to count 0, 1, 2, ...
+  (define (renumber eq)
+    ;; Loop through each variable type, renumbering variables of that type
+    (foldl (lambda (type eq)
+             ;; Replace all variables of this type with temporary values, to
+             ;; avoid having mixtures of old and new indices
+             (define temp
+               (foldl (lambda (idx eq)
+                        (replace-in `(variable ,idx                    ,type)
+                                    `(variable ,(format "temp-~a" idx) ,type)
+                                    eq))
+                      eq
+                      (indices-of eq type)))
+
+             ;; Replace temporary values with sequential numbers
+             (foldl (lambda (temp-var eq)
+                      (replace-in `(variable ,temp-var ,type)
+                                  `(variable ,(next-index-for eq type) ,type)
+                                  eq))
+                    temp
+                    (indices-of temp type)))
+           eq
+           (append (all-variable-types-of (second eq))
+                   (all-variable-types-of (third  eq)))))
+
+  (define renumbered-1
+    (renumber `(~= ,lhs ,rhs)))
+
+  (define renumbered-2
+    (renumber `(~= ,rhs ,lhs)))
+
+  (cond
+    [(lex<=? (second renumbered-1) (third renumbered-1)) renumbered-1]
+    [(lex<=? (second renumbered-2) (third renumbered-2)) renumbered-2]
+    [else (error (format "Couldn't sort equation ~s" `(~= lhs rhs)))]))
+
+(define (parse-json-equations str)
+  (with-handlers ([exn:fail:read? (lambda (e) '())])
+    ;; Parse, then unwrap the equations; if any failed, we fail
+    (map (lambda (obj)
+           (define eq (parse-equation obj))
+           (if (empty? eq)
+               (raise (exn:fail:read "Didn't get equation"
+                                     (current-continuation-marks)
+                                     '()))
+               (first eq)))
+         (string->jsexpr str))))
 
 ;; Everything below here is tests; run using "raco test"
 (module+ test
@@ -2544,6 +2598,12 @@ library
         (unless (member (benchmark-file f) required-testing-files)
           (error "Testing file not in required list" f))
         f)))
+
+  ;; Loads test data from files
+  (define (test-data f)
+    (when (member (getenv "TEST_DATA") '(#f ""))
+      (error "No TEST_DATA env var given"))
+    (string-append (getenv "TEST_DATA") "/" f))
 
   ;; Select specific test-cases based on regex
   (define test-case-regex
@@ -4179,4 +4239,15 @@ library
                   "Parsing JSON gives an equation")
 
       (check-equal? parsed (list expected)
-                    "Parsing gives expected value"))))
+                    "Parsing gives expected value"))
+
+    (define test-eqs
+      (file->string (test-data "nat-simple-raw.json")))
+
+    (check-true  (jsexpr? (string->jsexpr test-eqs)))
+    (check-true  (list?   (string->jsexpr test-eqs)))
+    (check-false (empty?  (string->jsexpr test-eqs)))
+
+    (for-each (lambda (obj)
+                (check-pred equation? obj))
+              (parse-json-equations test-eqs))))

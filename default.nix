@@ -145,18 +145,22 @@ in rec {
 
     doCheck    = getEnv "SKIP_TESTS" == "";
     checkPhase = ''
-      # BENCHMARKS tells the tests where to find their data
+      # BENCHMARKS tells the tests where to find the benchmarks
+      # TEST_DATA  tells the tests where to find other data
 
       # PLT_TR_CONTRACTS enables contract checking, which is useful but slow
 
-      BENCHMARKS="${tip-benchmarks}" PLT_TR_CONTRACTS=1 raco test defs.rkt
+      BENCHMARKS="${tip-benchmarks}" TEST_DATA="${./test-data}" PLT_TR_CONTRACTS=1 raco test defs.rkt
     '';
 
     shellHook = ''
       {
-        echo "Setting BENCHMARKS_FALLBACK env varto ${tip-benchmarks}"
+        echo "Setting BENCHMARKS_FALLBACK env var to ${tip-benchmarks}"
         echo "This can be overridden by providing a BENCHMARKS env var"
         export BENCHMARKS_FALLBACK="${tip-benchmarks}"
+
+        echo "Setting TEST_DATA env var to ${./test-data}"
+        export TEST_DATA="${./test-data}"
 
         echo "NOTE: We don't check Racket contracts because it's slow."
         echo "To enable contract checking, set PLT_TR_CONTRACTS env var to 1"
