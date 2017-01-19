@@ -1,10 +1,11 @@
 #lang racket
+(require grommet/crypto/hash/sha256)
+(require json)
 (require racket/contract)
 (require racket/contract/combinator)
 (require racket/function)
 (require racket/match)
 (require racket/trace)
-(require grommet/crypto/hash/sha256)
 (require shell/pipeline)
 
 (provide decode-string)
@@ -2212,9 +2213,6 @@ library
   (/ (set-count (set-intersect wanted found))
      (set-count wanted)))
 
-(define (tip-theorem-to-equation thm)
-  thm)
-
 ;; Lexicographic comparison of two structures. We only focus on nested lists of
 ;; symbols.
 (define (lex<=? x y)
@@ -2437,6 +2435,67 @@ library
           (and (list? x)
                (symbol? (first x))
                (not (member (first x) native-symbols))))) '()]))
+
+;; Try to parse the given string as a JSON representation of an equation, e.g.
+;; from reduce-equations. Returns a list containing the result on success, or an
+;; empty list on failure.
+(define/test-contract (parse-json-equation str)
+  (-> string? (or/c (list/c equation?)
+                    empty?))
+
+  ;; Cause a read error, which we'll turn into an empty result
+  (define (fail msg . args)
+    (define str
+      (if (empty? args)
+          msg
+          (apply format (cons msg args))))
+
+    (raise (exn:fail:read str
+                          (current-continuation-marks)
+                          '())))
+
+  ;; Look up the value of K in hash table OBJ, or else fail
+  (define (get-key obj k)
+    (unless (and (hash? obj)
+                 (hash-has-key? obj k))
+      (fail "Couldn't find key ~s" k))
+    (hash-ref obj k (lambda () (fail "Error getting key ~s" k))))
+
+  ;; Parse JSON structure to match s-expression equations
+  (define (json-to-expr obj)
+    (match (get-key obj 'role)
+      ["application" `(apply ,(json-to-expr (get-key obj 'lhs))
+                             ,(json-to-expr (get-key obj 'rhs)))]
+      ["variable"    `(variable ,(get-key obj 'id)
+                                ,(get-key obj 'type))]
+      ["constant"    `(constant ,(string->symbol (get-key obj 'symbol))
+                                ,(get-key obj 'type))]
+      [x             (fail "Unknown role ~s" x)]))
+
+  ;; Catch read exceptions from string->jsexpr, but also lets us short-circuit
+  ;; when we find a problem with the input.
+  (with-handlers ([exn:fail:read? (lambda (e) '())])
+    (define raw-eq
+      (string->jsexpr str))
+
+    (unless (equal? (get-key raw-eq 'relation) "~=")
+      (fail "Not an equation object"))
+
+    (define raw-lhs
+      (get-key raw-eq 'lhs))
+
+    (define raw-rhs
+      (get-key raw-eq 'rhs))
+
+    (define lhs
+      (json-to-expr raw-lhs))
+
+    (define rhs
+      (json-to-expr raw-rhs))
+
+    (list (if (lex<=? lhs rhs)
+              `(~= ,lhs ,rhs)
+              `(~= ,rhs ,lhs)))))
 
 ;; Everything below here is tests; run using "raco test"
 (module+ test
@@ -4036,4 +4095,76 @@ library
                   (check-equal? (length eqs)
                                 (if seems-valid 1 0)
                                 "Can extract equations from unconditional =")))
-              (theorem-files))))
+              (theorem-files)))
+
+  (def-test-case "Parse JSON"
+    (define json-eq
+      "{
+         \"relation\": \"~=\",
+         \"lhs\": {
+           \"role\": \"application\",
+           \"lhs\": {
+             \"role\": \"application\",
+             \"lhs\": {
+               \"role\": \"constant\",
+               \"type\": \"Nat -> Nat -> Nat\",
+               \"symbol\": \"plus\"
+             },
+             \"rhs\": {
+               \"role\": \"variable\",
+               \"type\": \"Nat\",
+               \"id\": 1
+             }
+           },
+           \"rhs\": {
+             \"role\": \"variable\",
+             \"type\": \"Nat\",
+             \"id\": 0
+           }
+         },
+         \"rhs\": {
+           \"role\": \"application\",
+           \"lhs\": {
+             \"role\": \"application\",
+             \"lhs\": {
+               \"role\": \"constant\",
+               \"type\": \"Nat -> Nat -> Nat\",
+               \"symbol\": \"plus\"
+             },
+             \"rhs\": {
+               \"role\": \"variable\",
+               \"type\": \"Nat\",
+               \"id\": 0
+             }
+           },
+           \"rhs\": {
+             \"role\": \"variable\",
+             \"type\": \"Nat\",
+             \"id\": 1
+           }
+         }
+       }")
+
+    (define parsed
+      (parse-json-equation json-eq))
+
+    ;; We switch the lhs and rhs, so they're in lexicographic order
+    (define expected
+      '(~= (apply (apply (constant plus "Nat -> Nat -> Nat")
+                         (variable 0 "Nat"))
+                  (variable 1 "Nat"))
+           (apply (apply (constant plus "Nat -> Nat -> Nat")
+                         (variable 1 "Nat"))
+                  (variable 0 "Nat"))))
+
+    (with-check-info
+      (('expected expected)
+       ('parsed   parsed))
+
+      (check-true (and (list? parsed)
+                       (not (empty? parsed))
+                       (equation? (first parsed)))
+                  "Parsing JSON gives an equation")
+
+      (check-equal? parsed (list expected)
+                    "Parsing gives expected value"))))
