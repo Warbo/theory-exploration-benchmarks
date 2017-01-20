@@ -27,7 +27,7 @@
 
             (lambda args
               (when verbose
-                (apply eprintf args))))))
+                (eprintf (apply format args)))))))
 
 ;; Uses 'define/contract' during testing, and 'define' otherwise. Useful since
 ;; 'define/contract' can be very slow, e.g. checking every recursive call.
@@ -47,10 +47,10 @@
           [called #f])
       (lambda ()
         (when (equal? #f called)
-          (log (format "Forced ~a\n" name))
+          (log "Forced ~a\n" name)
           (set! result (let () body ...))
           (set! called #t)
-          (log (format "Finished ~a\n" name)))
+          (log "Finished ~a\n" name))
         result))))
 
 (define benchmark-dir
@@ -1591,8 +1591,7 @@
 (define (mk-final-defs-s given-files)
   (prepare (mk-defs-s given-files)))
 
-;; Prefix used to identify temporary files as ours. Note that we purposefully
-;; duplicate this in cache-to-disk, to defend against bad things.
+;; Prefix used to identify temporary files as ours
 (define temp-file-prefix
   "tebenchmarktemp")
 
@@ -1827,7 +1826,7 @@ library
 
 (define theorem-deps-of
   (memo1 (lambda (f)
-           (log (format "Forcing theorem deps of ~a\n" f))
+           (log "Forcing theorem deps of ~a\n" f)
            (define normed (normed-theorem-of f))
 
            ;; Includes all (canonical) types and constructors
@@ -2106,98 +2105,144 @@ library
          ""
          (bytes->list bs)))
 
-;; The path we'll cache data to, if necessary. This is a thunk to delay it in
-;; case theorem-files gets overridden.
-(define cache-path
-  (lambda ()
-    (string-append "/tmp/" temp-file-prefix "-cache-"
-                   (bytes->hex (sha256 (~a (theorem-files)))))))
+;; Caches data required for sampling in /tmp, so we can draw samples over and
+;; over from the same benchmarks without recalculating everything each time.
+(define/test-contract (get-sampling-data)
+  (-> sampling-data?)
 
-;; Replace the on-disk cache with DATA
-(define (cache-to-disk data)
-  (log "Writing data to cache\n")
+  ;; Check if we have cached data, if so then we return that. If not, we run
+  ;; the thunk MK-DATA, cache the result to disk, then return the result.
 
-  ;; Don't create an unbounded number of files; the check is performed here,
-  ;; since we're about to modify the filesystem anyway.
-  (define existing
-    (filter (lambda (name)
-              (string-prefix? (some-system-path->string name)
-                              (string-append temp-file-prefix)))
-            (directory-list "/tmp")))
+  (define/test-contract (mk-data)
+    (-> sampling-data?)
 
-  (when (> (length existing) 1000)
-    (log (format "Cache too big, deleting some files matching /tmp/~a*\n"
-                  temp-file-prefix))
-    (for-each (lambda (name)
-                ;; To prevent accidentally deleting /tmp, we statically force
-                ;; the prefix to be present
-                (define suffix
-                  (substring (some-system-path->string name)
-                             (length temp-file-prefix)))
-                (delete-directory/files
-                 (string-append "/tmp/tebenchmarktemp" suffix)))
-              (take existing 100)))
+    `((all-canonical-function-names
+       ;; Theorem deps aren't hex encoded, so sample with
+       ;; decoded versions
+       ,(map decode-name (lowercase-benchmark-names)))
 
-  ;; Write our data
-  (define out
-    (open-output-file (cache-path) #:exists 'replace))
-  (write data out)
-  (close-output-port out))
+      ;; read/write doesn't work for sets :(
+      (theorem-deps
+       ,(map (lambda (t-d)
+               (list (first t-d) (set->list (second t-d))))
+             (all-theorem-deps)))
 
-;; Check if cached data exists for these parameters
-(define (have-cached-data?)
-  (file-exists? (cache-path)))
+      (equation-names
+       ,(filter (lambda (f)
+                  (not (empty? (equation-from f))))
+                (theorem-files)))))
 
-;; Read data from cache file
-(define (get-cached-data)
+  ;; The path where we'll cache data. To avoid runaway file deletion, we include
+  ;; both "/tmp" and the disambiguating prefix in a single hard-coded string.
+  ;; This guarantees that concatenating with dodgy variables, like "", will
+  ;; never try to delete important paths like "/" or "/tmp".
+  (define path-prefix "/tmp/tebenchmarktemp-cache-")
+
+  ;; If you change the format of the data being stored, bump the version number
+  ;;to avoid being given the old format
+  (define cache-path
+    (string-append path-prefix
+                   (bytes->hex (sha256 (~a `(version-2 ,(theorem-files)))))))
+
+  ;; Check if cached data exists for these parameters
+  (define (have-cached-data?)
+    (file-exists? (cache-path)))
+
   (unless (have-cached-data?)
-    (raise-user-error
-     'get-cached-data
-     "Cache file ~a doesn't exist" (cache-path)))
+    ;; Don't create an unbounded number of files; delete if there are too many
+    (define existing
+      (filter (lambda (name)
+                (string-prefix? (string-append "/tmp/" name)
+                                path-prefix))
+              (map some-system-path->string (directory-list "/tmp"))))
+
+    (when (> (length existing) 1000)
+      (log "Cache too big, deleting some files matching ~a*\n" path-prefix)
+      (for-each (lambda (name)
+                  (define suffix
+                    (substring (some-system-path->string name)
+                               (- (length path-prefix) (length "/tmp/"))))
+                  (delete-directory/files
+                   (string-append path-prefix suffix)))
+                (take existing 100)))
+
+    (log "No cached data found, calculating from scratch\n")
+    (define out
+      (open-output-file (cache-path) #:exists 'replace))
+    (write (mk-data) out)
+    (close-output-port out)
+
+    (unless (have-cached-data?)
+      (raise-user-error
+       'cache-to-disk
+       "Sanity check failed: couldn't find cache after writing it ~s"
+       (cache-path))))
 
   (define in   (open-input-file (cache-path)))
   (define data (read in))
   (close-input-port in)
+
   data)
 
-;; Checks if we have cached data, if so then we return that. If not, we run the
-;; thunk PROC, cache the result to disk, then return the result.
-(define (cached-or-calc proc)
-  (unless (have-cached-data?)
-    (log "No cached data found, calculating from scratch\n")
-    (cache-to-disk (proc)))
-  (get-cached-data))
+(define (assoc-contains? . keys)
+  (lambda (l)
+    (unless (list? l)
+      (raise-user-error
+       'assoc-contains
+       "Expected a list, given ~s" l))
+    (all-of (lambda (key)
+              (or (any-of (lambda (pair)
+                            (and (pair? pair)
+                                 (equal? (car pair) key)))
+                          l)
+                  (raise-user-error
+                   'assoc-contains
+                   "Couldn't find entry for ~s in ~s" key l)))
+            keys)))
+
+(define sampling-data?
+  (assoc-contains? 'all-canonical-function-names
+                   'theorem-deps
+                   'equation-names))
+
+(define (assoc-get key val)
+  (second (assoc key val)))
 
 ;; Sample using the names and theorems from BENCHMARKS
 (define (sample-from-benchmarks size rep)
+  (define data (get-sampling-data))
 
-  ;; Cache data in /tmp, so sampling isn't as expensive
-  (define data
-    (cached-or-calc (lambda ()
-                      `((all-canonical-function-names
-                         ;; Theorem deps aren't hex encoded, so sample with
-                         ;; decoded versions
-                         ,(map decode-name (lowercase-benchmark-names)))
-
-                        ;; read/write doesn't work for sets :(
-                        (theorem-deps
-                         ,(map (lambda (t-d)
-                                 (set->list (second t-d)))
-                               (all-theorem-deps)))))))
-
-  (define all-canonical-function-names
-    (second (assoc 'all-canonical-function-names data)))
-
-  (define theorem-deps
-    (map list->set (second (assoc 'theorem-deps data))))
+  (define-values (all-canonical-function-names theorem-deps)
+    (values (assoc-get 'all-canonical-function-names data)
+            (map (lambda (t-d)
+                   (list->set (second t-d)))
+                 (assoc-get 'theorem-deps data))))
 
   (define sampled
-    (sample size rep
-            all-canonical-function-names
-            theorem-deps))
+    (sample size rep all-canonical-function-names theorem-deps))
 
   ;; Hex encode sample so it's usable with e.g. Haskell translation
   (map-set encode-lower-name sampled))
+
+;; Sample using the names and equational theorems from BENCHMARKS
+(define (sample-equational-from-benchmarks size rep)
+  (define data (get-sampling-data))
+
+  (define-values (all-canonical-function-names theorem-deps equation-names)
+    (values                (assoc-get 'all-canonical-function-names data)
+            (map list->set (assoc-get 'theorem-deps                 data))
+                           (assoc-get 'equation-names               data)))
+
+  ;; Throw away (theorem dependencies) pairs if theorem isn't in equation-names,
+  ;; then turn the resulting pairs into sets of dependencies.
+  (define equation-deps
+    (map (lambda (t-d)
+           (list->set (second t-d)))
+         (filter (lambda (t-d)
+                   (member (first t-d) equation-names))
+                 theorem-deps)))
+
+  (sample size rep all-canonical-function-names equation-deps))
 
 ;; Map a function F over the elements of a set S
 (define (map-set f s)
