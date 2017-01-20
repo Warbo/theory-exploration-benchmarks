@@ -183,7 +183,9 @@ in rec {
     name         = "tip-tools-tests";
     src          = ./scripts;
     buildInputs  = [ env ];
-    buildCommand = "raco test defs.rkt";
+    buildCommand = ''
+      raco test "$src/defs.rkt" && echo "pass" > "$out"
+    '';
 
     # Setting BENCHMARKS during tests overrides BENCHMARKS_FALLBACK, and also
     # causes all files to be tested rather than a subset.
