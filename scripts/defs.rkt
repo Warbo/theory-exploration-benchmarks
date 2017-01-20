@@ -4315,10 +4315,12 @@ library
                                        (constant bar "foo")))
                 "Constant types don't affect match")
 
-    (check-false (equations-match? '(~= (constant bar "foo")
-                                        (variable 0   "foo"))
-                                   '(~= (constant bar "foo")
-                                        (variable 1   "foo")))
+    (check-false (equations-match? '(~= (apply (constant bar "foo")
+                                               (variable 0   "baz"))
+                                        (variable 0   "baz"))
+                                   '(~= (apply (constant bar "foo")
+                                               (variable 0   "baz"))
+                                        (variable 1   "baz")))
                  "Different indices don't match")
 
     (check-false (equations-match? '(~= (constant bar "foo")
