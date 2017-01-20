@@ -2449,7 +2449,7 @@ library
     (parse-equation (string->jsexpr str))))
 
 (define/test-contract (parse-equation raw-eq)
-  (-> string? (or/c (list/c equation?)
+  (-> jsexpr? (or/c (list/c equation?)
                     empty?))
 
   ;; Cause a read error, which we'll turn into an empty result
