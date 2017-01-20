@@ -2551,6 +2551,43 @@ library
                (first eq)))
          (string->jsexpr str))))
 
+(define/test-contract (equations-match? x y)
+  (-> equation? equation? boolean?)
+
+  (define-values (x-l x-r)
+    (match x
+      [(list '~= l r) (values l r)]))
+
+  (define-values (y-l y-r)
+    (match y
+      [(list '~= l r) (values l r)]))
+
+  (and (expressions-match? x-l y-l)
+       (expressions-match? x-r y-r)))
+
+(define/test-contract (expressions-match? x y)
+  (-> expression? expression? boolean?)
+
+  (match (list x y)
+    [(list (list 'variable index1 type1)
+           (list 'variable index2 type2))
+     (and (equal? index1 index2)
+          (equal? type1  type2))]
+
+    ;; We don't currently infer types for TIP constants, so many will be
+    ;; "unknown"; since overloading isn't allowed, we can rely on the names
+    ;; being unique and ignore the types.
+    [(list (list 'constant name1 _)
+           (list 'constant name2 _))
+     (equal? name1 name2)]
+
+    [(list (list 'apply f1 x1)
+           (list 'apply f2 x2))
+     (and (expressions-match? f1 f2)
+          (expressions-match? x1 x2))]
+
+    [_ #f]))
+
 ;; Everything below here is tests; run using "raco test"
 (module+ test
   (require rackunit)
@@ -4250,4 +4287,44 @@ library
 
     (for-each (lambda (obj)
                 (check-pred equation? obj))
-              (parse-json-equations test-eqs))))
+              (parse-json-equations test-eqs)))
+
+  (def-test-case "Equation matching"
+    (check-true (equations-match? '(~= (variable 0   "foo")
+                                       (constant bar "foo"))
+                                  '(~= (variable 0   "foo")
+                                       (constant bar "foo")))
+                "Identical equations match")
+
+    (check-true (equations-match? '(~= (apply (constant func "unknown")
+                                              (variable 0    "foo"))
+                                       (constant bar "foo"))
+                                  '(~= (apply (constant func "baz")
+                                              (variable 0    "foo"))
+                                       (constant bar "foo")))
+                "Constant types don't affect match")
+
+    (check-false (equations-match? '(~= (variable 0   "foo")
+                                        (constant bar "foo"))
+                                   '(~= (variable 1   "foo")
+                                        (constant bar "foo")))
+                 "Different indices don't match")
+
+    (check-false (equations-match? '(~= (variable 0   "foo")
+                                        (constant bar "foo"))
+                                   '(~= (variable 0   "baz")
+                                        (constant bar "foo")))
+                 "Different variable types don't match")
+
+    (check-false (equations-match? '(~= (variable 0   "foo")
+                                        (constant bar "foo"))
+                                   '(~= (variable 0   "foo")
+                                        (constant baz "foo")))
+                 "Different constant names don't match")
+
+    (check-false (equations-match? '(~= (apply (constant baz "unknown")
+                                               (variable 0   "foo"))
+                                        (constant bar "foo"))
+                                   '(~= (variable 0   "foo")
+                                        (constant baz "foo")))
+                 "Different structures don't match")))
