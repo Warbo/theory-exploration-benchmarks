@@ -2595,10 +2595,19 @@ library
   ;; Suppress normalisation progress messages during tests
   (quiet)
 
-  ;; For testing, we override theorem-files to only return a subset of the
-  ;; benchmarks; this makes testing faster. If a test requires some particular
-  ;; benchmark to be included, wrap the filename in testing-file to make sure
-  ;; it's being included.
+  ;; For testing, we default to only using a subset of the benchmarks, which we
+  ;; accomplish by overriding theorem-files; this makes testing faster.
+
+  ;; There are three things to note:
+  ;;  - If a particular set of benchmarks has specifically been requested, via
+  ;;    the BENCHMARKS environment variable, we use that whole set, rather than
+  ;;    selecting some subset.
+  ;;  - Some of our tests require particular benchmark files to be included. We
+  ;;    hard-code these files in a list below, and always include them in our
+  ;;    selected subset. When using these filenames in a test, we use
+  ;;    testing-file to check that they have been added this list.
+  ;;  - To prevent edge-cases slipping through, we also include a random
+  ;;    set of files in our selection.
   (define testing-file
     (let ()
       ;; We always include the following files, since they're either required by
@@ -2625,9 +2634,11 @@ library
       ;; asymptotically preserve coverage.
       (define subset (take (shuffle (theorem-files)) 10))
 
-      ;; Override theorem-files to return these chosen files
-      (set-theorem-files! (lambda ()
-                            (append required-testing-files subset)))
+      ;; Override theorem-files to return these chosen files, if no BENCHMARKS
+      ;; were given explicitly
+      (when (member (getenv "BENCHMARKS") '(#f ""))
+        (set-theorem-files! (lambda ()
+                              (append required-testing-files subset))))
 
       ;; The definition of testing-file; checks if the given file is in our
       ;; selected list.

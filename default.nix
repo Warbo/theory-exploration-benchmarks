@@ -143,43 +143,63 @@ in rec {
       done
     '';
 
+    # This tells the tests where to find the benchmarks. Only a subset of files
+    # will be tested, to make things faster.
+    BENCHMARKS_FALLBACK = "${tip-benchmarks}";
+
+    # Check contracts while testing; it's disabled by default for being too slow
+    PLT_TR_CONTRACTS = "1";
+
+    # Tells the tests where to find data, like example inputs.
+    TEST_DATA = "${./test-data}";
+
+    # Allow testing to be skipped, as it can take a few minutes
     doCheck    = getEnv "SKIP_TESTS" == "";
-    checkPhase = ''
-      # BENCHMARKS tells the tests where to find the benchmarks
-      # TEST_DATA  tells the tests where to find other data
+    checkPhase = "raco test defs.rkt";
 
-      # PLT_TR_CONTRACTS enables contract checking, which is useful but slow
-
-      BENCHMARKS="${tip-benchmarks}" TEST_DATA="${./test-data}" PLT_TR_CONTRACTS=1 raco test defs.rkt
-    '';
-
+    # Sets up the environment for the scripts and tests, and informs the user
     shellHook = ''
       {
-        echo "Setting BENCHMARKS_FALLBACK env var to ${tip-benchmarks}"
-        echo "This can be overridden by providing a BENCHMARKS env var"
+        echo "Setting BENCHMARKS_FALLBACK to ${tip-benchmarks}"
+        echo "To use a different set of benchmarks, you can set BENCHMARKS"
         export BENCHMARKS_FALLBACK="${tip-benchmarks}"
 
-        echo "Setting TEST_DATA env var to ${./test-data}"
+        echo "Setting TEST_DATA to ${./test-data}"
         export TEST_DATA="${./test-data}"
 
         echo "NOTE: We don't check Racket contracts because it's slow."
-        echo "To enable contract checking, set PLT_TR_CONTRACTS env var to 1"
+        echo "To enable contract checking, set PLT_TR_CONTRACTS to 1"
 
-        echo "Test with 'raco test scripts/defs.rkt'"
-        echo "Use PLT_TEST_REGEX env var to limit the test cases which are run."
+        echo "You can run tests with 'raco test scripts/defs.rkt'"
+        echo "Use PLT_TEST_REGEX env var to limit which test cases are run."
 
-        echo "For more information during tests, set DEBUG env var"
+        echo "Log messages are suppressed during tests. Set DEBUG to see them."
       } 1>&2
     '';
   });
 
-  tip-benchmark-smtlib = runCommand "mk-smtlib"
-    {
-      buildInputs = [ tools ];
-    }
-    ''
+  # Runs tests against all TIP benchmarks, rather than the sub-set used in tools
+  tests = stdenv.mkDerivation {
+    name         = "tip-tools-tests";
+    src          = ./scripts;
+    buildInputs  = [ env ];
+    buildCommand = "raco test defs.rkt";
+
+    # Setting BENCHMARKS during tests overrides BENCHMARKS_FALLBACK, and also
+    # causes all files to be tested rather than a subset.
+    BENCHMARKS          = "${tip-benchmarks}";
+    BENCHMARKS_FALLBACK = "${tip-benchmarks}";
+    PLT_TR_CONTRACTS    = "1";
+    TEST_DATA           = "${./test-data}";
+  };
+
+  tip-benchmark-smtlib = stdenv.mkDerivation {
+    name         = "tip-benchmark-smtlib";
+    buildInputs  = [ tools ];
+    buildCommand = ''
       find "${tip-benchmarks}" -name "*.smt2" | mk_final_defs > "$out"
     '';
+  };
 
   tip-benchmark-haskell = stdenv.mkDerivation {
     name         = "tip-benchmarks-haskell";
