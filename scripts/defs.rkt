@@ -67,36 +67,13 @@
 (define benchmark-files
   (curry map benchmark-file))
 
-;; These are all values "built in" to TIP, i.e. they can appear without an
-;; accompanying definition. We provide definitions here, so that the resulting
-;; theories aren't missing any dependencies.
-
-;; FIXME: We can remove some of these using:
-;;  --bool-op-to-if --remove-builtin-bool for booleans (in that order)
-(define operator-defs
-  ;; FIXME: use identity function for @
-  '((@        . #f)
-    (=        . #f)
-    (distinct . #f)
-
-    ;; FIXME: these are removable using TIP options
-    (+        . #f)
-    (-        . #f)
-    (*        . #f)
-    (div      . #f)
-    (mod      . #f)
-    (>        . #f)
-    (>=       . #f)
-    (<        . #f)
-    (<=       . #f)))
-
-(define operators (map first operator-defs))
-
-;; These include keywords of the TIP format, along with definitions like Int and
-;; Bool which (depending on tip options) translate to built-in Haskell values
+;; Keywords of the TIP format. We specifically *avoid* parts of the TIP
+;; specification like Int, Bool and their associated operations, which should be
+;; replaced by the strip-native.rkt script. Note that ite and = shouldn't appear
+;; anywhere in a benchmark, except inside the definition of custom-= since it's
+;; unavoidable.
 (define native-symbols
-  (append operators
-          '(Int Bool 'as 'forall 'assert-not 'lambda 'case 'match 'let)))
+  '(@ = as ite forall assert-not lambda case match let))
 
 ;; Given an arbitrary TIP (sub)expression, return the externally-visible symbols
 ;; it contains. This includes globals being defined, globals being used,
