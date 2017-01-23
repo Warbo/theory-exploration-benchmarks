@@ -1840,7 +1840,12 @@ library
              (expression-constructors normed-qualified-theorem-files))
 
            ;; Remove types
-           (define raw-names (remove* (theorem-types normed) (theorem-globals normed)))
+           (define raw-names
+             (remove* (theorem-types normed) (theorem-globals normed)))
+
+           ;; Remove builtins
+           (define custom-names
+             (remove* native-symbols raw-names))
 
            (define result
              (foldl (lambda (name existing)
@@ -3800,9 +3805,10 @@ library
     (check-equal?
      (lowercase-names
       (file->list (benchmark-file "tip2015/sort_NStoogeSort2Permutes.smt2")))
-     '(head tail first second p twoThirds third take sort2 null length elem drop
-       splitAt delete isPermutation append nstooge2sort2 nstoogesort2
-       nstooge2sort1))
+     '(custom-p custom-succ custom-pred custom-ite custom-not custom-nat->
+       custom-> custom-<= custom-or custom-bool-converter custom-andhead tail
+       first second p twoThirds third take sort2 null length elem drop splitAt
+       delete isPermutation append nstooge2sort2 nstoogesort2 nstooge2sort1))
 
     (check-equal?
      (uppercase-names
@@ -4093,14 +4099,16 @@ library
 
                 ("With constructors"
                  ((,(testing-file "tip2015/propositional_AndCommutative.smt2")
-                   (tip2015/propositional_AndCommutative.smt2valid
+                   (grammars/packrat_unambigPackrat.smt2custom-bool-converter
+                    tip2015/propositional_AndCommutative.smt2valid
                     constructor-tip2015/propositional_AndCommutative.smt2&))
 
                   (,(begin
                       (testing-file "tip2015/propositional_AndCommutative.smt2")
                       (testing-file "tip2015/propositional_AndIdempotent.smt2"))
                    (tip2015/propositional_AndCommutative.smt2valid
-                    constructor-tip2015/propositional_AndCommutative.smt2&))
+                    constructor-tip2015/propositional_AndCommutative.smt2&
+                    grammars/packrat_unambigPackrat.smt2custom-bool-converter))
 
                   (,(begin
                       (testing-file "prod/prop_35.smt2")
@@ -4108,7 +4116,8 @@ library
                       (testing-file "tip2015/nat_pow_one.smt2"))
                    (prod/prop_35.smt2exp
                     constructor-isaplanner/prop_01.smt2S
-                    constructor-isaplanner/prop_01.smt2Z)))))))
+                    constructor-isaplanner/prop_01.smt2Z
+                    grammars/packrat_unambigPackrat.smt2custom-bool-converter)))))))
 
   (def-test-case "Sampling"
 
