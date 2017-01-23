@@ -16,6 +16,7 @@
 (provide mk-signature)
 (provide qualify-given)
 (provide sample-from-benchmarks)
+(provide sample-equational-from-benchmarks)
 (provide symbols-of-theorems)
 (provide types-from-defs)
 
@@ -66,12 +67,36 @@
 (define benchmark-files
   (curry map benchmark-file))
 
+;; These are all values "built in" to TIP, i.e. they can appear without an
+;; accompanying definition. We provide definitions here, so that the resulting
+;; theories aren't missing any dependencies.
+
+;; FIXME: We can remove some of these using:
+;;  --bool-op-to-if --remove-builtin-bool for booleans (in that order)
+(define operator-defs
+  ;; FIXME: use identity function for @
+  '((@        . #f)
+    (=        . #f)
+    (distinct . #f)
+
+    ;; FIXME: these are removable using TIP options
+    (+        . #f)
+    (-        . #f)
+    (*        . #f)
+    (div      . #f)
+    (mod      . #f)
+    (>        . #f)
+    (>=       . #f)
+    (<        . #f)
+    (<=       . #f)))
+
+(define operators (map first operator-defs))
+
 ;; These include keywords of the TIP format, along with definitions like Int and
 ;; Bool which (depending on tip options) translate to built-in Haskell values
 (define native-symbols
-  (list 'Int 'Bool '* '> 'mod 'and 'or 'xor 'iff 'ite 'true 'false 'not
-        'implies 'distinct '@ '= '<= '- '+ '* 'div '=> 'as 'forall 'assert-not
-        'lambda 'case 'match))
+  (append operators
+          '(Int Bool 'as 'forall 'assert-not 'lambda 'case 'match 'let)))
 
 ;; Given an arbitrary TIP (sub)expression, return the externally-visible symbols
 ;; it contains. This includes globals being defined, globals being used,

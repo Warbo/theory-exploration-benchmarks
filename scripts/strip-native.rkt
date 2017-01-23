@@ -6,6 +6,9 @@
   (display "\n" (current-error-port))
   x)
 
+(define (start lst)
+  (reverse (rest (reverse lst))))
+
 ;; Replacement definitions for boolean expressions, along with any dependencies
 (define custom-bool
   (list
@@ -49,12 +52,30 @@
       (custom-ite x y CustomTrue))
    (list custom-bool custom-ite)))
 
+;; NOTE: We must replace = to make conditional equations typecheck, e.g.
+;; (custom-=> (= (foo x) (foo y)) (= (bar x) (bar y))), since = returns a
+;; Bool and custom-=> expects CustomBools. However, = is polymorphic, which
+;; we can't implement directly (e.g. using pattern matching), so the
+;; definition of custom-= must use = internally (which also requires us to
+;; eliminate the native Bool using ite)
+(define custom-=
+  (list
+   '(define-fun (par (a) (custom-= ((x a) (y a)) CustomBool
+                                   (ite (= x y) CustomTrue CustomFalse))))
+   (list custom-bool)))
+
+(define custom-distinct
+  (list
+   '(define-fun (par (a) (custom-distinct ((x a) (y a)) CustomBool
+                                          (custom-not (custom-= x y)))))
+   (list custom-= custom-not)))
+
 ;; Used in CustomInt; will probably overlap with a benchmark's definition, but
 ;; we will strip out redundancies anyway
 (define custom-nat
   (list
-   '(declare-datatypes () ((CustomNat (CustomZ
-                                       (CustomS (custom-p CustomNat))))))
+   '(declare-datatypes () ((CustomNat (CustomZ)
+                                      (CustomS (custom-p CustomNat)))))
    '()))
 
 ;; Replacement definitions for integer expressions. There are several
@@ -62,9 +83,9 @@
 ;; giving each integer a single representation (in particular, no -0)
 (define custom-int
   (list
-   '(declare-datatypes () ((CustomInt ((CustomNeg (custom-succ CustomNat))
-                                        CustomZero
-                                       (CustomPos (custom-pred CustomNat))))))
+   '(declare-datatypes () ((CustomInt (CustomNeg (custom-succ CustomNat))
+                                      (CustomZero)
+                                      (CustomPos (custom-pred CustomNat)))))
    (list custom-nat)))
 
 ;; Converts integer literals to our custom datatype
@@ -91,20 +112,22 @@
   (list
    '(define-fun-rec custom-inc ((x CustomInt)) CustomInt
       (match x
-        (case  CustomZero              (CustomPos CustomZ))
-        (case (CustomPos  x2)          (CustomPos (CustomS x2)))
-        (case (CustomNeg  CustomZ)      CustomZero)
-        (case (CustomNeg (CustomS x2)) (CustomNeg x2))))
+        (case  CustomZero     (CustomPos CustomZ))
+        (case (CustomPos  x2) (CustomPos (CustomS x2)))
+        (case (CustomNeg  x2) (match x2
+                                (case  CustomZ      CustomZero)
+                                (case (CustomS x3) (CustomNeg x3))))))
    (list custom-int)))
 
 (define custom-dec
   (list
    '(define-fun-rec custom-dec ((x CustomInt)) CustomInt
       (match x
-        (case  CustomZero              (CustomNeg  CustomZ))
-        (case (CustomPos  CustomZ)      CustomZero)
-        (case (CustomPos (CustomS x2)) (CustomPos  x2))
-        (case (CustomNeg  x2)          (CustomNeg (CustomS x2)))))
+        (case  CustomZero    (CustomNeg  CustomZ))
+        (case (CustomPos x2) (match x2
+                               (case  CustomZ      CustomZero)
+                               (case (CustomS x3) (CustomPos x3))))
+        (case (CustomNeg x2) (CustomNeg (CustomS x2)))))
    (list custom-int)))
 
 (define custom-invert
@@ -226,17 +249,15 @@
 ;; Makes a list of all definitions depended on based on the given pair
 ;; (expr (dep1 dep2 ...)), where each dep is also such a pair.
 (define (dependencies-closure x)
-  (dump `(dependencies-closure ,x))
   (match x
-    [(list expr deps) (remove-duplicates
-                       (append (map dependencies-closure deps) (list expr)))]))
+    [(list expr deps) (let ([rec (apply append (map dependencies-closure deps))])
+                        (remove-duplicates (append rec (list expr))))]))
 
 ;; Replaces native expressions, returning '(new-expr new-deps) where new-deps
 ;; includes any dependencies required for the replacement. The type-level?
 ;; argument tells us whether expr is a type or a value; it's used to prevent
 ;; function types (=>) being treated as boolean implication (=>).
 (define (replace-native expr type-level?)
-  (dump `(replace-native ,expr ,type-level?))
   (match expr
 
     ;; Booleans
@@ -252,6 +273,12 @@
 
     ['not   (list 'custom-not  (list custom-not))]
 
+    ;; Note that the definition of custom-= uses =, so we shouldn't e.g. apply
+    ;; replace-native to the definition of custom-=.
+    ['=     (list 'custom-=    (list custom-=))]
+
+    ['distinct (list 'custom-distinct (list custom-distinct))]
+
     ;; Only swap => when used as a value, not a type
     ['=>    (if type-level?
                 (list '=> '())
@@ -260,7 +287,15 @@
     ;; Integers
     ['Int         (list 'CustomInt         (list custom-int))]
     [(? integer?) (list (int->custom expr) (list custom-int))]
-
+    ['+           (list 'custom-+   (list custom-+))]
+    ['-           (list 'custom--   (list custom--))]
+    ['*           (list 'custom-*   (list custom-*))]
+    ['div         (list 'custom-div (list custom-div))]
+    ['mod         (list 'custom-mod (list custom-mod))]
+    ['<           (list 'custom-<   (list custom-<))]
+    ['>           (list 'custom->   (list custom->))]
+    ['<=          (list 'custom-<=  (list custom-<=))]
+    ['>=          (list 'custom->=  (list custom->=))]
 
     ;; Cases where we need to switch into type mode
     [(list 'lambda args body)  (let ([args2 (replace-native args #t)]
@@ -303,7 +338,7 @@
                                       (list body2))
                               (append (third others)
                                       deps))]))
-                   '()
+                   '(() () ())
                    (range (length decs)))
        [(list decs2 defs2 deps)
         (list `(define-funs-rec ,decs2 ,defs2)
@@ -324,7 +359,6 @@
     [`(declare-datatypes ,params ,types)
      (let ()
        (define (replace-in-type type others)
-         (dump `(replace-in-type ,type ,others))
          ;; Recurse through all constructors
          (define type-name (first type))
          (match (foldl (lambda (constructor others)
@@ -342,13 +376,10 @@
                           deps))]))
 
        (define (replace-in-constructor constructor)
-         (dump `(replace-in-constructor ,constructor))
          ;; Recurse through all destructors, if any
          (define constructor-name (first constructor))
          (match (foldl (lambda (destructor others)
-                         (dump `(pre ,destructor ,others))
                          (define rec (replace-in-destructor destructor))
-                         (dump `(post ,rec))
                          (list (append (first others)
                                        (list (first rec)))
                                (append (second others)
@@ -360,10 +391,8 @@
                   deps)]))
 
        (define (replace-in-destructor destructor)
-         (dump `(replace-in-destructor ,destructor))
          (define name      (first destructor))
          (define arg-type2 (replace-native (second destructor) #t))
-         (dump `(rid (name ,name) (arg-type2 ,arg-type2)))
          (list (list name (first arg-type2))
                (second arg-type2)))
 
@@ -377,7 +406,6 @@
     ;; Recurse through structures
     [(cons x y) (let ([x2 (replace-native x type-level?)]
                       [y2 (replace-native y type-level?)])
-                  (dump `(consed ,x2 ,y2))
                   (list (cons (first x2) (first y2))
                         (append (second x2) (second y2))))]
 
@@ -394,10 +422,8 @@
 
 ;; Replace native definitions and prepend any newly required definitions
 (define (replace-all exprs)
-  (dump `(replace-all ,exprs))
   (define replaced
     (replace-native exprs #f))
-  (dump `(replaced ,replaced))
   (define raw-deps
     (dependencies-closure (list 'te-sentinel-value (second replaced))))
 
@@ -405,20 +431,54 @@
    (remove 'te-sentinel-value
            (append raw-deps (first replaced)))))
 
-;; Read in the raw TIP benchmark, as a list of s-expressions
-(define input
-  (string-append "(\n" (port->string (current-input-port)) "\n)"))
+(define destination
+  (getenv "DESTINATION"))
 
-(define raw
-  (let ([in (open-input-string input)])
-    (read in)))
-(dump `(raw ,raw))
+(when (member destination '("" #f))
+  (error "No DESTINATION given"))
 
-;; Write out the replaced versions, unwrapping the list
-(define result (replace-all raw))
-(dump `(result ,result))
+(define source
+  (getenv "SOURCE"))
 
-(for-each (lambda (expr)
-            (write expr)
-            (display "\n"))
-          result)
+(when (member source '("" #f))
+  (error "No SOURCE given"))
+
+(define input-files
+  (filter (lambda (x) (string-suffix? x ".smt2"))
+          (map (lambda (x)
+                 (string-trim (path->string x)
+                              (string-append source "/")
+                              #:left? #t
+                              #:right? #f))
+               (sequence->list (in-directory source)))))
+
+(for-each (lambda (f)
+            (display (format "Stripping native symbols from ~a\n" f)
+                     (current-error-port))
+            ;; Read in the raw TIP benchmark, as a list of s-expressions
+            (define input
+              (string-append "(\n"
+                             (file->string (string-append source "/" f))
+                             "\n)"))
+
+            (define raw
+              (let ([in (open-input-string input)])
+                (read in)))
+
+            ;; Write out the replaced versions, unwrapping the list
+            (define result (replace-all raw))
+
+            (make-directory* (apply build-path (cons destination
+                                                     (start (explode-path f)))))
+            (let ([out-string (open-output-string)]
+                  [out-file   (open-output-file (string-append destination
+                                                               "/"
+                                                               f)
+                                                #:exists 'replace)])
+              (for-each (lambda (expr)
+                          (write expr out-string)
+                          (display "\n" out-string))
+                        result)
+              (display (get-output-string out-string) out-file)
+              (close-output-port out-file)))
+          input-files)

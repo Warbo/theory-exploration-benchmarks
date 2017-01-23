@@ -103,10 +103,66 @@ let
 
 in rec {
 
-  # Take from git, to keep things pristine and cacheable
-  tip-benchmarks = runCommand "tip-benchmarks" { repo = tip-repo; } ''
-    cp -r "$repo/benchmarks" "$out"
-  '';
+  # Take benchmarks from git, but transform them to replace "built-in"
+  # definitions like "Bool" and "<" with explicitly defined versions.
+  tip-benchmarks = stdenv.mkDerivation {
+    name = "tip-benchmarks";
+    src  = tip-repo;
+
+    buildInputs  = [ env ];
+    buildPhase = ''
+      set -e
+      rm -rf ./transformed
+      mkdir -p transformed
+
+      SOURCE="$PWD/benchmarks" \
+      DESTINATION="$PWD/transformed" racket "${./scripts/strip-native.rkt}"
+    '';
+
+    doCheck = true;
+    checkPhase = ''
+      set -e
+      GIVEN=$(find ./benchmarks  -type f | wc -l)
+       MADE=$(find ./transformed -type f | wc -l)
+
+      if [[ "$GIVEN" -ne "$MADE" ]]
+      then
+        echo "Given $GIVEN benchmarks, outputted $MADE benchmarks" 1>&2
+        exit 1
+      fi
+
+      # We can't check for '=>' since it's both implication and a function type
+      echo "Ensuring there are no native operators..." 1>&2
+      while read -r BENCHMARK
+      do
+        for OP in ite and false not or true True False Bool Int "[+]" "[*]" \
+                  div mod ">" "<" ">=" "<="
+        do
+          # Look for this operator, but avoid matching parts of other symbols
+          # (e.g. thinking that "opposite" is "ite"). We also ignore the
+          # definition of custom-=, since that must use ite.
+          if grep "[^=a-zA-Z0-9-]$OP[^=a-zA-Z0-9-]" < "$BENCHMARK" |
+             grep -v '(define-fun (par (a) (custom-= '
+          then
+            echo "Operator '$OP' should have been replaced in '$BENCHMARK'" 1>&2
+            exit 1
+          fi
+        done < <(find ./transformed -type f)
+      done
+
+      echo "Checking all benchmarks are parseable by tip" 1>&2
+      while read -r BENCHMARK
+      do
+        OUTPUT=$(tip < "$BENCHMARK") || {
+          echo "Error sending $BENCHMARK through tip" 1>&2
+          echo "$OUTPUT" 1>&2
+          exit 1
+        }
+      done < <(find ./transformed -type f)
+    '';
+
+    installPhase = ''cp -r ./transformed "$out"'';
+  };
 
   tools = stdenv.mkDerivation (rec {
     name = "te-benchmark";
