@@ -71,9 +71,10 @@
 ;; specification like Int, Bool and their associated operations, which should be
 ;; replaced by the strip-native.rkt script. Note that ite and = shouldn't appear
 ;; anywhere in a benchmark, except inside the definition of custom-= since it's
-;; unavoidable.
+;; unavoidable. Also, => should only be used for function types, use custom-=>
+;; for boolean implication.
 (define native-symbols
-  '(@ = as ite forall assert-not lambda case match let))
+  '(@ = => as ite forall assert-not lambda case match let))
 
 ;; Given an arbitrary TIP (sub)expression, return the externally-visible symbols
 ;; it contains. This includes globals being defined, globals being used,
@@ -3421,6 +3422,8 @@ library
 
   (def-test-case "Mutual recursion"
     (define mut (list custom-bool
+                      custom-nat
+                      custom-int
                       custom-ite
                       '(define-funs-rec
                          ((models  ((x CustomBool)
