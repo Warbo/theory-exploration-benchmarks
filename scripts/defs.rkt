@@ -2117,21 +2117,20 @@ library
 ;; Cache data required for sampling in /tmp, so we can draw samples over and
 ;; over from the same benchmarks without recalculating everything each time.
 
-(define (assoc-contains? . keys)
-  (lambda (l)
-    (unless (list? l)
-      (raise-user-error
-       'assoc-contains
-       "Expected a list, given ~s" l))
-    (all-of (lambda (key)
-              (or (any-of (lambda (pair)
-                            (and (pair? pair)
-                                 (equal? (car pair) key)))
-                          l)
-                  (raise-user-error
-                   'assoc-contains
-                   "Couldn't find entry for ~s in ~s" key l)))
-            keys)))
+(define ((assoc-contains? . keys) l)
+  (unless (list? l)
+    (raise-user-error
+     'assoc-contains
+     "Expected a list, given ~s" l))
+  (all-of (lambda (key)
+            (or (any-of (lambda (pair)
+                          (and (pair? pair)
+                               (equal? (car pair) key)))
+                        l)
+                (raise-user-error
+                 'assoc-contains
+                 "Couldn't find entry for ~s in ~s" key l)))
+          keys))
 
 (define sampling-data?
   (assoc-contains? 'all-canonical-function-names
@@ -2177,7 +2176,7 @@ library
 
   ;; Check if cached data exists for these parameters
   (define (have-cached-data?)
-    (file-exists? (cache-path)))
+    (file-exists? cache-path))
 
   (unless (have-cached-data?)
     ;; Don't create an unbounded number of files; delete if there are too many
@@ -2199,7 +2198,7 @@ library
 
     (log "No cached data found, calculating from scratch\n")
     (define out
-      (open-output-file (cache-path) #:exists 'replace))
+      (open-output-file cache-path #:exists 'replace))
     (write (mk-data) out)
     (close-output-port out)
 
@@ -2207,9 +2206,9 @@ library
       (raise-user-error
        'cache-to-disk
        "Sanity check failed: couldn't find cache after writing it ~s"
-       (cache-path))))
+       cache-path)))
 
-  (define in   (open-input-file (cache-path)))
+  (define in   (open-input-file cache-path))
   (define data (read in))
   (close-input-port in)
 
