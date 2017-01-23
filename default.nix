@@ -258,10 +258,13 @@ in rec {
 
     # Setting BENCHMARKS during tests overrides BENCHMARKS_FALLBACK, and also
     # causes all files to be tested rather than a subset.
-    BENCHMARKS          = "${tip-benchmarks}";
-    BENCHMARKS_FALLBACK = "${tip-benchmarks}";
+    BENCHMARKS          = tip-benchmarks;
+    BENCHMARKS_FALLBACK = tip-benchmarks;
     PLT_TR_CONTRACTS    = "1";
     TEST_DATA           = "${./test-data}";
+
+    # Include tools as a dependency, so we run its fast tests first
+    UNUSED = tools;
   };
 
   tip-benchmark-smtlib = stdenv.mkDerivation {
