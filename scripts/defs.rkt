@@ -3575,18 +3575,26 @@ library
 
        (parameterize-env `([#"HOME" ,(string->bytes/utf-8 out-dir)])
          (lambda ()
-           (parameterize ([current-directory out-dir])
-             (run-pipeline/out '(cabal configure))
+           (define stdout (open-output-string))
+           (define stderr (open-output-string))
+           (define output "nothing")
+           (parameterize ([current-directory out-dir]
+                          [current-output-port stdout]
+                          [current-error-port  stderr])
+             (run-pipeline '(cabal configure))
 
-             (define out
+             (set! output
                (run-pipeline/out '(echo -e "import A\n:browse")
-                                 '(cabal repl -v0)))
+                                 '(cabal repl -v0))))
 
-             ;; If the import fails, we're stuck with the Prelude, which contains classes
-             (with-check-info
-              (('out     out)
-               ('message "Module imported successfully"))
-              (check-false (string-contains? out "class Functor")))))))))
+           ;; If the import fails, we're stuck with the Prelude, which
+           ;; contains classes like Functor
+           (with-check-info
+             (('output  output)
+              ('stdout  (get-output-string stdout))
+              ('stderr  (get-output-string stderr))
+              ('message "Module imported successfully"))
+             (check-false (string-contains? output "class Functor"))))))))
 
   (define regressions
     (benchmark-files '("tip2015/propositional_AndCommutative.smt2")))
