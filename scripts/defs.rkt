@@ -69,12 +69,13 @@
 
 ;; Keywords of the TIP format. We specifically *avoid* parts of the TIP
 ;; specification like Int, Bool and their associated operations, which should be
-;; replaced by the strip-native.rkt script. Note that ite and = shouldn't appear
-;; anywhere in a benchmark, except inside the definition of custom-= since it's
-;; unavoidable. Also, => should only be used for function types, use custom-=>
-;; for boolean implication.
+;; replaced by the strip-native.rkt script. Due to constraints of the TIP format
+;; some of these are currently unavoidable, e.g. polymorphic = which produces a
+;; Bool; they shouldn't appear outside our wrappers though. Also, => should only
+;; be used for function types, use custom-=> for boolean implication.
 (define native-symbols
-  '(@ = => as ite forall assert-not lambda case match let))
+  '(ite Bool = distinct => ;; Should only appear as per strip-native.rkt
+    @ as forall assert-not lambda case match let))
 
 ;; Given an arbitrary TIP (sub)expression, return the externally-visible symbols
 ;; it contains. This includes globals being defined, globals being used,
