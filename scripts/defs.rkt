@@ -2107,8 +2107,30 @@ library
          ""
          (bytes->list bs)))
 
-;; Caches data required for sampling in /tmp, so we can draw samples over and
+;; Cache data required for sampling in /tmp, so we can draw samples over and
 ;; over from the same benchmarks without recalculating everything each time.
+
+(define (assoc-contains? . keys)
+  (lambda (l)
+    (unless (list? l)
+      (raise-user-error
+       'assoc-contains
+       "Expected a list, given ~s" l))
+    (all-of (lambda (key)
+              (or (any-of (lambda (pair)
+                            (and (pair? pair)
+                                 (equal? (car pair) key)))
+                          l)
+                  (raise-user-error
+                   'assoc-contains
+                   "Couldn't find entry for ~s in ~s" key l)))
+            keys)))
+
+(define sampling-data?
+  (assoc-contains? 'all-canonical-function-names
+                   'theorem-deps
+                   'equation-names))
+
 (define/test-contract (get-sampling-data)
   (-> sampling-data?)
 
@@ -2185,27 +2207,6 @@ library
   (close-input-port in)
 
   data)
-
-(define (assoc-contains? . keys)
-  (lambda (l)
-    (unless (list? l)
-      (raise-user-error
-       'assoc-contains
-       "Expected a list, given ~s" l))
-    (all-of (lambda (key)
-              (or (any-of (lambda (pair)
-                            (and (pair? pair)
-                                 (equal? (car pair) key)))
-                          l)
-                  (raise-user-error
-                   'assoc-contains
-                   "Couldn't find entry for ~s in ~s" key l)))
-            keys)))
-
-(define sampling-data?
-  (assoc-contains? 'all-canonical-function-names
-                   'theorem-deps
-                   'equation-names))
 
 (define (assoc-get key val)
   (second (assoc key val)))
@@ -2724,6 +2725,27 @@ library
                          (define-fun redundantZ1 () Nat (as Z Nat))
                          (define-fun redundantZ2 () Nat (as Z Nat))
                          (define-fun redundantZ3 () Nat (as Z Nat))))
+
+  (define custom-bool
+    '(declare-datatypes () ((CustomBool (CustomTrue) (CustomFalse)))))
+
+  (define custom-ite
+    '(define-fun
+       (par (a)
+            (custom-ite
+             ((c CustomBool) (x a) (y a)) a
+             (match c
+               (case CustomTrue  x)
+               (case CustomFalse y))))))
+
+  (define custom-nat
+    '(declare-datatypes () ((CustomNat (CustomZ)
+                                       (CustomS (custom-p CustomNat))))))
+
+  (define custom-int
+    '(declare-datatypes () ((CustomInt (CustomNeg (custom-succ CustomNat))
+                                       (CustomZero)
+                                       (CustomPos (custom-pred CustomNat))))))
 
   (define test-benchmark-defs
     (mk-defs-s (theorem-files)))
@@ -3331,7 +3353,7 @@ library
       (delete-directory/files dir)
       result))
 
-  (define (string-to-haskell val)
+  (define (string-to-haskell vals)
     ;; mk-final-defs takes in filenames, so it can qualify names. This makes
     ;; and cleans up temporary files for testing.
 
@@ -3342,30 +3364,41 @@ library
                    (define temp-file (string-append (path->string dir)
                                                     "/test.smt2"))
 
-                   (display-to-file val temp-file)
+                   (for-each (lambda (val)
+                               (display-to-file val  temp-file
+                                                #:exists 'append)
+                               (display-to-file "\n" temp-file
+                                                #:exists 'append))
+                             vals)
 
                    (let* ([result (defs-to-sig temp-file)])
                      (delete-file temp-file)
                      result))))
 
+  (define form-deps
+    (list custom-nat custom-int))
+
   (define form
     '(declare-datatypes ()
                         ((Form (& (&_0 Form) (&_1 Form))
                                (Not (Not_0 Form))
-                               (Var (Var_0 Int))))))
+                               (Var (Var_0 CustomInt))))))
+
+  (define form-with-deps
+    (append form-deps (list form)))
 
   (def-test-case "Can get form constructors"
-    (check-equal? (get-def-s '& (list form))
+    (check-equal? (get-def-s '& form-with-deps)
                   (list form)))
 
   (def-test-case "Can prepare form"
     (check-true (begin
-                  (prepare form)
+                  (prepare form-with-deps)
                   #t)))
 
   (def-test-case "Form defines datatype"
     (define prepared
-      (prepare form))
+      (prepare form-with-deps))
 
     (with-check-info
       (('prepared prepared)
@@ -3374,7 +3407,7 @@ library
                         (member 'declare-datatypes (flatten prepared)))))
 
   (def-test-case "Form datatype survives translation"
-    (define sig (string-to-haskell form))
+    (define sig (string-to-haskell form-with-deps))
 
     (define data-found
       (regexp-match? "data[ ]+Global[0-9a-f]+[ ]+="
@@ -3387,29 +3420,31 @@ library
       (check-true data-found)))
 
   (def-test-case "Mutual recursion"
-    (define mut '(define-funs-rec
-                   ((models  ((x Bool)
-                              (y Int))
-                             Bool)
-                    (models2 ((q Bool)
-                              (x Int))
-                             Bool)
-                    (models5 ((q Bool)
-                              (x Int)
-                              (y Int))
-                             Bool))
+    (define mut (list custom-bool
+                      custom-ite
+                      '(define-funs-rec
+                         ((models  ((x CustomBool)
+                                    (y CustomInt))
+                                   CustomBool)
+                          (models2 ((q CustomBool)
+                                    (x CustomInt))
+                                   CustomBool)
+                          (models5 ((q CustomBool)
+                                    (x CustomInt)
+                                    (y CustomInt))
+                                   CustomBool))
 
-                   ((ite x
-                         (models2 (models x y) y)
-                         (models5 (models x y) y y))
+                         ((custom-ite x
+                                      (models2 (models x y) y)
+                                      (models5 (models x y) y y))
 
-                    (ite q
-                         (models5 (models q x) x x)
-                         (models2 (models q x) x))
+                          (custom-ite q
+                                      (models5 (models q x) x x)
+                                      (models2 (models q x) x))
 
-                    (ite q
-                         (models2 q x)
-                         (models5 q x y)))))
+                          (custom-ite q
+                                      (models2 q x)
+                                      (models5 q x y))))))
 
     (define prepared (prepare mut))
 
@@ -3747,7 +3782,7 @@ library
 
   (let ([f (benchmark-file "tip2015/nat_alt_mul_comm.smt2")])
     (check-equal? (string-trim (pipe (file->string f) types-from-defs))
-                  "Nat"))
+                  "CustomBool\nNat"))
 
   (def-test-case "Name extraction"
     (check-equal?
