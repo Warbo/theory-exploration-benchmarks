@@ -853,11 +853,32 @@
 
 ;; Removes '-sentinel' suffices. Do this after all other string-based
 ;; transformations, since the sentinels prevent us messing with, say, the
-;; symbol "plus2", when we only wanted to change the symbol "plus"
-(define (remove-suffices x)
-  (read-benchmark (string-replace (format-symbols x)
-                                  "-sentinel"
-                                  "")))
+;; symbol "plus2", when we only wanted to change the symbol "plus". Also
+;; unqualifies "custom-foo" definitions, e.g. custom->, etc.
+(define (unqualify x)
+  ;; Removes any prefix from occurrences of the given name appearing in the
+  ;; given expression
+  (define (unqual name expr)
+    (match expr
+      [(? symbol?) (if (string-suffix? (symbol->string expr)
+                                       (symbol->string name))
+                       name
+                       expr)]
+      [(cons y ys) (cons (unqual name y) (unqual name ys))]
+      [_           expr]))
+
+  (foldl unqual
+         (read-benchmark (string-replace (format-symbols x)
+                                         "-sentinel"
+                                         ""))
+         '(CustomBool CustomTrue CustomFalse
+           custom-ite custom-not custom-and custom-or custom-=>
+           custom-bool-converter
+           CustomNat CustomZ CustomS custom-p custom-plus
+           CustomInt CustomNeg custom-succ CustomZero CustomPos custom-pred
+           custom-inc custom-dec custom-invert custom-abs custom-sign custom-+
+           custom-- custom-* custom-nat-> custom-> custom-div custom-mod
+           custom-< custom->= custom-<=)))
 
 ;; Look through X for constructor definitions, and for each one append to X a
 ;; new function definition which simply wraps that constructor. For example, if
@@ -1150,7 +1171,7 @@
    (encode-names
     (add-constructor-funcs
      (add-destructor-funcs
-      (remove-suffices x))))))
+      (unqualify x))))))
 
 ;; Creates a list of pairs '((X1 Y1) (X2 Y2) ...) when given a pair of lists
 ;; '(X1 X2 ...) and '(Y1 Y2 ...)
@@ -1798,7 +1819,7 @@ library
        (make-immutable-hash
         (hash-map (benchmark-theorems)
                   (lambda (f thm)
-                    (cons f (remove-suffices
+                    (cons f (unqualify
                              (replace-all final-replacements
                                           (qual-thm f thm))))))))
 
@@ -2466,13 +2487,17 @@ library
     [(list 'par _ body)       (theorem-to-equation body)]
 
     ;; We've found an equation, convert the inner terms
-    [(list '= lhs rhs) (let ([x (to-expression lhs)]
-                             [y (to-expression rhs)])
-                         (if (or (empty? x) (empty? y))
-                             '()
-                             (if (lex<=? (first x) (first y))
-                                 (list (list '~= (first x) (first y)))
-                                 (list (list '~= (first y) (first x))))))]
+    [`(,sym (= ,lhs ,rhs)) (if (string-suffix? (symbol->string sym)
+                                               "custom-bool-converter")
+                               (let ([x (to-expression lhs)]
+                                     [y (to-expression rhs)])
+                                 (if (or (empty? x) (empty? y))
+                                     '()
+                                     (if (lex<=? (first x) (first y))
+                                         (list (list '~= (first x) (first y)))
+                                         (list (list '~= (first y) (first x))))))
+                               (error (format "Equation without wrapper ~s"
+                                              `(,sym (= ,lhs ,rhs)))))]
 
     ;; Non-equations; some of these could be solved by, e.g., an SMT solver
 
@@ -3142,7 +3167,7 @@ library
                            (bar.smt2quux-sentinel () Foo
                                                   (foo bar))))))
 
-  (check-equal? (remove-suffices qualified-example)
+  (check-equal? (unqualify qualified-example)
                 '((define-fun (par (a b)
                                    (foo.smt2baz  ((x Nat)) Nat
                                                  X)))
@@ -4303,8 +4328,8 @@ library
                     ;; the arguments. We strip off arguments functions to
                     ;; discard this latter case.
                     [(let ([syms (flatten (strip-args thm))])
-                       (and (member '=> syms)
-                            (> (length (member '=> syms))
+                       (and (member 'custom-=> syms)
+                            (> (length (member 'custom-=> syms))
                                (length (member '=  syms))))) #f]
 
                     [else #t]))
