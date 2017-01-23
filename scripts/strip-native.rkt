@@ -54,21 +54,20 @@
 
 ;; NOTE: We must replace = to make conditional equations typecheck, e.g.
 ;; (custom-=> (= (foo x) (foo y)) (= (bar x) (bar y))), since = returns a
-;; Bool and custom-=> expects CustomBools. However, = is polymorphic, which
-;; we can't implement directly (e.g. using pattern matching), so the
-;; definition of custom-= must use = internally (which also requires us to
-;; eliminate the native Bool using ite)
-(define custom-=
+;; Bool and custom-=> expects CustomBools. However, we can't use a
+;; straightforward custom-= function, since it needs to be polymorphic, and
+;; Haskell will complain that we can't use `==` without adding an `Eq a`
+;; constraint to our polymorphic type parameter, but TIP doesn't provide any way
+;; to do that.
+;; We work around this by keeping the `=` as-is, but wrapping it in a function
+;; to convert Bool into CustomBool. This way, if the arguments of = have
+;; concrete types, their implementation of Eq will be used directly and no
+;; constraints have to be propagated.
+(define custom-bool-converter
   (list
-   '(define-fun (par (a) (custom-= ((x a) (y a)) CustomBool
-                                   (ite (= x y) CustomTrue CustomFalse))))
+   '(define-fun custom-bool-converter ((x Bool)) CustomBool
+      (ite x CustomTrue CustomFalse))
    (list custom-bool)))
-
-(define custom-distinct
-  (list
-   '(define-fun (par (a) (custom-distinct ((x a) (y a)) CustomBool
-                                          (custom-not (custom-= x y)))))
-   (list custom-= custom-not)))
 
 ;; Used in CustomInt; will probably overlap with a benchmark's definition, but
 ;; we will strip out redundancies anyway
@@ -256,8 +255,10 @@
 ;; Replaces native expressions, returning '(new-expr new-deps) where new-deps
 ;; includes any dependencies required for the replacement. The type-level?
 ;; argument tells us whether expr is a type or a value; it's used to prevent
-;; function types (=>) being treated as boolean implication (=>).
-(define (replace-native expr type-level?)
+;; function types (=>) being treated as boolean implication (=>). The
+;; in-conjecture? argument tells us whether expr appears in a definition or a
+;; conjecture; in the latter case, TIP treats = and => very differently.
+(define (replace-native expr type-level? in-conjecture?)
   (match expr
 
     ;; Booleans
@@ -273,13 +274,28 @@
 
     ['not   (list 'custom-not  (list custom-not))]
 
-    ;; Note that the definition of custom-= uses =, so we shouldn't e.g. apply
-    ;; replace-native to the definition of custom-=.
-    ['=     (list 'custom-=    (list custom-=))]
+    ;; We can't make our own polymorphic =, since the necessary Eq constraints
+    ;; won't be propagated when translated to Haskell. Instead, we manipulate
+    ;; the call sites of the existing = function, to convert the result into a
+    ;; CustomBool.
+    [`(= ,x ,y) (let ([x2 (replace-native x type-level? in-conjecture?)]
+                      [y2 (replace-native y type-level? in-conjecture?)])
+                  (list `(custom-bool-converter (= ,(first x2) ,(first y2)))
+                        (append (list custom-bool-converter)
+                                (second x2)
+                                (second y2))))]
 
-    ['distinct (list 'custom-distinct (list custom-distinct))]
+    ;; Similar to =, we wrap call sites of distinct to use CustomBool
+    [`(distinct ,x ,y) (let ([x2 (replace-native x type-level? in-conjecture?)]
+                             [y2 (replace-native y type-level? in-conjecture?)])
+                         (list `(custom-bool-converter (distinct ,(first x2)
+                                                                 ,(first y2)))
+                               (append (list custom-bool-converter)
+                                       (second x2)
+                                       (second y2))))]
 
-    ;; Only swap => when used as a value, not a type
+    ;; => is used for function types, which should not be swapped out, and
+    ;; boolean implication, which should be swapped out.
     ['=>    (if type-level?
                 (list '=> '())
                 (list 'custom-=> (list custom-=>)))]
@@ -298,18 +314,18 @@
     ['>=          (list 'custom->=  (list custom->=))]
 
     ;; Cases where we need to switch into type mode
-    [(list 'lambda args body)  (let ([args2 (replace-native args #t)]
-                                     [body2 (replace-native body #f)])
+    [(list 'lambda args body)  (let ([args2 (replace-native args #t in-conjecture?)]
+                                     [body2 (replace-native body #f in-conjecture?)])
                                  (list `(lambda ,(first args2) ,(first body2))
                                        (append (second args2) (second body2))))]
 
-    [(list 'forall args body)  (let ([args2 (replace-native args #t)]
-                                     [body2 (replace-native body #f)])
+    [(list 'forall args body)  (let ([args2 (replace-native args #t in-conjecture?)]
+                                     [body2 (replace-native body #f in-conjecture?)])
                                  (list `(forall ,(first args2) ,(first body2))
                                        (append (second args2) (second body2))))]
 
-    [(list 'as v t) (let ([v2 (replace-native v #f)]
-                          [t2 (replace-native t #t)])
+    [(list 'as v t) (let ([v2 (replace-native v #f in-conjecture?)]
+                          [t2 (replace-native t #t in-conjecture?)])
                       (list `(as ,(first v2) ,(first t2))
                             (append (second v2) (second t2))))]
 
@@ -392,7 +408,7 @@
 
        (define (replace-in-destructor destructor)
          (define name      (first destructor))
-         (define arg-type2 (replace-native (second destructor) #t))
+         (define arg-type2 (replace-native (second destructor) #t in-conjecture?))
          (list (list name (first arg-type2))
                (second arg-type2)))
 
@@ -403,9 +419,14 @@
           (list `(declare-datatypes ,params ,types2)
                 deps)]))]
 
+    ;; Switches to in-conjecture mode
+    [(list 'assert-not body) (let ([body2 (replace-native body #f #t)])
+                               (list `(assert-not ,(first body2))
+                                     (second body2)))]
+
     ;; Recurse through structures
-    [(cons x y) (let ([x2 (replace-native x type-level?)]
-                      [y2 (replace-native y type-level?)])
+    [(cons x y) (let ([x2 (replace-native x type-level? in-conjecture?)]
+                      [y2 (replace-native y type-level? in-conjecture?)])
                   (list (cons (first x2) (first y2))
                         (append (second x2) (second y2))))]
 
@@ -414,16 +435,16 @@
 
 ;; Prevents repeating ourselves
 (define (replace-in-func args return body)
-  (define args2   (replace-native args   #t))
-  (define return2 (replace-native return #t))
-  (define body2   (replace-native body   #f))
+  (define args2   (replace-native args   #t #f))
+  (define return2 (replace-native return #t #f))
+  (define body2   (replace-native body   #f #f))
   (list (first  args2) (first  return2) (first  body2)
         (append (second args2) (second return2) (second body2))))
 
 ;; Replace native definitions and prepend any newly required definitions
 (define (replace-all exprs)
   (define replaced
-    (replace-native exprs #f))
+    (replace-native exprs #f #f))
   (define raw-deps
     (dependencies-closure (list 'te-sentinel-value (second replaced))))
 
