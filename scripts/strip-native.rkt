@@ -6,6 +6,8 @@
   (display "\n" (current-error-port))
   x)
 
+;; Opposite of rest/cdr: returns all elements of a list except the last one.
+;; Like Haskell's "init".
 (define (start lst)
   (reverse (rest (reverse lst))))
 
@@ -53,16 +55,21 @@
    (list custom-bool custom-ite)))
 
 ;; NOTE: We must replace = to make conditional equations typecheck, e.g.
-;; (custom-=> (= (foo x) (foo y)) (= (bar x) (bar y))), since = returns a
-;; Bool and custom-=> expects CustomBools. However, we can't use a
-;; straightforward custom-= function, since it needs to be polymorphic, and
-;; Haskell will complain that we can't use `==` without adding an `Eq a`
-;; constraint to our polymorphic type parameter, but TIP doesn't provide any way
-;; to do that.
-;; We work around this by keeping the `=` as-is, but wrapping it in a function
-;; to convert Bool into CustomBool. This way, if the arguments of = have
-;; concrete types, their implementation of Eq will be used directly and no
-;; constraints have to be propagated.
+;; (custom-=> (= foo bar) (= foo baz)), since = returns a Bool and custom-=>
+;; expects CustomBools. However, we can't write our own custom-= function, since
+;; it needs to be polymorphic, and Haskell will complain that we can't use `==`
+;; without adding an `Eq a` constraint to our polymorphic type parameter, but
+;; TIP doesn't provide any way to do that.
+
+;; We work around this by using the existing `=`, but wrapping each usage in a
+;; call to custom-bool-converter, so the above example would become:
+;;
+;; (custom-=> (custom-bool-converter (= foo bar))
+;;            (custom-bool-converter (= foo baz)))
+
+;; This way, if the arguments of = have concrete types, their implementation of
+;; Eq will be used directly, no constraints have to be propagated and Haskell
+;; won't complain about any being missing.
 (define custom-bool-converter
   (list
    '(define-fun custom-bool-converter ((x Bool)) CustomBool
