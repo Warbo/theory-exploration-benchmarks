@@ -139,16 +139,29 @@ in rec {
                   div mod ">" "<" ">=" "<="
         do
           # Look for this operator, but avoid matching parts of other symbols
-          # (e.g. thinking that "opposite" is "ite"). We also ignore the
-          # definition of custom-=, since that must use ite.
-          if grep "[^=a-zA-Z0-9-]$OP[^=a-zA-Z0-9-]" < "$BENCHMARK" |
-             grep -v '(define-fun (par (a) (custom-= '
+          # (e.g. thinking that "opposite" is "ite") by disallowing characters
+          # before/after which are valid in names. Note that we don't check the
+          # definition of custom-bool-converter since ite and Bool are
+          # unavoidable there.
+          if grep -v '(define-fun custom-bool-converter ' < "$BENCHMARK" |
+             grep "[^><=a-zA-Z0-9-]$OP[^><=a-zA-Z0-9-]"
           then
             echo "Operator '$OP' should have been replaced in '$BENCHMARK'" 1>&2
             exit 1
           fi
-        done < <(find ./transformed -type f)
-      done
+        done
+
+        # Make sure all calls to = and distinct use custom-bool-converter
+        for OP in = distinct
+        do
+          if grep -v "(custom-bool-converter ($OP" < "$BENCHMARK" |
+             grep "[^><=a-zA-Z0-9-]$OP[^><=a-zA-Z0-9-]"
+          then
+            echo "Unguarded '$OP' in '$BENCHMARK'" 1>&2
+            exit 1
+          fi
+        done
+      done < <(find ./transformed -type f)
 
       echo "Checking all benchmarks are parseable by tip" 1>&2
       while read -r BENCHMARK
