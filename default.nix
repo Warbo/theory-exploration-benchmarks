@@ -251,7 +251,9 @@ in rec {
   tests = stdenv.mkDerivation {
     name         = "tip-tools-tests";
     src          = ./scripts;
-    buildInputs  = [ env ];
+
+    # Include tools as a dependency, so we run its fast tests first
+    buildInputs  = [ env tools ];
     buildCommand = ''
       raco test "$src/defs.rkt" && echo "pass" > "$out"
     '';
@@ -262,9 +264,6 @@ in rec {
     BENCHMARKS_FALLBACK = tip-benchmarks;
     PLT_TR_CONTRACTS    = "1";
     TEST_DATA           = "${./test-data}";
-
-    # Include tools as a dependency, so we run its fast tests first
-    INCLUDE_AS_DEPENDENCY = tools;
   };
 
   tip-benchmark-smtlib = stdenv.mkDerivation {
