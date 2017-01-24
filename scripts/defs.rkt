@@ -3830,7 +3830,7 @@ library
      (lowercase-names
       (file->list (benchmark-file "tip2015/sort_NStoogeSort2Permutes.smt2")))
      '(custom-p custom-succ custom-pred custom-ite custom-not custom-nat->
-       custom-> custom-<= custom-or custom-bool-converter custom-andhead tail
+       custom-> custom-<= custom-or custom-bool-converter custom-and head tail
        first second p twoThirds third take sort2 null length elem drop splitAt
        delete isPermutation append nstooge2sort2 nstoogesort2 nstooge2sort1))
 
