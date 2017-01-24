@@ -2231,9 +2231,47 @@ library
   (/ (set-count (set-intersect wanted found))
      (set-count wanted)))
 
-;; Return all theorems (filenames, one per file) which would be possible to
-;; discover given what's in the provided sample. In other words, those theorems
-;; whose dependencies are a subset of the sample.
+(define (find-eqs-intersection found sample)
+  (define possibilities
+    (conjectures-admitted-by sample))
+
+  (define eqs
+    (concat-map theorem-to-equation possibilities))
+
+  (define intersection
+    (foldl (lambda (eq result)
+             (if (any-of (lambda (a-found)
+                           (equations-match? a-found eq))
+                         found)
+                 (cons eq result)
+                 result))
+           '()
+           eqs))
+
+  (list possibilities eqs intersection))
+
+(define (precision-from-sample found sample)
+  (match (find-eqs-intersection found sample)
+    [(list possibilities eqs intersection)
+     (/ (length intersection) (length found))]))
+
+;; We only find equations so precision for equations is the same as for theorems
+(define precision-eqs-from-sample precision-from-sample)
+
+(define (recall-from-sample found sample)
+  (match (find-eqs-intersection found sample)
+    [(list possibilities eqs intersection)
+     (/ (length intersection) (length possibilities))]))
+
+(define (recall-eqs-from-sample found sample)
+  (match (find-eqs-intersection found sample)
+    [(list possibilities eqs intersection)
+     (/ (length intersection) (length possibilities))]))
+
+
+;; Return all theorems (expressions) which would be possible to discover given
+;; what's in the provided sample. In other words, those theorems whose
+;; dependencies are a subset of the sample.
 (define (conjectures-admitted-by sample)
   (define theorem-deps
     (assoc-get 'theorem-deps (get-sampling-data)))
