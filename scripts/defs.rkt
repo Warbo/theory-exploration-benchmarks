@@ -1249,109 +1249,6 @@
              (equal? 1
                      (length (remove-duplicates (map length class)))))))
 
-  (define/test-contract (choose-smallest so-far)
-    ;; Choose the smallest name out of the alternatives found in exprs.
-    ;;
-    ;; Example input: '(((Pair mkPair first second)
-    ;;                   (PairOf paired fst snd))
-    ;;                  (declare-datatypes (normalise-var-2 normalise-var-1)
-    ;;                     ((defining-type-1
-    ;;                        (normalise-constructor-1
-    ;;                          (normalise-destructor-2 normalise-var-2)
-    ;;                          (normalise-destroctor-1 normalise-var-1)))))
-    ;;
-    ;; Output (old new) pairs to replace larger names with smaller, e.g. in the
-    ;; above example we'd get '((PairOf Pair)
-    ;;                          (paired mkPair)
-    ;;                          (fst    first)
-    ;;                          (snd    second))
-    (-> (and/c (*list/c (list/c class? normalised-def?))
-
-               ;; Each name in so-far is defined in exprs
-               (lambda (so-far)
-                 (all-of (lambda (name)
-                           (member name (names-in exprs)))
-                         (concat-map (lambda (known)
-                                       (apply append (first known)))
-                                     so-far)))
-               ;; We can find a definition for each name in so-far
-               (lambda (so-far)
-                 (all-of (lambda (name)
-                           (define defs
-                             (get-def-s name exprs))
-
-                           (or (equal? 1 (length defs))
-                               (raise-user-error
-                                'so-far
-                                "Expected all names in so-far to have one definition in exprs, yet for '~a' we found the definitions:\n~a\nThe value of exprs is:\n~a"
-                                name
-                                defs
-                                exprs)))
-                         (concat-map (lambda (known)
-                                       (apply append (first known)))
-                                     so-far)))
-
-               ;; Each class's names come from alpha-equivalent definitions
-               (*list/c (flat-contract-with-explanation
-                         (lambda (known)
-                           (all-of (lambda (name)
-                                     (define def
-                                       (first (get-def-s name exprs)))
-                                     (or (equal? (norm def) (second known))
-                                         (raise-user-error
-                                          'so-far
-                                          "Expected list of '(class def)' pairs, where the names in 'class' have definitions alpha-equivalent to 'def', yet for 'def' of\n~a\nthe name '~a' has definition:\n~a\nwhich normalises to:\n~a\n"
-                                          (second known)
-                                          name
-                                          def
-                                          (norm def))))
-                                   (apply append (first known)))))))
-        (*list/c (and/c (list/c symbol? symbol?)
-                        (lambda (pair)
-                          (symbol<? (second pair) (first pair)))
-                        (lambda (pair)
-                          (and (member (first  pair) (names-in exprs))
-                               (member (second pair) (names-in exprs))))
-                        (lambda (pair)
-                          (equal? (norm (get-def-s (first  pair) exprs))
-                                  (norm (get-def-s (second pair) exprs)))))))
-
-    ;; Pick the lexicographically-smallest names as the replacements
-    (define all-classes
-      (map first so-far))
-
-    (define (pick-replacements class)
-      (if (empty? class)
-          ;; Nothing to replace
-          '()
-          (if (empty? (first class))
-              ;; We've plucked all of the names out of this class
-              '()
-              (let*
-                ;; Pluck the first names from all sets in this class
-                ([these (sort (map first class) symbol<=?)]
-
-                 ;; Pluck out the smallest, which will be the canonical name
-                 [new   (first these)]
-
-                 ;; Define replacements for all non-canonical names
-                 [replacements (map (lambda (old) (list old new))
-                                    (cdr these))])
-
-                ;; Recurse, dropping the names we just processed
-                (append replacements (pick-replacements (map cdr class)))))))
-
-    ;; Make list of replacements, based on smallest element of each class
-    (define/test-contract result
-      (*list/c (and/c (list/c symbol? symbol?)
-                      (lambda (pair)
-                        (equal? (norm (get-def-s (first  pair) exprs))
-                                (norm (get-def-s (second pair) exprs))))))
-
-      (concat-map pick-replacements all-classes))
-
-    result)
-
   (define (mk-output expr so-far)
     (let* ([norm-line (norm     expr)]
            [names     (names-in expr)]
@@ -1378,7 +1275,51 @@
         (remove-redundancies (cdr exprs)
                              (mk-output (first exprs) so-far))))
 
-  (choose-smallest (remove-redundancies exprs null)))
+  (define so-far (remove-redundancies exprs null))
+
+  ;; Choose the smallest name out of the alternatives found in exprs.
+  ;;
+  ;; Example input: '(((Pair mkPair first second)
+  ;;                   (PairOf paired fst snd))
+  ;;                  (declare-datatypes (normalise-var-2 normalise-var-1)
+  ;;                     ((defining-type-1
+  ;;                        (normalise-constructor-1
+  ;;                          (normalise-destructor-2 normalise-var-2)
+  ;;                          (normalise-destroctor-1 normalise-var-1)))))
+  ;;
+  ;; Output (old new) pairs to replace larger names with smaller, e.g. in the
+  ;; above example we'd get '((PairOf Pair)
+  ;;                          (paired mkPair)
+  ;;                          (fst    first)
+  ;;                          (snd    second))
+
+  ;; Pick the lexicographically-smallest names as the replacements
+  (define all-classes
+    (map first so-far))
+
+  (define (pick-replacements class)
+    (if (empty? class)
+        ;; Nothing to replace
+        '()
+        (if (empty? (first class))
+            ;; We've plucked all of the names out of this class
+            '()
+            (let*
+                ;; Pluck the first names from all sets in this class
+                ([these (sort (map first class) symbol<=?)]
+
+                 ;; Pluck out the smallest, which will be the canonical name
+                 [new   (first these)]
+
+                 ;; Define replacements for all non-canonical names
+                 [replacements (map (lambda (old) (list old new))
+                                    (cdr these))])
+
+              ;; Recurse, dropping the names we just processed
+              (append replacements (pick-replacements (map cdr class)))))))
+
+  ;; Make list of replacements, based on smallest element of each class
+  (concat-map pick-replacements all-classes))
 
 ;; Is X a permutation of Y?
 (define (set-equal? x y)
@@ -1528,10 +1469,9 @@
                      (length exprs)
                      (length renamed)))))))
 
-    (foldl (lambda (rep exprs)
-             (replace-in (first rep) (second rep) exprs))
-           exprs
-           redundancies))
+    (replace-all redundancies exprs))
+
+  (log "Renamed\n")
 
   (define/test-contract (strip-acc expr seen-result)
     (-> definition? (list/c (*list/c symbol?) (*list/c definition?))
@@ -3837,7 +3777,8 @@ library
     (check-equal?
      (uppercase-names
       (file->list (benchmark-file "tip2015/sort_NStoogeSort2Permutes.smt2")))
-     '(list nil cons Pair Pair2 Nat Z S)))
+     '(CustomNat CustomZ CustomS CustomInt CustomNeg CustomZero CustomPos
+       CustomBool CustomTrue CustomFalse list nil cons Pair Pair2 Nat Z S)))
 
   ;; When TIP translates from its smtlib-like format to Haskell, it performs a
   ;; renaming step, to ensure that all names are valid Haskell identifiers. We
@@ -4123,7 +4064,7 @@ library
 
                 ("With constructors"
                  ((,(testing-file "tip2015/propositional_AndCommutative.smt2")
-                   (grammars/packrat_unambigPackrat.smt2custom-bool-converter
+                   (custom-bool-converter
                     tip2015/propositional_AndCommutative.smt2valid
                     constructor-tip2015/propositional_AndCommutative.smt2&))
 
@@ -4132,7 +4073,7 @@ library
                       (testing-file "tip2015/propositional_AndIdempotent.smt2"))
                    (tip2015/propositional_AndCommutative.smt2valid
                     constructor-tip2015/propositional_AndCommutative.smt2&
-                    grammars/packrat_unambigPackrat.smt2custom-bool-converter))
+                    custom-bool-converter))
 
                   (,(begin
                       (testing-file "prod/prop_35.smt2")
@@ -4141,7 +4082,7 @@ library
                    (prod/prop_35.smt2exp
                     constructor-isaplanner/prop_01.smt2S
                     constructor-isaplanner/prop_01.smt2Z
-                    grammars/packrat_unambigPackrat.smt2custom-bool-converter)))))))
+                    custom-bool-converter)))))))
 
   (def-test-case "Sampling"
 
