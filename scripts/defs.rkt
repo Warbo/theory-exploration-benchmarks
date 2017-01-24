@@ -4189,7 +4189,18 @@ library
                   (conjectures-admitted-by (append '(fee fi fo fum)
                                                    (theorem-deps-of f))))
                 (check-not-equal? #f (member (normed-theorem-of f) super)
-                                  "Supersets of deps admit derivation"))
+                                  "Supersets of deps admit derivation")
+
+                (define eqs
+                  (equations-admitted-by-sample (theorem-deps-of f)))
+                (check-true (subset? eqs conjectures)
+                            "Equations are a subset of theorems")
+
+                (for-each (lambda (c)
+                            (unless (empty? (theorem-to-equation c))
+                              (check-not-equal? #f (member c eqs)
+                                                "All equations are found")))
+                          conjectures))
               (theorem-files)))
 
   (def-test-case "Precision"
