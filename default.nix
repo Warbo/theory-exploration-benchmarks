@@ -264,7 +264,7 @@ in rec {
     TEST_DATA           = "${./test-data}";
 
     # Include tools as a dependency, so we run its fast tests first
-    UNUSED = tools;
+    INCLUDE_AS_DEPENDENCY = tools;
   };
 
   tip-benchmark-smtlib = stdenv.mkDerivation {
