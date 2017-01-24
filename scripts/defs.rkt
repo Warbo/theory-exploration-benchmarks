@@ -1169,9 +1169,12 @@
 
   (add-check-sat
    (encode-names
-    (add-constructor-funcs
-     (add-destructor-funcs
-      (unqualify x))))))
+    (preprepare x))))
+
+(define (preprepare x)
+  (add-constructor-funcs
+   (add-destructor-funcs
+    (unqualify x))))
 
 ;; Creates a list of pairs '((X1 Y1) (X2 Y2) ...) when given a pair of lists
 ;; '(X1 X2 ...) and '(Y1 Y2 ...)
@@ -1787,7 +1790,7 @@ library
     [_                        '()]))
 
 (memo0 normed-qualified-theorem-files
-       (norm-defs (qual-all (theorem-files))))
+       (preprepare (norm-defs (qual-all (theorem-files)))))
 
 (define theorem-deps-of
   (memo1 (lambda (f)
@@ -1795,10 +1798,10 @@ library
            (define normed (normed-theorem-of f))
 
            ;; Includes all (canonical) types and constructors
-           (define uppercase (uppercase-names normed-qualified-theorem-files))
+           (define uppercase (uppercase-names (normed-qualified-theorem-files)))
 
            (define constructors
-             (expression-constructors normed-qualified-theorem-files))
+             (expression-constructors (normed-qualified-theorem-files)))
 
            ;; Remove types
            (define raw-names
@@ -2636,6 +2639,7 @@ library
         (benchmark-files '("grammars/packrat_unambigPackrat.smt2"
                            "isaplanner/prop_01.smt2"
                            "isaplanner/prop_15.smt2"
+                           "isaplanner/prop_35.smt2"
                            "isaplanner/prop_43.smt2"
                            "isaplanner/prop_44.smt2"
                            "isaplanner/prop_84.smt2"
