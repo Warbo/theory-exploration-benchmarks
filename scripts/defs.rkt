@@ -2241,10 +2241,19 @@ library
   (define theorem-files-admitted
     (map first
          (filter (lambda (t-d)
-                   (subset? sample (second t-d)))
+                   (subset? (second t-d) sample))
                  theorem-deps)))
 
   (map normed-theorem-of theorem-files-admitted))
+
+;; Return equational theorems (filenames, one per file) which would be possible
+;; to discover given what's in the provided sample. In other words, those
+;; theorems which are equations, and whose dependencies are a subset of the
+;; sample.
+(define (equations-admitted-by-sample sample)
+  (filter (lambda (thm)
+            (not (empty? (theorem-to-equation thm))))
+          (conjectures-admitted-by sample)))
 
 ;; Lexicographic comparison of two structures. We only focus on nested lists of
 ;; symbols.
@@ -4173,7 +4182,14 @@ library
                 (define conjectures
                   (conjectures-admitted-by (theorem-deps-of f)))
                 (check-not-equal? #f (member (normed-theorem-of f)
-                                             conjectures)))
+                                             conjectures)
+                                  "Theorems can be derived from their deps")
+
+                (define super
+                  (conjectures-admitted-by (append '(fee fi fo fum)
+                                                   (theorem-deps-of f))))
+                (check-not-equal? #f (member (normed-theorem-of f) super)
+                                  "Supersets of deps admit derivation"))
               (theorem-files)))
 
   (def-test-case "Precision"
