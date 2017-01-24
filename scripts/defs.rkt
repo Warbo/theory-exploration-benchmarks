@@ -2231,6 +2231,21 @@ library
   (/ (set-count (set-intersect wanted found))
      (set-count wanted)))
 
+;; Return all theorems (filenames, one per file) which would be possible to
+;; discover given what's in the provided sample. In other words, those theorems
+;; whose dependencies are a subset of the sample.
+(define (conjectures-admitted-by sample)
+  (define theorem-deps
+    (assoc-get 'theorem-deps (get-sampling-data)))
+
+  (define theorem-files-admitted
+    (map first
+         (filter (lambda (t-d)
+                   (subset? sample (second t-d)))
+                 theorem-deps)))
+
+  (map normed-theorem-of theorem-files-admitted))
+
 ;; Lexicographic comparison of two structures. We only focus on nested lists of
 ;; symbols.
 (define (lex<=? x y)
@@ -4152,6 +4167,14 @@ library
                                       (list deps))
                               "Sampling with one deps constraint returns deps"))
               (all-theorem-deps)))
+
+  (def-test-case "Conjecture-finding"
+    (for-each (lambda (f)
+                (define conjectures
+                  (conjectures-admitted-by (theorem-deps-of f)))
+                (check-not-equal? #f (member (normed-theorem-of f)
+                                             conjectures)))
+              (theorem-files)))
 
   (def-test-case "Precision"
     (check-equal? (/ 1 10)
