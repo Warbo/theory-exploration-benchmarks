@@ -4182,6 +4182,11 @@ library
                    (prod/prop_35.smt2exp
                     constructor-isaplanner/prop_01.smt2S
                     constructor-isaplanner/prop_01.smt2Z
+                    custom-bool-converter))
+                  (,(begin
+                      (testing-file "isaplanner/prop_35.smt2"))
+                   (constructor-CustomFalse
+                    isaplanner/prop_35.smt2dropWhile
                     custom-bool-converter)))))))
 
   (def-test-case "Sampling"
