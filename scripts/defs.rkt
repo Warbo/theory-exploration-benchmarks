@@ -325,6 +325,14 @@
                  arg
                  (lambda () (init arg))))))
 
+;; Memoise a binary function
+(define (memo2 init)
+  (let ([results (make-hash)])
+    (lambda (arg1 arg2)
+      (hash-ref! results
+                 (list arg1 arg2)
+                 (lambda () (init arg1 arg2))))))
+
 ;; Use this thunk to find the set of paths we're benchmarking.
 (define theorem-files
   (let ()
@@ -749,7 +757,8 @@
 
 ;; Read all files named in GIVEN-FILES, combine their definitions together and
 ;; prefix each name with the path of the file it came from
-(define (qual-all given-files)
+(define qual-all
+  (memo1 (lambda (given-files)
   (define given-contents
     (map (lambda (pth)
            (list (path-end pth) (file->list pth)))
@@ -760,7 +769,7 @@
            (qualify (first name-content) (second name-content)))
          given-contents))
 
-  (trim (apply append qualified-contents)))
+  (trim (apply append qualified-contents)))))
 
 ;; Apply mk-defs to stdio
 (define (mk-defs)
@@ -801,8 +810,10 @@
     [(list 'define-funs-rec _ _)       (if (member f (names-in x) ss-eq?)
                                            (list x)
                                            '())]
-    [(cons h t)                        (append (find-sub-exprs f h)
-                                               (find-sub-exprs f t))    ]
+    [(cons h t)                        (let ([in-h (find-sub-exprs f h)])
+                                         (if (empty? in-h)
+                                             (find-sub-exprs f t)
+                                             in-h))]
     [_                                 '()                              ]))
 
 ;; Idempotent symbol->string
@@ -835,8 +846,10 @@
       [(list 'declare-datatypes _ decs) (if (member name (names-in exp))
                                             (list exp)
                                             '())]
-      [(cons a b)                       (append (defs-from a)
-                                                (defs-from b))]
+      [(cons a b)                       (let ([in-a (defs-from a)])
+                                          (if (empty? in-a)
+                                              (defs-from b)
+                                              in-a))]
       [_                                null]))
 
   (remove-duplicates (append (find-sub-exprs name (list exprs))
