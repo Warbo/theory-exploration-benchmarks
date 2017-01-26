@@ -11,18 +11,6 @@ with pkgs;
 with lib;
 
 let
-  # Use Racket 6.8
-  racket = pkgs.racket.overrideDerivation (old:
-    let version = "6.8";
-        name    = replaceStrings ["6.6" "6.7"] [version version] old.name;
-     in {
-       inherit name version;
-       src = fetchurl {
-         url    = "http://mirror.racket-lang.org/installers/${version}/${name}-src.tgz";
-         sha256 = "1l9z1a0r5zydr50cklx9xjw3l0pwnf64i10xq7112fl1r89q3qgv";
-       };
-     });
-
   shellPipeline = fetchFromGitHub {
     owner  = "willghatch";
     repo   = "racket-shell-pipeline";

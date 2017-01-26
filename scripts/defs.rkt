@@ -740,6 +740,18 @@
 (define (concat-map f xs)
   (apply append (map f xs)))
 
+;; Backported from Racket 6.7
+(define index-where
+  (let ()
+    (define (index-where-acc acc lst proc)
+      (if (empty? lst)
+          #f
+          (if (proc (car lst))
+              acc
+              (index-where-acc (+ 1 acc) (cdr lst) proc))))
+    (lambda (lst proc)
+      (index-where-acc 0 lst proc))))
+
 ;; Remove TIP boilerplate
 (define (trim lst)
   (filter (lambda (x)
@@ -1274,7 +1286,7 @@
            ;;   '(((name1 name2 ...) expr) ...)
            [existing-pos (index-where so-far (lambda (x)
                                                (equal? norm-line (second x))))])
-      (if (equal? #f existing)
+      (if (equal? #f existing-pos)
           ;; This expr isn't redundant, associate its names with its normal form
           (append so-far (list (list (list names) norm-line)))
 
