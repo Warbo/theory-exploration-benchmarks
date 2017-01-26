@@ -4256,29 +4256,31 @@ library
 
   (def-test-case "Conjecture-finding"
     (for-each (lambda (f)
-                (define conjectures
-                  (conjectures-admitted-by (theorem-deps-of f)))
-                (check-not-equal? #f (member (normed-theorem-of f)
-                                             conjectures)
-                                  "Theorems can be derived from their deps")
+                (with-check-info
+                  (('file f))
+                  (define conjectures
+                    (conjectures-admitted-by (theorem-deps-of f)))
+                  (check-not-equal? #f (member (normed-theorem-of f)
+                                               conjectures)
+                                    "Theorems can be derived from their deps")
 
-                (define super
-                  (conjectures-admitted-by (append '(fee fi fo fum)
-                                                   (theorem-deps-of f))))
-                (check-not-equal? #f (member (normed-theorem-of f) super)
-                                  "Supersets of deps admit derivation")
+                  (define super
+                    (conjectures-admitted-by (append '(fee fi fo fum)
+                                                     (theorem-deps-of f))))
+                  (check-not-equal? #f (member (normed-theorem-of f) super)
+                                    "Supersets of deps admit derivation")
 
-                (define eqs
-                  (equations-admitted-by-sample (theorem-deps-of f)))
-                (check-true (subset? eqs conjectures)
-                            "Equations are a subset of theorems")
+                  (define eqs
+                    (equations-admitted-by-sample (theorem-deps-of f)))
+                  (check-true (subset? eqs conjectures)
+                              "Equations are a subset of theorems")
 
-                (for-each (lambda (c)
-                            (unless (empty? (theorem-to-equation c))
-                              (check-not-equal? #f (member c eqs)
-                                                "All equations are found")))
-                          conjectures))
-              (theorem-files)))
+                  (for-each (lambda (c)
+                              (unless (empty? (theorem-to-equation c))
+                                (check-not-equal? #f (member c eqs)
+                                                  "All equations are found")))
+                            conjectures)))
+                (theorem-files)))
 
   (def-test-case "Precision"
     (check-equal? (/ 1 10)
