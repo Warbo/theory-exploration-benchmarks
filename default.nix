@@ -216,9 +216,6 @@ in rec {
     # will be tested, to make things faster.
     BENCHMARKS_FALLBACK = "${tip-benchmarks}";
 
-    # Check contracts while testing; it's disabled by default for being too slow
-    PLT_TR_CONTRACTS = "1";
-
     # Tells the tests where to find data, like example inputs.
     TEST_DATA = "${./test-data}";
 
@@ -262,6 +259,8 @@ in rec {
     # causes all files to be tested rather than a subset.
     BENCHMARKS          = tip-benchmarks;
     BENCHMARKS_FALLBACK = tip-benchmarks;
+
+    # Check contracts while testing; it's disabled by default for being too slow
     PLT_TR_CONTRACTS    = "1";
     TEST_DATA           = "${./test-data}";
   };

@@ -14,7 +14,9 @@
 (provide mk-defs)
 (provide mk-final-defs)
 (provide mk-signature)
+(provide precision-wrapper)
 (provide qualify-given)
+(provide recall-wrapper)
 (provide sample-from-benchmarks)
 (provide sample-equational-from-benchmarks)
 (provide symbols-of-theorems)
@@ -2268,7 +2270,6 @@ library
     [(list possibilities eqs intersection)
      (/ (length intersection) (length possibilities))]))
 
-
 ;; Return all theorems (expressions) which would be possible to discover given
 ;; what's in the provided sample. In other words, those theorems whose
 ;; dependencies are a subset of the sample.
@@ -2672,6 +2673,22 @@ library
 
     [_ #f]))
 
+;; FIXME: Add tests, add checks for whether input conforms to expected format, etc.
+(define (precision-wrapper)
+  (define sample
+    (read-benchmark (getenv "SAMPLED_NAMES")))
+
+  (write (precision-from-sample (parse-json-equations (port->string))
+                                sample)))
+
+;; FIXME: Add tests, add checks for whether input conforms to expected format, etc.
+(define (recall-wrapper)
+  (define sample
+    (read-benchmark (getenv "SAMPLED_NAMES")))
+
+  (write (recall-from-sample (parse-json-equations (port->string))
+                             sample)))
+
 ;; Everything below here is tests; run using "raco test"
 (module+ test
   (require rackunit)
@@ -2680,18 +2697,17 @@ library
   (quiet)
 
   ;; For testing, we default to only using a subset of the benchmarks, which we
-  ;; accomplish by overriding theorem-files; this makes testing faster.
+  ;; accomplish by overriding theorem-files; this acts as a sanity check, and is
+  ;; much faster than checking everything. For a thorough test of all benchmarks
+  ;; there is a separate "tests" derivation in default.nix, suitable for use in
+  ;; e.g. a continuous integration scenario.
 
-  ;; There are three things to note:
+  ;; Please note the following:
   ;;  - If a particular set of benchmarks has specifically been requested, via
   ;;    the BENCHMARKS environment variable, we use that whole set, rather than
   ;;    selecting some subset.
-  ;;  - Some of our tests require particular benchmark files to be included. We
-  ;;    hard-code these files in a list below, and always include them in our
-  ;;    selected subset. When using these filenames in a test, we use
-  ;;    testing-file to check that they have been added this list.
-  ;;  - To prevent edge-cases slipping through, we also include a random
-  ;;    set of files in our selection.
+  ;;  - If a test requires some particular file to be present in this list, it
+  ;;    should use the testing-file function to check that it's present.
   (define testing-file
     (let ()
       ;; We always include the following files, since they're either required by
@@ -2715,15 +2731,12 @@ library
                            "tip2015/sort_NStoogeSort2Count.smt2"
                            "tip2015/sort_NStoogeSort2Permutes.smt2"
                            "tip2015/tree_sort_SortPermutes'.smt2")))
-      ;; Select a random subset of files to include, to
-      ;; asymptotically preserve coverage.
-      (define subset (take (shuffle (theorem-files)) 10))
 
       ;; Override theorem-files to return these chosen files, if no BENCHMARKS
       ;; were given explicitly
       (when (member (getenv "BENCHMARKS") '(#f ""))
         (set-theorem-files! (lambda ()
-                              (append required-testing-files subset))))
+                              required-testing-files)))
 
       ;; The definition of testing-file; checks if the given file is in our
       ;; selected list.
