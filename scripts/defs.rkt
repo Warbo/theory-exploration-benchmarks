@@ -410,7 +410,7 @@
 ;; definitions, etc. are replaced with sequential names. References to global
 ;; names are left intact. This allows easy alpha-equivalence checking: A and B
 ;; are alpha-equivalent iff (equal? (norm A) (norm B))
-(define/test-contract (norm expr)
+(define/test-contract norm
   (-> any/c
       ;; Our result should be normalised
       (lambda (result)
@@ -423,7 +423,7 @@
                        name
                        result)))
                 (names-in result))))
-
+  (memo1 (lambda (expr)
   (define norm-func-1 'defining-function-1)
 
   (define (norm-func args body)
@@ -653,7 +653,7 @@
 
     [(cons a b) (cons (norm a) (norm b))]
 
-    [_ expr]))
+    [_ expr]))))
 
 ;; Looks through EXPR for the highest sequential name, and returns the next name
 ;; in the sequence
