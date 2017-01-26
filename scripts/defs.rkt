@@ -179,7 +179,7 @@
 ;; Returns all global names defined in the given expression, including
 ;; functions, constructors and destructors, but excluding types
 (define (expression-symbols exp)
-  (define (expression-funs exp)
+  (define expression-funs (memo1 (lambda (exp)
     (define (fun-rec-expressions decs defs)
       (match (list decs defs)
         [(list (cons (list 'par ps (list name args return)) more-decs)
@@ -210,7 +210,7 @@
 
       [(cons a b)                                   (append (expression-funs a)
                                                             (expression-funs b))]
-      [_                                            null]))
+      [_                                            null]))))
 
   (remove* (expression-types exp)
            (append (expression-constructors exp)
@@ -1270,22 +1270,18 @@
   (define (mk-output expr so-far)
     (let* ([norm-line (norm     expr)]
            [names     (names-in expr)]
-           ;; Any existing alpha-equivalent definitions:
+           ;; Look for an existing alpha-equivalent definition
            ;;   '(((name1 name2 ...) expr) ...)
-           [existing  (filter (lambda (x)
-                                (equal? norm-line (second x)))
-                              so-far)])
-      (if (empty? existing)
+           [existing-pos (index-where so-far (lambda (x)
+                                               (equal? norm-line (second x))))])
+      (if (equal? #f existing)
           ;; This expr isn't redundant, associate its names with its normal form
           (append so-far (list (list (list names) norm-line)))
 
-          ;; This expr is redundant, associate its names with their equivalents
-          (map (lambda (known)
-                 (if (equal? (second known) norm-line)
-                     (list (cons names (first known))
-                           norm-line)
-                     known))
-               so-far))))
+          ;; This expr is redundant, include its names in the replacement list
+          (list-update so-far existing-pos (lambda (existing)
+                                             (list (cons names (first existing))
+                                                   norm-line))))))
 
   (define (remove-redundancies exprs so-far)
     (if (empty? exprs)
