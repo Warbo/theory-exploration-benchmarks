@@ -713,14 +713,6 @@
   (append (lowercase-names defs)
           (uppercase-names defs)))
 
-;; Rename constructors defined in X to begin with "constructor-"
-(define (tag-constructors x)
-  ;; Tag constructors with 'constructor-' to disambiguate
-  (foldl (lambda (c y)
-           (replace-in c (prefix-name c "constructor-") y))
-         x
-         (expression-constructors x)))
-
 ;; Rename types in X to begin with "type-"
 (define (tag-types x)
   ;; Tag types with 'type-' to disambiguate
@@ -2159,7 +2151,7 @@ library
   ;;to avoid being given the old format
   (define cache-path
     (string-append path-prefix
-                   (bytes->hex (sha256 (~a `(version-2 ,(theorem-files)))))))
+                   (bytes->hex (sha256 (~a `(version-3 ,(theorem-files)))))))
 
   ;; Check if cached data exists for these parameters
   (define (have-cached-data?)
