@@ -12,6 +12,8 @@ environment variable 'EQUATIONS_ONLY' to '1'.")
   (exit 1))
 
 (unless (equal? 2 (vector-length (current-command-line-arguments)))
+  (log (format "Expected 2 arguments, given ~s"
+               (current-command-line-arguments)))
   (usage))
 
 (define-values (size rep)
@@ -19,6 +21,8 @@ environment variable 'EQUATIONS_ONLY' to '1'.")
                      (vector->list (current-command-line-arguments)))))
 
 (when (or (equal? size #f) (equal? rep #f))
+  (log (format "Expected two integers, given ~s"
+               `((size ,size) (rep ,rep))))
   (usage))
 
 (define result
