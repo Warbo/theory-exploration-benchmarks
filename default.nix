@@ -199,7 +199,7 @@ in rec {
 
         # Write a one-liner to invoke this script, since shebangs don't seem to
         # use the bytecode
-        echo -e "#!/usr/bin/env bash\nexec racket '$F'" > "$out/bin/$NAME"
+        echo -e "#!/usr/bin/env bash\nexec racket '$F' \"\$@\"" > "$out/bin/$NAME"
         chmod +x "$out/bin/$NAME"
 
         # Wrap the one-liner so we can provide an appropriate environment.
