@@ -344,6 +344,29 @@
                  string<=?))
     all-theorem-files))
 
+;; A hash based on the contents of theorem-files, which we can use to identify
+;; cached data
+(define benchmarks-hash
+  (memo (lambda ()
+          ;; Sort by filename, rather than full path
+          (define sorted
+            (sort (theorem-files)
+                  (lambda (x y)
+                    (string<=? (last (string-split x "/"))
+                               (last (string-split y "/"))))))
+
+          ;; Hash files, in order
+          (define hashes
+            (map (lambda (f)
+                   (sha256 (file->string f)))
+                 sorted))
+
+          ;; Collapse hashes into a Merkle chain
+          (foldl (lambda (hash result)
+                   (sha256 (~a hash result)))
+                 ""
+                 hashes))))
+
 ;; Override the theorem files to be used. If you're going to use this, do it
 ;; before computing anything, to prevent stale values being memoised. Basically
 ;; only exists for making the test suite quicker.
@@ -2148,10 +2171,11 @@ library
   (define path-prefix "/tmp/tebenchmarktemp-cache-")
 
   ;; If you change the format of the data being stored, bump the version number
-  ;;to avoid being given the old format
+  ;; to avoid being given the old format. Our cache key includes the filenames
+  ;; which we've been given
   (define cache-path
     (string-append path-prefix
-                   (bytes->hex (sha256 (~a `(version-3 ,(theorem-files)))))))
+                   (bytes->hex (sha256 (~a `(version-3 ,(benchmarks-hash)))))))
 
   ;; Check if cached data exists for these parameters
   (define (have-cached-data?)
