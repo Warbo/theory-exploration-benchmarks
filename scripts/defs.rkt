@@ -347,18 +347,18 @@
 ;; A hash based on the contents of theorem-files, which we can use to identify
 ;; cached data
 (define benchmarks-hash
-  (memo (lambda ()
-          ;; Hash file contents
-          (define hashes
-            (map (lambda (f)
-                   (sha256 (file->string f)))
-                 (theorem-files)))
+  (memo0 (lambda ()
+           ;; Hash file contents
+           (define hashes
+             (map (lambda (f)
+                    (sha256 (file->string f)))
+                  (theorem-files)))
 
-          ;; Sort hashes and collapse into a Merkle chain
-          (foldl (lambda (hash result)
-                   (sha256 (~a hash result)))
-                 ""
-                 (sort hashes arbitrary<=?)))))
+           ;; Sort hashes and collapse into a Merkle chain
+           (foldl (lambda (hash result)
+                    (sha256 (~a hash result)))
+                  ""
+                  (sort hashes arbitrary<=?)))))
 
 ;; Override the theorem files to be used. If you're going to use this, do it
 ;; before computing anything, to prevent stale values being memoised. Basically
