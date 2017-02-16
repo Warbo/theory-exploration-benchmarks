@@ -8,6 +8,7 @@
 (require racket/trace)
 (require shell/pipeline)
 
+(provide conjectures-for-sample-wrapper)
 (provide decode-string)
 (provide full-haskell-package)
 (provide log)
@@ -346,19 +347,19 @@
 
 ;; A hash based on the contents of theorem-files, which we can use to identify
 ;; cached data
-(define benchmarks-hash
-  (memo0 (lambda ()
-           ;; Hash file contents
-           (define hashes
-             (map (lambda (f)
-                    (sha256 (file->string f)))
-                  (theorem-files)))
+(memo0 benchmarks-hash
+       (lambda ()
+         ;; Hash file contents
+         (define hashes
+           (map (lambda (f)
+                  (sha256 (file->string f)))
+                (theorem-files)))
 
-           ;; Sort hashes and collapse into a Merkle chain
-           (foldl (lambda (hash result)
-                    (sha256 (~a hash result)))
-                  ""
-                  (sort hashes arbitrary<=?)))))
+         ;; Sort hashes and collapse into a Merkle chain
+         (foldl (lambda (hash result)
+                  (sha256 (~a hash result)))
+                ""
+                (sort hashes arbitrary<=?))))
 
 ;; Override the theorem files to be used. If you're going to use this, do it
 ;; before computing anything, to prevent stale values being memoised. Basically
@@ -1758,7 +1759,38 @@ library
                     (theorem-globals thm))
                thm))
 
-(memo0 normalised-theorems
+;; We cache an awful lot of stuff, so it's easy to cause a loop in our data flow
+;; where generating values to be cached ends up indirectly looking for values in
+;; the cache! To mitigate this, we provide the following functions:
+;;
+;;  generating? tells us if we're currently generating data for the cache
+;;  start-generating! tells the program that it's now generating data
+;;  stop-generating!  tells the program that it's no longer generating data
+;;
+;; When we want a function's results to be cached, we can give it a simple
+;; if/then/else check to see if we're generating: if so, it should do the hard
+;; work and generate the actual data; if not, it can pull it from the cache.
+;;
+;; Callers of our function then don't need to care if the data will generated or
+;; taken from the cache; hence there's no need to update call sites when adding
+;; caching to an existing function.
+(define-values (generating? start-generating! stop-generating!)
+  (let ([are-generating #f])
+    (values
+     (lambda () are-generating)
+
+     (lambda ()
+       (set! are-generating #t))
+
+     (lambda ()
+       (set! are-generating #f)))))
+
+(define (normalised-theorems)
+  (if (generating?)
+      (mk-normalised-theorems)
+      (assoc-get 'normalised-theorems (get-sampling-data))))
+
+(memo0 mk-normalised-theorems
        (define qualified
          (qual-all (theorem-files)))
 
@@ -2141,21 +2173,35 @@ library
   (define/test-contract (mk-data)
     (-> sampling-data?)
 
-    `((all-canonical-function-names
-       ;; Theorem deps aren't hex encoded, so sample with
-       ;; decoded versions
-       ,(map decode-name (lowercase-benchmark-names)))
+    ;; Makes generating? return true, which prevents the following invocations
+    ;; from trying to look up cached data.
+    (start-generating!)
 
-      ;; read/write doesn't work for sets :(
-      (theorem-deps
-       ,(map (lambda (t-d)
-               (list (first t-d) (set->list (second t-d))))
-             (all-theorem-deps)))
+    (define result
+      `((all-canonical-function-names
+         ;; Theorem deps aren't hex encoded, so sample with
+         ;; decoded versions
+         ,(map decode-name (lowercase-benchmark-names)))
 
-      (equation-names
-       ,(filter (lambda (f)
-                  (not (empty? (equation-from f))))
-                (theorem-files)))))
+        ;; read/write doesn't work for sets :(
+        (theorem-deps
+         ,(map (lambda (t-d)
+                 (list (first t-d) (set->list (second t-d))))
+               (all-theorem-deps)))
+
+        (equation-names
+         ,(filter (lambda (f)
+                    (not (empty? (equation-from f))))
+                  (theorem-files)))
+
+        (normalised-theorems
+         ,(normalised-theorems))))
+
+    ;; We've populated the cache so functions can start returning cached results
+    (stop-generating!)
+
+    ;; Return the generated data
+    result)
 
   ;; The path where we'll cache data. To avoid runaway file deletion, we include
   ;; both "/tmp" and the disambiguating prefix in a single hard-coded string.
@@ -2168,7 +2214,7 @@ library
   ;; which we've been given
   (define cache-path
     (string-append path-prefix
-                   (bytes->hex (sha256 (~a `(version-3 ,(benchmarks-hash)))))))
+                   (bytes->hex (sha256 (~a `(version-4 ,(benchmarks-hash)))))))
 
   ;; Check if cached data exists for these parameters
   (define (have-cached-data?)
@@ -2285,7 +2331,12 @@ library
 (define (precision-from-sample found sample)
   (match (find-eqs-intersection found sample)
     [(list possibilities eqs intersection)
-     (/ (length intersection) (length found))]))
+     ;; If we didn't find anything, don't divide by zero since it will cause a
+     ;; runtime error. Instead, just write the ration symbolically and let our
+     ;; caller handle this case however they want.
+     (if (empty? found)
+         (format "~a/0" (length intersection))
+         (/ (length intersection) (length found)))]))
 
 ;; We only find equations so precision for equations is the same as for theorems
 (define precision-eqs-from-sample precision-from-sample)
@@ -2304,16 +2355,21 @@ library
 ;; what's in the provided sample. In other words, those theorems whose
 ;; dependencies are a subset of the sample.
 (define (conjectures-admitted-by sample)
+  (map normed-theorem-of (theorem-files-admitted-by sample)))
+
+(define (theorem-files-admitted-by sample)
   (define theorem-deps
     (assoc-get 'theorem-deps (get-sampling-data)))
 
-  (define theorem-files-admitted
-    (map first
-         (filter (lambda (t-d)
-                   (subset? (second t-d) sample))
-                 theorem-deps)))
+  (map first
+       (filter (lambda (t-d)
+                 (subset? (second t-d) sample))
+               theorem-deps)))
 
-  (map normed-theorem-of theorem-files-admitted))
+(define (conjectures-for-sample-wrapper)
+  (define sample
+    (map decode-name (read-benchmark (port->string))))
+  (write-json (theorem-files-admitted-by sample)))
 
 ;; Return equational theorems (filenames, one per file) which would be possible
 ;; to discover given what's in the provided sample. In other words, those
@@ -2706,15 +2762,15 @@ library
 ;; FIXME: Add tests, add checks for whether input conforms to expected format, etc.
 (define (precision-wrapper)
   (define sample
-    (read-benchmark (getenv "SAMPLED_NAMES")))
+    (map decode-name (read-benchmark (getenv "SAMPLED_NAMES"))))
 
-  (write (precision-from-sample (parse-json-equations (port->string))
-                                sample)))
+  (display (precision-from-sample (parse-json-equations (port->string))
+                                  sample)))
 
 ;; FIXME: Add tests, add checks for whether input conforms to expected format, etc.
 (define (recall-wrapper)
   (define sample
-    (read-benchmark (getenv "SAMPLED_NAMES")))
+    (map decode-name (read-benchmark (getenv "SAMPLED_NAMES"))))
 
   (write (recall-from-sample (parse-json-equations (port->string))
                              sample)))
