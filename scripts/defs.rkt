@@ -348,24 +348,17 @@
 ;; cached data
 (define benchmarks-hash
   (memo (lambda ()
-          ;; Sort by filename, rather than full path
-          (define sorted
-            (sort (theorem-files)
-                  (lambda (x y)
-                    (string<=? (last (string-split x "/"))
-                               (last (string-split y "/"))))))
-
-          ;; Hash files, in order
+          ;; Hash file contents
           (define hashes
             (map (lambda (f)
                    (sha256 (file->string f)))
-                 sorted))
+                 (theorem-files)))
 
-          ;; Collapse hashes into a Merkle chain
+          ;; Sort hashes and collapse into a Merkle chain
           (foldl (lambda (hash result)
                    (sha256 (~a hash result)))
                  ""
-                 hashes))))
+                 (sort hashes arbitrary<=?)))))
 
 ;; Override the theorem files to be used. If you're going to use this, do it
 ;; before computing anything, to prevent stale values being memoised. Basically
