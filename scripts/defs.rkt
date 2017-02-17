@@ -15,9 +15,7 @@
 (provide mk-defs)
 (provide mk-final-defs)
 (provide mk-signature)
-(provide precision-wrapper)
 (provide qualify-given)
-(provide recall-wrapper)
 (provide sample-from-benchmarks)
 (provide sample-equational-from-benchmarks)
 (provide symbols-of-theorems)
@@ -2310,52 +2308,52 @@ library
      (set-count wanted)))
 
 (define (find-eqs-intersection found sample)
-  (define possibilities
-    (conjectures-admitted-by sample))
+  (map (lambda (x)
+         (define eq
+           (theorem-to-equation (second x)))
 
-  (define eqs
-    (concat-map theorem-to-equation possibilities))
+         (make-immutable-hash
+          `((file     . ,(first  x))
+            (theorem  . ,(second x))
+            (equation . ,eq)
+            (found    . ,(any-of (lambda (a-found)
+                                   (if (empty? eq)
+                                       #f
+                                       (equations-match? a-found (first eq))))
+                                 found)))))
+
+       (theorem-files-and-conjectures-for-sample sample)))
+
+(define (conjectures-from-sample found sample)
+  (define marked
+    (find-eqs-intersection found sample))
 
   (define intersection
-    (foldl (lambda (eq result)
-             (if (any-of (lambda (a-found)
-                           (equations-match? a-found eq))
-                         found)
-                 (cons eq result)
-                 result))
-           '()
-           eqs))
+    (filter (lambda (x) (hash-ref x 'found)) marked))
 
-  (list possibilities eqs intersection))
-
-(define (precision-from-sample found sample)
-  (match (find-eqs-intersection found sample)
-    [(list possibilities eqs intersection)
-     ;; If we didn't find anything, don't divide by zero since it will cause a
-     ;; runtime error. Instead, just write the ration symbolically and let our
-     ;; caller handle this case however they want.
-     (if (empty? found)
-         (format "~a/0" (length intersection))
-         (/ (length intersection) (length found)))]))
-
-;; We only find equations so precision for equations is the same as for theorems
-(define precision-eqs-from-sample precision-from-sample)
-
-(define (recall-from-sample found sample)
-  (match (find-eqs-intersection found sample)
-    [(list possibilities eqs intersection)
-     (/ (length intersection) (length possibilities))]))
-
-(define (recall-eqs-from-sample found sample)
-  (match (find-eqs-intersection found sample)
-    [(list possibilities eqs intersection)
-     (/ (length intersection) (length possibilities))]))
+  (make-immutable-hash
+   `((wanted    . ,marked)
+     (precision . ,(if (empty? found)
+                       null
+                       (/ (length intersection)
+                          (length found))))
+     (recall    . ,(if (empty? marked)
+                       null
+                       (/ (length intersection) (length marked)))))))
 
 ;; Return all theorems (expressions) which would be possible to discover given
 ;; what's in the provided sample. In other words, those theorems whose
 ;; dependencies are a subset of the sample.
 (define (conjectures-admitted-by sample)
-  (map normed-theorem-of (theorem-files-admitted-by sample)))
+  (map second (theorem-files-and-conjectures-for-sample sample)))
+
+(define (theorem-files-and-conjectures-for-sample sample)
+  (define files
+    (theorem-files-admitted-by sample))
+
+  (map (lambda (f)
+         (list f (normed-theorem-of f)))
+       files))
 
 (define (theorem-files-admitted-by sample)
   (define theorem-deps
@@ -2368,8 +2366,19 @@ library
 
 (define (conjectures-for-sample-wrapper)
   (define sample
-    (map decode-name (read-benchmark (port->string))))
-  (write-json (theorem-files-admitted-by sample)))
+    (map decode-name (read-benchmark (getenv "SAMPLED_NAMES"))))
+
+  (write-json
+   (hash-update (conjectures-from-sample
+                 (parse-json-equations (port->string)) sample)
+                'wanted
+                (lambda (wanted)
+                  (map (lambda (entry)
+                         (hash-update (hash-remove entry 'theorem)
+                                      'equation
+                                      (lambda (x)
+                                        (map equation-to-jsexpr x))))
+                       wanted)))))
 
 ;; Return equational theorems (filenames, one per file) which would be possible
 ;; to discover given what's in the provided sample. In other words, those
@@ -2722,6 +2731,27 @@ library
                (first eq)))
          (string->jsexpr str))))
 
+;; Turns an equation s-expression into a datastructure which, if given to
+;; write-json, will output an equation compatible with mlspec et al.
+(define (equation-to-jsexpr eq)
+  (define (expression-to-jsexpr x)
+    (make-hash (match x
+      [(list 'variable id type)  `((role   . "variable")
+                                   (id     . ,id)
+                                   (type   . ,type))]
+      [(list 'constant sym type) `((role   . "constant")
+                                   (symbol . ,(symbol->string sym))
+                                   (type   . ,type))]
+      [(list 'apply lhs rhs)     `((role   . "application")
+                                   (lhs    . ,(expression-to-jsexpr lhs))
+                                   (rhs    . ,(expression-to-jsexpr rhs)))])))
+
+  (match eq
+    [(list '~= lhs rhs)
+     (make-hash `((relation . "~=")
+                  (lhs      . ,(expression-to-jsexpr lhs))
+                  (rhs      . ,(expression-to-jsexpr rhs))))]))
+
 (define/test-contract (equations-match? x y)
   (-> equation? equation? boolean?)
 
@@ -2758,22 +2788,6 @@ library
           (expressions-match? x1 x2))]
 
     [_ #f]))
-
-;; FIXME: Add tests, add checks for whether input conforms to expected format, etc.
-(define (precision-wrapper)
-  (define sample
-    (map decode-name (read-benchmark (getenv "SAMPLED_NAMES"))))
-
-  (display (precision-from-sample (parse-json-equations (port->string))
-                                  sample)))
-
-;; FIXME: Add tests, add checks for whether input conforms to expected format, etc.
-(define (recall-wrapper)
-  (define sample
-    (map decode-name (read-benchmark (getenv "SAMPLED_NAMES"))))
-
-  (write (recall-from-sample (parse-json-equations (port->string))
-                             sample)))
 
 ;; Everything below here is tests; run using "raco test"
 (module+ test
