@@ -1709,13 +1709,13 @@ library
 (memo0 benchmark-theorems
        (make-immutable-hash
         (foldl (lambda (f rest)
-                 (cons (cons f (first (theorems-from-file f)))
+                 (cons (cons (path-end f) (first (theorems-from-file f)))
                        rest))
                '()
                (theorem-files))))
 
 (define (theorem-of f)
-  (hash-ref (benchmark-theorems) f
+  (hash-ref (benchmark-theorems) (path-end f)
             (lambda ()
               (raise-arguments-error
                'theorem-of
@@ -1825,10 +1825,10 @@ library
                   (lambda (f thm)
                     (cons f (unqualify
                              (replace-all final-replacements
-                                          (qual-thm f thm))))))))
+                                          (qual-thm (benchmark-file f) thm))))))))
 
 (define (normed-theorem-of f)
-  (hash-ref (normalised-theorems) f
+  (hash-ref (normalised-theorems) (path-end f)
             (lambda ()
               (raise-arguments-error
                'normed-theorem-of
@@ -2212,7 +2212,7 @@ library
   ;; which we've been given
   (define cache-path
     (string-append path-prefix
-                   (bytes->hex (sha256 (~a `(version-4 ,(benchmarks-hash)))))))
+                   (bytes->hex (sha256 (~a `(version-5 ,(benchmarks-hash)))))))
 
   ;; Check if cached data exists for these parameters
   (define (have-cached-data?)
