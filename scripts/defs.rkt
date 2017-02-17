@@ -346,18 +346,17 @@
 ;; A hash based on the contents of theorem-files, which we can use to identify
 ;; cached data
 (memo0 benchmarks-hash
-       (lambda ()
-         ;; Hash file contents
-         (define hashes
-           (map (lambda (f)
-                  (sha256 (file->string f)))
-                (theorem-files)))
+       ;; Hash file contents
+       (define hashes
+         (map (lambda (f)
+                (sha256 (file->string f)))
+              (theorem-files)))
 
-         ;; Sort hashes and collapse into a Merkle chain
-         (foldl (lambda (hash result)
-                  (sha256 (~a hash result)))
-                ""
-                (sort hashes arbitrary<=?))))
+       ;; Sort hashes and collapse into a Merkle chain
+       (foldl (lambda (hash result)
+                (sha256 (~a hash result)))
+              ""
+              (sort hashes arbitrary<=?)))
 
 ;; Override the theorem files to be used. If you're going to use this, do it
 ;; before computing anything, to prevent stale values being memoised. Basically
@@ -1783,49 +1782,51 @@ library
      (lambda ()
        (set! are-generating #f)))))
 
-(define (normalised-theorems)
+(memo0 normalised-theorems
   (if (generating?)
-      (mk-normalised-theorems)
+      ;; Can't use cache yet, generate
+      (let ()
+        (define qualified
+          (qual-all (theorem-files)))
+
+        ;; First get replacements used in definitions
+        (define replacements
+          (replacements-closure qualified))
+
+        ;; Also replace constructors with constructor functions, skipping
+        ;; constructors which are redundant
+
+        (define all-constructors
+          (expression-constructors qualified))
+
+        (define constructor-replacements
+          (map (lambda (c)
+                 (list c (prefix-name c "constructor-")))
+               (remove* (map first replacements)
+                        all-constructors)))
+
+        ;; Update replacements to use constructor functions rather than
+        ;; constructors
+        (define final-replacements
+          (append constructor-replacements
+                  (map (lambda (rep)
+                         (if (member (second rep)
+                                     (map first constructor-replacements))
+                             (list (first rep) (prefix-name (second rep)
+                                                            "constructor-"))
+                             rep))
+                       replacements)))
+
+        (make-immutable-hash
+         (hash-map (benchmark-theorems)
+                   (lambda (f thm)
+                     (cons (path-end f)
+                           (unqualify
+                            (replace-all final-replacements
+                                         (qual-thm (benchmark-file (path-end f))
+                                                   thm))))))))
+      ;; Otherwise return cached version
       (assoc-get 'normalised-theorems (get-sampling-data))))
-
-(memo0 mk-normalised-theorems
-       (define qualified
-         (qual-all (theorem-files)))
-
-       ;; First get replacements used in definitions
-       (define replacements
-         (replacements-closure qualified))
-
-       ;; Also replace constructors with constructor functions, skipping
-       ;; constructors which are redundant
-
-       (define all-constructors
-         (expression-constructors qualified))
-
-       (define constructor-replacements
-         (map (lambda (c)
-                (list c (prefix-name c "constructor-")))
-              (remove* (map first replacements)
-                       all-constructors)))
-
-       ;; Update replacements to use constructor functions rather than
-       ;; constructors
-       (define final-replacements
-         (append constructor-replacements
-                 (map (lambda (rep)
-                        (if (member (second rep)
-                                    (map first constructor-replacements))
-                            (list (first rep) (prefix-name (second rep)
-                                                           "constructor-"))
-                            rep))
-                      replacements)))
-
-       (make-immutable-hash
-        (hash-map (benchmark-theorems)
-                  (lambda (f thm)
-                    (cons f (unqualify
-                             (replace-all final-replacements
-                                          (qual-thm (benchmark-file f) thm))))))))
 
 (define (normed-theorem-of f)
   (hash-ref (normalised-theorems) (path-end f)
@@ -1885,7 +1886,7 @@ library
            result)))
 
 (memo0 all-theorem-deps
-       (map (lambda (f) (list f (list->set (theorem-deps-of f))))
+       (map (lambda (f) (list (path-end f) (list->set (theorem-deps-of f))))
             (theorem-files)))
 
 ;; Does S contain all dependencies required by some theorem statement?
@@ -2174,6 +2175,7 @@ library
     ;; Makes generating? return true, which prevents the following invocations
     ;; from trying to look up cached data.
     (start-generating!)
+    (normalised-theorems)
 
     (define result
       `((all-canonical-function-names
@@ -2212,7 +2214,7 @@ library
   ;; which we've been given
   (define cache-path
     (string-append path-prefix
-                   (bytes->hex (sha256 (~a `(version-5 ,(benchmarks-hash)))))))
+                   (bytes->hex (sha256 (~a `(version-7 ,(benchmarks-hash)))))))
 
   ;; Check if cached data exists for these parameters
   (define (have-cached-data?)
