@@ -1985,7 +1985,7 @@ library
   (define (get-hash val)
     (sha256 (format "sample-size-~a-selection-round-~a-~a" size rep val)))
 
-  ;; To avoid division by zero in precision/recall experiments, we only return
+  ;; To avoid division by zero in recall experiments, we only return
   ;; samples which include the dependencies of at least one theorem (which we
   ;; call "constraints").
 
@@ -2337,11 +2337,12 @@ library
    `((wanted    . ,marked)
      (precision . ,(if (empty? found)
                        null
-                       (/ (length intersection)
-                          (length found))))
+                       (real->double-flonum  (/ (length intersection)
+                                                (length found)))))
      (recall    . ,(if (empty? marked)
                        null
-                       (/ (length intersection) (length marked)))))))
+                       (real->double-flonum (/ (length intersection)
+                                               (length marked))))))))
 
 ;; Return all theorems (expressions) which would be possible to discover given
 ;; what's in the provided sample. In other words, those theorems whose
