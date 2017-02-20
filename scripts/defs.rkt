@@ -1662,31 +1662,40 @@
   ;; Note that the existing definitions may span multiple lines, so we insert
   ;; our new ones *before*, to avoid being in the middle of the existing one.
   (define patched4
-    (string-join (map (lambda (line)
-                        (define extra
-                          (cond
-                           ;; Non-parameterised instances
-                           ([string-contains? line "instance QC.Arbitrary"]
-                            (string-replace (first (string-split line "where"))
-                                            "QC.Arbitrary"
-                                            "Data.Serialize.Serialize"))
-                           ;; Parameterised instances
-                           ([string-contains? line "instance (F.Enumerable"]
-                            (string-replace
-                             (string-replace (first (string-split line "where"))
-                                             "QC.Arbitrary"
-                                             "Data.Serialize.Serialize")
-                             "F.Enumerable"
-                             "Data.Serialize.Serialize"))
-                           ;; Any other line
-                           (#t "")))
-                        (if (equal? extra "")
-                            line
-                            (string-append extra "\n" line)))
-                      (string-split patched3 "\n"))
-                 "\n"))
+    ;; Parameterised instance declarations. Note that .*? is non-greedy.
+    (regexp-replace* #px"instance\\s+\\(F\\.Enumerable.*?where" patched3
+                     (lambda (dec)
+                       ;; Prepend new instance to existing dec
+                       (string-append
+                        ;; Removes the trailing "where" which we don't want
+                        (string-trim
+                         ;; Replace QC.Arbitrary and F.Enumerable
+                         (string-replace
+                          (string-replace dec
+                                          "QC.Arbitrary"
+                                          "Data.Serialize.Serialize")
+                          "F.Enumerable"
+                          "Data.Serialize.Serialize")
+                         "where")
+                        "\n"
+                        dec))))
+  (define patched5
+    ;; Non-parameterised instance declarations. Again, .*? is non-greedy.
+    (regexp-replace* #px"instance\\s+QC\\.Arbitrary.*?where" patched4
+                     (lambda (dec)
+                       ;; Prepend new instance to existing dec
+                       (string-append
+                        ;; Removes the trailing "where" which we don't want
+                        (string-trim
+                         ;; Replace QC.Arbitrary
+                         (string-replace dec
+                                         "QC.Arbitrary"
+                                         "Data.Serialize.Serialize")
+                         "where")
+                        "\n"
+                        dec))))
 
-  (define patched patched4)
+  (define patched patched5)
 
   (make-directory (string-append dir "/src"))
 
