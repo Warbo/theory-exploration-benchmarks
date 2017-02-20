@@ -90,6 +90,8 @@ let
         hs.QuickCheck
         hs.quickspec
         hs.testing-feat
+        hs.cereal
+        hs.murmur-hash
       ]))
     ];
   };
