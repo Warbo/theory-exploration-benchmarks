@@ -10,11 +10,13 @@
 
 (provide conjectures-for-sample-wrapper)
 (provide decode-string)
+(provide eqs-to-json-wrapper)
 (provide full-haskell-package)
 (provide log)
 (provide mk-defs)
 (provide mk-final-defs)
 (provide mk-signature)
+(provide precision-recall-eqs-wrapper)
 (provide qualify-given)
 (provide sample-from-benchmarks)
 (provide sample-equational-from-benchmarks)
@@ -2848,6 +2850,28 @@ library
           (expressions-match? x1 x2))]
 
     [_ #f]))
+
+;; Recurses through EXPR until it finds a sub-expression of the form
+;; (FIND foo bar ...), replaces it with (WRAPPER (FIND foo bar ...)) and returns
+;; the modified EXPR
+(define (wrap-with find wrapper expr)
+  (match expr
+    [(cons x y) (if (equal? x find)
+                    (list wrapper expr)
+                    (cons (wrap-with find wrapper x)
+                          (wrap-with find wrapper y)))]
+    [_              expr]))
+
+(define (eqs-to-json-wrapper)
+  (write-json (map (lambda (thm)
+                     (equation-to-jsexpr
+                      (first
+                       (theorem-to-equation
+                        (wrap-with '= 'custom-bool-converter thm)))))
+                   (read-benchmark (port->string)))))
+
+(define (precision-recall-eqs-wrapper)
+  (error "TODO"))
 
 ;; Everything below here is tests; run using "raco test"
 (module+ test
