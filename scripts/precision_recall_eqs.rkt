@@ -3,4 +3,7 @@
 
 (require (file "defs.rkt"))
 
-(precision-recall-eqs-wrapper)
+(write-json
+ (precision-recall-eqs-wrapper (port->string)
+                               (getenv "TRUTH_SOURCE")
+                               (getenv "GROUND_TRUTH")))

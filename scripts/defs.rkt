@@ -22,6 +22,7 @@
 (provide sample-equational-from-benchmarks)
 (provide symbols-of-theorems)
 (provide types-from-defs)
+(provide write-json)
 
 (define-values (quiet log)
   (let ([verbose #t])
@@ -2369,6 +2370,10 @@ library
      (set-count wanted)))
 
 (define (find-eqs-intersection found sample)
+  (find-eqs-intersection-raw
+   (theorem-files-and-conjectures-for-sample sample)))
+
+(define (find-eqs-intersection-raw found ground-truth)
   (map (lambda (x)
          (define eq
            (theorem-to-equation (second x)))
@@ -2382,13 +2387,12 @@ library
                                        #f
                                        (equations-match? a-found (first eq))))
                                  found)))))
-
-       (theorem-files-and-conjectures-for-sample sample)))
+       ground-truth))
 
 (define (conjectures-from-sample found sample)
-  (define marked
-    (find-eqs-intersection found sample))
+  (conjectures-from-raw found (find-eqs-intersection found sample)))
 
+(define (conjectures-from-raw found marked)
   (define intersection
     (filter (lambda (x) (hash-ref x 'found)) marked))
 
@@ -2426,21 +2430,24 @@ library
                  (subset? (second t-d) sample))
                theorem-deps)))
 
+(define (fix-json-for-output jsexpr)
+  (hash-update jsexpr
+               'wanted
+               (lambda (wanted)
+                 (map (lambda (entry)
+                        (hash-update (hash-remove entry 'theorem)
+                                     'equation
+                                     (lambda (x)
+                                       (map equation-to-jsexpr x))))
+                      wanted))))
+
 (define (conjectures-for-sample-wrapper)
   (define sample
     (map decode-name (read-benchmark (getenv "SAMPLED_NAMES"))))
 
   (write-json
-   (hash-update (conjectures-from-sample
-                 (parse-json-equations (port->string)) sample)
-                'wanted
-                (lambda (wanted)
-                  (map (lambda (entry)
-                         (hash-update (hash-remove entry 'theorem)
-                                      'equation
-                                      (lambda (x)
-                                        (map equation-to-jsexpr x))))
-                       wanted)))))
+   (fix-json-for-output (conjectures-from-sample
+                         (parse-json-equations (port->string)) sample))))
 
 ;; Return equational theorems (filenames, one per file) which would be possible
 ;; to discover given what's in the provided sample. In other words, those
@@ -2862,16 +2869,30 @@ library
                           (wrap-with find wrapper y)))]
     [_              expr]))
 
-(define (eqs-to-json-wrapper)
-  (write-json (map (lambda (thm)
-                     (equation-to-jsexpr
-                      (first
-                       (theorem-to-equation
-                        (wrap-with '= 'custom-bool-converter thm)))))
-                   (read-benchmark (port->string)))))
+(define (equations-from-list lst)
+  (map (lambda (thm)
+         (equation-to-jsexpr
+          (first
+           (theorem-to-equation
+            (wrap-with '= 'custom-bool-converter thm)))))
+       lst))
 
-(define (precision-recall-eqs-wrapper)
-  (error "TODO"))
+(define (eqs-to-json-wrapper)
+  (write-json (equations-from-list (read-benchmark (port->string)))))
+
+(define (precision-recall-eqs-wrapper incoming-json truth-source g-truth)
+  (define from-json
+    (parse-json-equations incoming-json))
+
+  (define ground-truth
+    (map (lambda (thm)
+           (list truth-source
+                 (wrap-with '= 'custom-bool-converter thm)))
+         (read-benchmark (file->string g-truth))))
+
+  (fix-json-for-output
+   (conjectures-from-raw from-json
+                         (find-eqs-intersection-raw from-json ground-truth))))
 
 ;; Everything below here is tests; run using "raco test"
 (module+ test
