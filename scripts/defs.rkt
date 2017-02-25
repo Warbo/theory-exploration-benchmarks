@@ -2371,6 +2371,7 @@ library
 
 (define (find-eqs-intersection found sample)
   (find-eqs-intersection-raw
+   found
    (theorem-files-and-conjectures-for-sample sample)))
 
 (define (find-eqs-intersection-raw found ground-truth)
