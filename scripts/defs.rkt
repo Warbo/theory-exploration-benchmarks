@@ -8,6 +8,7 @@
 (require racket/trace)
 (require shell/pipeline)
 
+(provide conjectures-admitted-by-sample-wrapper)
 (provide conjectures-for-sample-wrapper)
 (provide decode-string)
 (provide eqs-to-json-wrapper)
@@ -2413,6 +2414,10 @@ library
 ;; dependencies are a subset of the sample.
 (define (conjectures-admitted-by sample)
   (map second (theorem-files-and-conjectures-for-sample sample)))
+
+(define (conjectures-admitted-by-sample-wrapper)
+  (define sample (read-benchmark (port->string)))
+  (show (conjectures-admitted-by sample)))
 
 (define (theorem-files-and-conjectures-for-sample sample)
   (define files
