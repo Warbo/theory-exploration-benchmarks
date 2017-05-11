@@ -11,6 +11,20 @@ with pkgs;
 with lib;
 
 let
+  # Racket may be disabled (e.g. https://github.com/NixOS/nixpkgs/pull/23542 )
+  nixpkgs1609 = import (fetchFromGitHub {
+    owner  = "NixOS";
+    repo   = "nixpkgs";
+    rev    = "f22817d";
+    sha256 = "1cx5cfsp4iiwq8921c15chn1mhjgzydvhdcmrvjmqzinxyz71bzh";
+  }) {};
+
+  racket = with (tryEval pkgs.racket);
+           if success
+              then value
+              else trace "WARNING: Broken 'racket'; falling back to 16.09"
+                         nixpkgs1609.racket;
+
   shellPipeline = fetchFromGitHub {
     owner  = "willghatch";
     repo   = "racket-shell-pipeline";
