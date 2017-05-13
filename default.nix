@@ -145,7 +145,6 @@ with rec {
   };
 };
 rec {
-  inherit nix-config-src-default;
   # Take benchmarks from git, but transform them to replace "built-in"
   # definitions like "Bool" and "<" with explicitly defined versions.
   tip-benchmarks = stdenv.mkDerivation {
