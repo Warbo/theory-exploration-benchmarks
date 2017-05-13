@@ -1,16 +1,42 @@
-{ pkgs ? import <nixpkgs> {},
-  haskellPackages ? null }:
+{ pkgs            ? import <nixpkgs> {},
+  haskellPackages ? null,
+  nix-config-src  ? null }:
 
-with {
-  chosenHaskellPackages = if haskellPackages == null
-                             then pkgs.haskellPackages
-                             else haskellPackages;
-};
 with builtins;
 with pkgs;
 with lib;
+with rec {
+  # Take then given Haskell packages, but override some things which are known
+  # to be broken on Hackage. TODO: Get upstream to upload non-broken packages!
+  chosenHaskellPackages =
+    with rec {
+      hsPkgs = if haskellPackages == null
+                  then pkgs.haskellPackages
+                  else haskellPackages;
 
-let
+      overrides = self: super:
+        genAttrs [ "tip-lib" "geniplate" ]
+                 (name: self.callPackage (overriddenHaskell name) {});
+
+      overriddenHaskell = name: nix-config.haskellPackages."${name}".src;
+
+      # We take (hopefully!) working versions from nix-config
+      nix-config-src-default = fetchgit {
+        url    = "http://chriswarbo.net/git/nix-config.git";
+        rev    = "3f2948f";
+        sha256 = "1qmnmzjqxv69xjyviw2c91rflqvl6mv1qpbhh8bph57mn5hni58d";
+      };
+
+      config-src = if nix-config-src == null
+                      then nix-config-src-default
+                      else nix-config-src;
+
+      nix-config = import <nixpkgs> {
+        config = import "${config-src}/config.nix";
+      };
+    };
+    hsPkgs.override { inherit overrides; };
+
   # Racket may be disabled (e.g. https://github.com/NixOS/nixpkgs/pull/23542 )
   nixpkgs1609 = import (fetchFromGitHub {
     owner  = "NixOS";
@@ -101,6 +127,7 @@ let
       (racketWithDeps [ grip grommet shellPipeline ])
       (chosenHaskellPackages.ghcWithPackages (hs: [
         hs.tip-lib
+        hs.geniplate
         hs.QuickCheck
         hs.quickspec
         hs.testing-feat
@@ -116,9 +143,9 @@ let
     rev    = "fae25da";
     sha256 = "08zm9a8dlwqm6bnd5z8714j5365pklwh4lkgcnhq0ns1lq0njp3l";
   };
-
-in rec {
-
+};
+rec {
+  inherit nix-config-src-default;
   # Take benchmarks from git, but transform them to replace "built-in"
   # definitions like "Bool" and "<" with explicitly defined versions.
   tip-benchmarks = stdenv.mkDerivation {
