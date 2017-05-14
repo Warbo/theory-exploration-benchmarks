@@ -6,9 +6,9 @@ with builtins;
 with pkgs;
 with lib;
 with rec {
-  # Take then given Haskell packages, but override some things which are known
+  # Take the given Haskell packages, but override some things which are known
   # to be broken on Hackage. TODO: Get upstream to upload non-broken packages!
-  chosenHaskellPackages =
+  patchedHaskellPackages =
     with rec {
       hsPkgs = if haskellPackages == null
                   then pkgs.haskellPackages
@@ -23,8 +23,8 @@ with rec {
       # We take (hopefully!) working versions from nix-config
       nix-config-src-default = fetchgit {
         url    = "http://chriswarbo.net/git/nix-config.git";
-        rev    = "3f2948f";
-        sha256 = "1qmnmzjqxv69xjyviw2c91rflqvl6mv1qpbhh8bph57mn5hni58d";
+        rev    = "c67a368";
+        sha256 = "0zwma75bscac761r6n0wsyb4fz546i33yiwj7x28fcfn3f8vvf7z";
       };
 
       config-src = if nix-config-src == null
@@ -123,9 +123,9 @@ with rec {
     name  = "tip-bench-env";
     paths = [
       bash
-      chosenHaskellPackages.cabal-install
+      patchedHaskellPackages.cabal-install
       (racketWithDeps [ grip grommet shellPipeline ])
-      (chosenHaskellPackages.ghcWithPackages (hs: [
+      (patchedHaskellPackages.ghcWithPackages (hs: [
         hs.tip-lib
         hs.geniplate
         hs.QuickCheck
@@ -145,6 +145,8 @@ with rec {
   };
 };
 rec {
+  inherit patchedHaskellPackages;
+
   # Take benchmarks from git, but transform them to replace "built-in"
   # definitions like "Bool" and "<" with explicitly defined versions.
   tip-benchmarks = stdenv.mkDerivation {
