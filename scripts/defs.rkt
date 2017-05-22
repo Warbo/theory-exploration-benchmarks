@@ -25,6 +25,24 @@
 (provide types-from-defs)
 (provide write-json)
 
+;; Set up our testing framework. We declare a bunch of integration tests at the
+;; end of this file, but we also try to write unit tests next to each function's
+;; definition and documentation. All testing goes in the 'test' submodule.
+(module+ test
+  (require rackunit)
+
+  ;; Selects specific test-cases based on a regex from the environment
+  (define test-case-regex
+    ;; Match everything if no regex given
+    (let ([given (or (getenv "PLT_TEST_REGEX") "")])
+      (match given
+        ["" #rx".*"]
+        [_  (regexp given)])))
+
+  (define-syntax-rule (def-test-case name body ...)
+    (when (regexp-match? test-case-regex name)
+      (test-case name body ...))))
+
 (define-values (quiet log)
   (let ([verbose #t])
     (values (lambda ()
@@ -384,31 +402,87 @@
 (define (file->list f)
   (read-benchmark (file->string f)))
 
+;; Returns a list of names for any functions which the given expression defines.
+;; Note that expr must itself be a definition; we don't look through its
+;; subexpressions.
+(define (toplevel-function-names-in expr)
+  (match expr
+    [(list 'define-fun     name _ _ _)                      (list name)]
+    [(list 'define-fun     (list 'par _ (list name _ _ _))) (list name)]
+    [(list 'define-fun-rec name _ _ _)                      (list name)]
+    [(list 'define-fun-rec (list 'par _ (list name _ _ _))) (list name)]
+    [(list 'define-funs-rec decs _) (map (lambda (dec)
+                                           (if (equal? (first dec) 'par)
+                                               (first (third dec))
+                                               (first dec)))
+                                         decs)]
+    [_ null]))
+
+(module+ test
+  (define nat-def
+    '(declare-datatypes () ((Nat (Z) (S (p Nat))))))
+
+  (define constructorZ
+    '(define-fun constructor-Z ()              Nat (as  Z          Nat)))
+
+  (define constructorS
+    '(define-fun constructor-S ((local-p Nat)) Nat (as (S local-p) Nat)))
+
+  (define redundancies `(,constructorZ
+                         ,constructorS
+                         (define-fun redundantZ1 () Nat (as Z Nat))
+                         (define-fun redundantZ2 () Nat (as Z Nat))
+                         (define-fun redundantZ3 () Nat (as Z Nat))))
+
+  (def-test-case "Can get function names"
+    (check-equal? (map toplevel-function-names-in `(,nat-def
+                                                    ,constructorZ
+                                                    ,constructorS))
+                  '(() (constructor-Z) (constructor-S)))))
+
+;; Returns all global names defined in expr. Note that this a) does not look for
+;; definitions in sub-expressions of expr, and b) returns the names in a
+;; deterministic order based on where they appear in the definition (e.g. if
+;; there are mutually-recursive functions, or types with constructors and
+;; destructors, etc.)
+(define (toplevel-names-in expr)
+  (append (toplevel-function-names-in expr)
+          (match expr
+             [(list 'declare-datatypes _ decs)
+              (foldl (lambda (dec result)
+                       (define type-name
+                         (car dec))
+
+                       (define constructor-decs
+                         (cdr dec))
+
+                       (define destructor-decs
+                         (concat-map cdr constructor-decs))
+
+                       (append (list type-name)
+                               (map first constructor-decs)
+                               (map first destructor-decs)
+                               result))
+                     null
+                     decs)]
+             [_ null])))
+
 ;; Return the names of all functions defined in the given expr, including
 ;; destructors; i.e. those things which need lowercase initials in Haskell.
 (define (lowercase-names expr)
-  (match expr
-    [(list 'define-fun-rec (list 'par _ (list name _ _ _))) (list name)]
-    [(list 'define-fun-rec name _ _ _)                      (list name)]
-    [(list 'define-fun (list 'par _ (list name _ _ _)))     (list name)]
-    [(list 'define-fun name _ _ _)                          (list name)]
-    [(list 'define-funs-rec decs _)
-     (map (lambda (dec)
-            (if (equal? (first dec) 'par)
-                (first (third dec))
-                (first dec)))
-          decs)]
-
-    [(list 'declare-datatypes _ decs)
-     (concat-map (lambda (dec)
-                   (define constructor-decs
-                     (cdr dec))
-                   (define destructor-decs
-                     (concat-map cdr constructor-decs))
-                   (map first destructor-decs))
-                 decs)]
-    [(cons a b) (append (lowercase-names a) (lowercase-names b))]
-    [_          '()]))
+  (append (toplevel-function-names-in expr)
+          (match expr
+            [(list 'declare-datatypes _ decs)
+             (foldl (lambda (dec result)
+                      (define constructor-decs
+                        (cdr dec))
+                      (define destructor-decs
+                        (concat-map cdr constructor-decs))
+                      (append (map first destructor-decs) result))
+                    null
+                    decs)]
+            [(cons a b) (append (lowercase-names a) (lowercase-names b))]
+            [_          null])))
 
 ;; Return the names of all types and constructors defined in the given expr;
 ;; i.e. those things which need uppercase initials in Haskell.
@@ -420,13 +494,13 @@
       (map first type-decs)
       ;; Constructor names
       (concat-map (lambda (type-dec)
-                   (define constructor-decs
-                     (cdr type-dec))
-                   (map first constructor-decs))
-                 type-decs))]
+                    (define constructor-decs
+                      (cdr type-dec))
+                    (map first constructor-decs))
+                  type-decs))]
 
     [(cons a b) (append (uppercase-names a) (uppercase-names b))]
-    [_          '()]))
+    [_          null]))
 
 ;; Symbols used in EXPR. TODO: redundant?
 (define (benchmark-symbols expr)
@@ -728,8 +802,7 @@
 
 ;; Returns all names defined in DEFS
 (define (names-in defs)
-  (append (lowercase-names defs)
-          (uppercase-names defs)))
+  (append (lowercase-names defs) (uppercase-names defs)))
 
 ;; Rename types in X to begin with "type-"
 (define (tag-types x)
@@ -775,23 +848,88 @@
 
 ;; The last part of a path, which is enough to distinguish a TIP benchmark
 (define (path-end s)
-  (string-join (take-from-end 2 (string-split s "/")) "/"))
+  (define bits (string-split s "/"))
+
+  (if (< (length bits) 2)
+      (error (string-append "Given path '" s "' doesn't have 2 /-separated "
+                            "components. We require this to a) avoid ambiguity "
+                            "when combining files with the same name and b) to "
+                            "prevent system-dependent absolute paths polluting "
+                            "our output, affecting our sampling, etc."))
+      (string-join (take-from-end 2 bits) "/")))
 
 ;; Read all files named in GIVEN-FILES, combine their definitions together and
 ;; prefix each name with the path of the file it came from
 (define qual-all
   (memo1 (lambda (given-files)
-  (define given-contents
-    (map (lambda (pth)
-           (list (path-end pth) (file->list pth)))
-         given-files))
+           (define given-contents
+             (map (lambda (pth)
+                    (list (path-end pth) (file->list pth)))
+                  given-files))
 
-  (define qualified-contents
-    (map (lambda (name-content)
-           (qualify (first name-content) (second name-content)))
-         given-contents))
+           (define qualified-contents
+             (map (lambda (name-content)
+                    (qualify (first name-content) (second name-content)))
+                  given-contents))
 
-  (trim (apply append qualified-contents)))))
+           (trim (apply append qualified-contents)))))
+
+(define (qual-all-hashes given-hashes)
+  (foldl (lambda (elem result)
+           (define pth     (car elem))
+           (define content (cdr elem))
+
+           (append (qualify (path-end pth) (read-benchmark content))
+                   result))
+         '()
+         (hash->list given-hashes)))
+
+(module+ test
+  (def-test-case "Can qualify filename/content hashes"
+    (check-equal? (qual-all-hashes (hash "A/B/C/D.smt2"
+                                         (format-symbols (list nat-def))
+
+                                         "X/Y/Z.smt2"
+                                         (format-symbols
+                                          '((declare-datatypes ()
+                                              ((Nat (Z) (S (p Nat)))))
+                                            (define-fun Z2 () Nat
+                                              (as Z Nat))
+                                            (define-fun S2 ((x Nat)) Nat
+                                              (as (S x) Nat))
+                                            (define-fun Z3 () Nat
+                                              (as Z Nat))
+                                            (define-fun Z4 () Nat
+                                              (as Z Nat))
+                                            (define-fun Z5 () Nat
+                                              (as Z Nat))))))
+                  '((declare-datatypes ()
+                      ((C/D.smt2Nat-sentinel
+                         (C/D.smt2Z-sentinel)
+                         (C/D.smt2S-sentinel
+                           (C/D.smt2p-sentinel C/D.smt2Nat-sentinel)))))
+                    (declare-datatypes ()
+                                       ((Y/Z.smt2Nat-sentinel
+                                         (Y/Z.smt2Z-sentinel)
+                                         (Y/Z.smt2S-sentinel
+                                          (Y/Z.smt2p-sentinel
+                                           Y/Z.smt2Nat-sentinel)))))
+                    (define-fun Y/Z.smt2Z2-sentinel ()
+                      Y/Z.smt2Nat-sentinel
+                      (as Y/Z.smt2Z-sentinel Y/Z.smt2Nat-sentinel))
+                    (define-fun Y/Z.smt2S2-sentinel
+                      ((local-x Y/Z.smt2Nat-sentinel))
+                      Y/Z.smt2Nat-sentinel
+                      (as (Y/Z.smt2S-sentinel local-x) Y/Z.smt2Nat-sentinel))
+                    (define-fun Y/Z.smt2Z3-sentinel ()
+                      Y/Z.smt2Nat-sentinel
+                      (as Y/Z.smt2Z-sentinel Y/Z.smt2Nat-sentinel))
+                    (define-fun Y/Z.smt2Z4-sentinel ()
+                      Y/Z.smt2Nat-sentinel
+                      (as Y/Z.smt2Z-sentinel Y/Z.smt2Nat-sentinel))
+                    (define-fun Y/Z.smt2Z5-sentinel ()
+                      Y/Z.smt2Nat-sentinel
+                      (as Y/Z.smt2Z-sentinel Y/Z.smt2Nat-sentinel))))))
 
 ;; Apply mk-defs to stdio
 (define (mk-defs)
@@ -801,6 +939,9 @@
 ;; remove alpha-equivalent duplicates
 (define (mk-defs-s given-files)
   (norm-defs (qual-all given-files)))
+
+(define (mk-defs-hash given-hashes)
+  (norm-defs (qual-all-hashes given-hashes)))
 
 (define (non-empty? x)
   (not (empty? x)))
@@ -814,29 +955,57 @@
         (#t
          (equal? x y))))
 
+;; Extracts all defined names from a vector of definitions, returning a sorted
+;; vector of (name index) pairs, where the indices point at the definitions.
+(define (find-names-in defs)
+  (define (tag-positions n result)
+    (define def   (vector-ref defs n))
+    (define names (toplevel-function-names-in def))
+    (append (map (lambda (name) (list name n)) names) result))
+
+  (list->vector (sort (foldl tag-positions
+                             null
+                             (range (vector-length defs)))
+                      symbol<?
+                      #:key first)))
+
+(module+ test
+  (def-test-case "Can gather function names"
+    (check-equal? (find-names-in (vector nat-def constructorZ constructorS))
+                  (vector '(constructor-S 2) '(constructor-Z 1)))))
+
 ;; Return any definitions of function F which appear in X
-(define (find-sub-exprs f x)
-  (match x
-    [(list 'define-fun name _ _ _)                          (if (ss-eq? name f)
-                                                                (list x)
-                                                                '())]
-    [(list 'define-fun (list 'par _ (list name _ _ _)))     (if (ss-eq? name f)
-                                                                (list x)
-                                                                '())]
-    [(list 'define-fun-rec   name _ _ _)                    (if (ss-eq? name f)
-                                                                (list x)
-                                                                '())]
-    [(list 'define-fun-rec (list 'par _ (list name _ _ _))) (if (ss-eq? name f)
-                                                                (list x)
-                                                                '())]
-    [(list 'define-funs-rec _ _)       (if (member f (names-in x) ss-eq?)
-                                           (list x)
-                                           '())]
-    [(cons h t)                        (let ([in-h (find-sub-exprs f h)])
-                                         (if (empty? in-h)
-                                             (find-sub-exprs f t)
-                                             in-h))]
-    [_                                 '()                              ]))
+(define (toplevel-function-defs-of f x)
+  (define (match-expr e)
+    (match e
+      [(list 'define-fun name _ _ _)                          (if (ss-eq? name f)
+                                                                  (list e)
+                                                                  '())]
+      [(list 'define-fun (list 'par _ (list name _ _ _)))     (if (ss-eq? name f)
+                                                                  (list e)
+                                                                  '())]
+      [(list 'define-fun-rec   name _ _ _)                    (if (ss-eq? name f)
+                                                                  (list e)
+                                                                  '())]
+      [(list 'define-fun-rec (list 'par _ (list name _ _ _))) (if (ss-eq? name f)
+                                                                  (list e)
+                                                                  '())]
+      [(list 'define-funs-rec _ _)       (if (member f (names-in e) ss-eq?)
+                                             (list e)
+                                             '())]
+      [_                                 '()]))
+  (let ([found (match-expr x)])  ;; see if x is a definition of f
+    (match found
+      ['() (concat-map match-expr x)]  ;; nope; try each element it contains
+      [_   found])))                   ;; yep;  return it as-is
+
+(module+ test
+  (def-test-case "Can find toplevel function definitions"
+    (check-equal? (toplevel-function-defs-of 'constructor-Z
+                                             `(,nat-def
+                                               ,constructorZ
+                                               ,constructorS))
+                  (list constructorZ))))
 
 ;; Idempotent symbol->string
 (define (as-str x)
@@ -874,8 +1043,74 @@
                                               in-a))]
       [_                                null]))
 
-  (remove-duplicates (append (find-sub-exprs name (list exprs))
-                             (concat-map defs-from (list exprs)))))
+  (remove-duplicates (append (toplevel-function-defs-of name exprs)
+                             (defs-from exprs))))
+
+(module+ test
+  ;; For testing, we default to only using a subset of the benchmarks, which we
+  ;; accomplish by overriding theorem-files; this acts as a sanity check, and is
+  ;; much faster than checking everything. For a thorough test of all benchmarks
+  ;; there is a separate "tests" derivation in default.nix, suitable for use in
+  ;; e.g. a continuous integration scenario.
+
+  ;; Please note the following:
+  ;;  - If a particular set of benchmarks has specifically been requested, via
+  ;;    the BENCHMARKS environment variable, we use that whole set, rather than
+  ;;    selecting some subset.
+  ;;  - If a test requires some particular file to be present in this list, it
+  ;;    should use the testing-file function to check that it's present.
+  (define testing-file
+    (let ()
+      ;; We always include the following files, since they're either required by
+      ;; one of our tests, or they're edge-cases/regressions which we want to
+      ;; ensure are getting regularly tested.
+      (define required-testing-files
+        (benchmark-files '("grammars/packrat_unambigPackrat.smt2"
+                           "isaplanner/prop_01.smt2"
+                           "isaplanner/prop_15.smt2"
+                           "isaplanner/prop_35.smt2"
+                           "isaplanner/prop_43.smt2"
+                           "isaplanner/prop_44.smt2"
+                           "isaplanner/prop_84.smt2"
+                           "prod/prop_35.smt2"
+                           "tip2015/fermat_last.smt2"
+                           "tip2015/heap_SortPermutes'.smt2"
+                           "tip2015/list_SelectPermutations.smt2"
+                           "tip2015/nat_pow_one.smt2"
+                           "tip2015/propositional_AndCommutative.smt2"
+                           "tip2015/propositional_AndIdempotent.smt2"
+                           "tip2015/sort_NStoogeSort2Count.smt2"
+                           "tip2015/sort_NStoogeSort2Permutes.smt2"
+                           "tip2015/tree_sort_SortPermutes'.smt2")))
+
+      ;; Override theorem-files to return these chosen files, if no BENCHMARKS
+      ;; were given explicitly
+      (when (member (getenv "BENCHMARKS") '(#f ""))
+        (set-theorem-files! (lambda ()
+                              required-testing-files)))
+
+      ;; The definition of testing-file; checks if the given file is in our
+      ;; selected list.
+      (lambda (f)
+        (unless (member (benchmark-file f) required-testing-files)
+          (error "Testing file not in required list" f))
+        f)))
+
+  (define test-benchmark-defs
+    (mk-defs-s (theorem-files)))
+
+  (def-test-case "Can find constructor wrappers"
+    (check-equal? (get-def-s 'constructor-Z redundancies)
+                  (list constructorZ)))
+
+  (def-test-case "Can find constructors"
+    (for-each (lambda (c)
+                (define found
+                  (get-def-s c test-benchmark-defs))
+                (with-check-info
+                  (('found found))
+                  (check-equal? (length found) 1)))
+              (expression-constructors test-benchmark-defs))))
 
 ;; Applies get-def to a sting of definitions; TODO: remove?
 (define (get-def name str)
@@ -916,6 +1151,24 @@
            custom-inc custom-dec custom-invert custom-abs custom-sign custom-+
            custom-- custom-* custom-nat-> custom-> custom-div custom-mod
            custom-< custom->= custom-<=)))
+
+(module+ test
+  (def-test-case "Can unqualify empty"
+    (check-equal? (unqualify '()) '()))
+
+  (def-test-case "Can remove sentinels"
+    (check-equal? (unqualify '((declare-datatypes ()
+                                 ((Nat-sentinel
+                                    (Z-sentinel)
+                                    (S-sentinel (p-sentinel Nat-sentinel)))))
+                               (define-fun my-function-sentinel () Nat-sentinel
+                                 (as Z-sentinel Nat-sentinel))))
+                             '((declare-datatypes ()
+                                 ((Nat
+                                    (Z)
+                                    (S (p Nat)))))
+                               (define-fun my-function () Nat
+                                 (as Z Nat))))))
 
 ;; Look through X for constructor definitions, and for each one append to X a
 ;; new function definition which simply wraps that constructor. For example, if
@@ -1083,6 +1336,53 @@
          x
          (expression-destructors x)))
 
+(module+ test
+  (def-test-case "Can add destructor functions for recursive types"
+    (check-equal? (add-destructor-funcs '((declare-datatypes
+                                           ()
+                                           ((Nat (Z) (S (p Nat)))))))
+                  '((declare-datatypes
+                     ()
+                     ((Nat (Z) (S (p Nat)))))
+                    (define-fun destructor-p ((destructor-arg Nat)) Nat
+                      (match destructor-arg
+                        (case (S local-p) local-p))))))
+
+  (def-test-case "Can add destructor functions for parameterised types"
+    (check-equal? (add-destructor-funcs
+                   '((declare-datatypes
+                      (a b)
+                      ((OneAndMany (One (theOne a))
+                                   (Many (head b)
+                                         (tail (OneAndMany a b))))))))
+                  '((declare-datatypes
+                     (a b)
+                     ((OneAndMany (One (theOne a))
+                                  (Many (head b)
+                                        (tail (OneAndMany a b))))))
+                    (define-fun
+                      (par (local-a local-b)
+                           (destructor-theOne
+                            ((destructor-arg (OneAndMany local-a local-b)))
+                            local-a
+                            (match destructor-arg
+                              (case (One local-theOne) local-theOne)))))
+                    (define-fun
+                      (par (local-a local-b)
+                           (destructor-head
+                            ((destructor-arg (OneAndMany local-a local-b)))
+                            local-b
+                            (match destructor-arg
+                              (case (Many local-head local-tail) local-head)))))
+                    (define-fun
+                      (par (local-a local-b)
+                           (destructor-tail
+                            ((destructor-arg (OneAndMany local-a local-b)))
+                            (OneAndMany local-a local-b)
+                            (match destructor-arg
+                              (case (Many local-head local-tail)
+                                local-tail)))))))))
+
 ;; Convert STR to a hex encoding of its ASCII bytes
 (define (encode16 str)
   (define chars
@@ -1147,6 +1447,14 @@
            (replace-in name (encode-upper-name name) e))
          lower-encoded
          (uppercase-names expr)))
+
+(module+ test
+  (def-test-case "Can encode names"
+    (check-equal? (encode-names (list nat-def))
+                  '((declare-datatypes ()
+                      ((Global4e6174
+                         (Global5a)
+                         (Global53 (global70 Global4e6174)))))))))
 
 ;; Encode a function name for surviving Haskell translation
 (define (encode-lower-name name)
@@ -1213,6 +1521,10 @@
    (add-destructor-funcs
     (unqualify x))))
 
+(module+ test
+  (def-test-case "Can 'preprepare' a list of definitions"
+    (preprepare '())))
+
 ;; Creates a list of pairs '((X1 Y1) (X2 Y2) ...) when given a pair of lists
 ;; '(X1 X2 ...) and '(Y1 Y2 ...)
 (define (zip xs ys)
@@ -1237,6 +1549,81 @@
 (define (arbitrary<=? x y)
   (string<=? (~a x) (~a y)))
 
+;; Choose the smallest name out of the alternatives found in each class.
+;;
+;; Example input: '((Pair mkPair first second)
+;;                  (PairOf paired fst snd))
+;;
+;; Output (old new) pairs which replace larger names with smaller, e.g. in the
+;; above example we'd get '((PairOf Pair)
+;;                          (paired mkPair)
+;;                          (fst    first)
+;;                          (snd    second))
+(define (pick-smallest class)
+  (if (empty? class)
+      ;; Nothing to replace
+      '()
+      (if (empty? (first class))
+          ;; We've plucked all of the names out of this class
+          '()
+          (let*
+              ;; Pluck the first names from all sets in this class
+              ([these (sort (map first class) symbol<=?)]
+
+               ;; Pluck out the smallest, which will be the canonical name
+               [new   (first these)]
+
+               ;; Define replacements for all non-canonical names
+               [replacements (map (lambda (old) (list old new))
+                                  (cdr these))])
+
+            ;; Recurse, dropping the names we just processed
+            (append replacements (pick-smallest (map cdr class)))))))
+
+(module+ test
+  (def-test-case "Can pick smallest from available"
+    (check-equal? (list->set (pick-smallest '((A Z R) (B Y P) (C X Q))))
+                  (list->set '((B A) (C A)
+                               (Z X) (Y X)
+                               (R P) (Q P))))
+    (check-equal? (list->set (pick-smallest '((Pair   mkPair first second)
+                                              (PairOf paired fst   snd))))
+                  (list->set '((PairOf Pair)
+                               (paired mkPair)
+                               (fst    first)
+                               (snd    second))))))
+
+(define (mk-output expr so-far)
+  (let* ([norm-line (norm              expr)]
+         [names     (toplevel-names-in expr)]
+         ;; Look for an existing alpha-equivalent definition
+         ;;   '(((name1 name2 ...) expr) ...)
+         [existing-pos (index-where so-far (lambda (x)
+                                             (equal? norm-line (second x))))])
+    (if (equal? #f existing-pos)
+        ;; This expr isn't redundant, associate its names with its normal form
+        (append so-far (list (list (list names) norm-line)))
+
+        ;; This expr is redundant, include its names in the replacement list
+        (list-update so-far existing-pos (lambda (existing)
+                                           (list (cons names (first existing))
+                                                 norm-line))))))
+
+(module+ test
+  (let ([output (mk-output constructorZ
+                           `((((existing-Z)) ,(norm constructorZ))))])
+    (def-test-case "Redundant output contains normalised defs"
+      (check-equal? (map second output)
+                    `(,(norm constructorZ))))
+
+    (def-test-case "Redundant output contains classes of equivalent names"
+      (check-equal? (map first output)
+                    `(((constructor-Z) (existing-Z)))))
+
+    (def-test-case "Redundancy output"
+      (check-equal? output
+                    `((((constructor-Z) (existing-Z)) ,(norm constructorZ)))))))
+
 ;; Predicate for whether X defines any TIP type/function/etc.
 (define (definition? x)
   (and (not (empty? (names-in x)))
@@ -1244,118 +1631,49 @@
                       (not (empty? (names-in sub-expr))))
                     x))))
 
+;; Predicate to ensure we're not given encoded names, since their lexicographic
+;; order will differ from the unencoded versions.
+;; Strictly speaking, we should allow such names in case the user actually fed
+;; in such definitions; however, in practice this is a good indicator that
+;; something's wrong in our logic!
+(define (unencoded? exprs)
+  (all-of (lambda (name)
+            (not (regexp-match? "[Gg]lobal[0-9a-f]+"
+                                (symbol->string name))))
+          (names-in exprs)))
+
+;; Like unencoded?, but make sure we're not given normalised names
+(define (unnormalised? exprs)
+  (all-of (lambda (name)
+            (not (regexp-match? "normalise-var-[0-9]"
+                                (symbol->string name))))
+          (names-in exprs)))
+
 ;; Looks for alpha-equivalent definitions in RAW-EXPRS, and returns a list of
 ;; name replacements '((OLD1 NEW1) (OLD2 NEW2) ...) which can be used to update
 ;; references and remove redundancies. Each NEW name is the smallest,
 ;; lexicographically, which makes subsequent comparisons easier.
 (define/test-contract (find-redundancies raw-exprs)
-  (-> (and/c (*list/c definition?)
-             (lambda (exprs)
-               ;; Make sure we're not given encoded names, since their
-               ;; lexicographic order will differ from the unencoded versions.
-               ;; Strictly speaking, we should allow such names in case the user
-               ;; actually fed in such definitions; however, in practice this
-               ;; is a good indicator that something's wrong in our logic!
-               (all-of (lambda (name)
-                         (not (regexp-match? "[Gg]lobal[0-9a-f]+"
-                                             (symbol->string name))))
-                       (names-in exprs)))
-             (lambda (exprs)
-               ;; Like above, but make sure we're not given normalised names
-               (all-of (lambda (name)
-                         (not (regexp-match? "normalise-var-[0-9]"
-                                             (symbol->string name))))
-                       (names-in exprs))))
+  (-> (and/c (*list/c definition?) unencoded? unnormalised?)
       (*list/c (list/c symbol? symbol?)))
 
-  (define exprs
-    (remove-duplicates raw-exprs))
-
-  (define normalised-def?
-    (and/c definition?
-           (lambda (expr)
-             (all-of (lambda (name)
-                       (or (regexp-match? "^normalise-"
-                                          (symbol->string name))
-                           (regexp-match? "^defining-"
-                                          (symbol->string name))))
-                     (names-in expr)))))
-
-  (define class?
-    (and/c (*list/c (*list/c symbol?))
-           (lambda (class)
-             ;; Each definition should give the same number of names, or else
-             ;; there's no way they'd be alpha equivalent
-             (equal? 1
-                     (length (remove-duplicates (map length class)))))))
-
-  (define (mk-output expr so-far)
-    (let* ([norm-line (norm     expr)]
-           [names     (names-in expr)]
-           ;; Look for an existing alpha-equivalent definition
-           ;;   '(((name1 name2 ...) expr) ...)
-           [existing-pos (index-where so-far (lambda (x)
-                                               (equal? norm-line (second x))))])
-      (if (equal? #f existing-pos)
-          ;; This expr isn't redundant, associate its names with its normal form
-          (append so-far (list (list (list names) norm-line)))
-
-          ;; This expr is redundant, include its names in the replacement list
-          (list-update so-far existing-pos (lambda (existing)
-                                             (list (cons names (first existing))
-                                                   norm-line))))))
-
-  (define (remove-redundancies exprs so-far)
-    (if (empty? exprs)
-        so-far
-        (remove-redundancies (cdr exprs)
-                             (mk-output (first exprs) so-far))))
-
-  (define so-far (remove-redundancies exprs null))
-
-  ;; Choose the smallest name out of the alternatives found in exprs.
-  ;;
-  ;; Example input: '(((Pair mkPair first second)
-  ;;                   (PairOf paired fst snd))
-  ;;                  (declare-datatypes (normalise-var-2 normalise-var-1)
-  ;;                     ((defining-type-1
-  ;;                        (normalise-constructor-1
-  ;;                          (normalise-destructor-2 normalise-var-2)
-  ;;                          (normalise-destroctor-1 normalise-var-1)))))
-  ;;
-  ;; Output (old new) pairs to replace larger names with smaller, e.g. in the
-  ;; above example we'd get '((PairOf Pair)
-  ;;                          (paired mkPair)
-  ;;                          (fst    first)
-  ;;                          (snd    second))
-
-  ;; Pick the lexicographically-smallest names as the replacements
-  (define all-classes
-    (map first so-far))
-
-  (define (pick-replacements class)
-    (if (empty? class)
-        ;; Nothing to replace
-        '()
-        (if (empty? (first class))
-            ;; We've plucked all of the names out of this class
-            '()
-            (let*
-                ;; Pluck the first names from all sets in this class
-                ([these (sort (map first class) symbol<=?)]
-
-                 ;; Pluck out the smallest, which will be the canonical name
-                 [new   (first these)]
-
-                 ;; Define replacements for all non-canonical names
-                 [replacements (map (lambda (old) (list old new))
-                                    (cdr these))])
-
-              ;; Recurse, dropping the names we just processed
-              (append replacements (pick-replacements (map cdr class)))))))
-
   ;; Make list of replacements, based on smallest element of each class
-  (concat-map pick-replacements all-classes))
+  (concat-map pick-smallest
+              (map first (foldl mk-output null (remove-duplicates raw-exprs)))))
+
+(module+ test
+  (let ([defs '((declare-datatypes ()
+                                   ((Nat1 (Z1) (S1 (p1 Nat1)))))
+                (declare-datatypes ()
+                                   ((Nat2 (Z2) (S2 (p2 Nat2))))))])
+    (def-test-case "Can find redundancies from definitions list"
+      (check-equal? (map (lambda (x) (list->set (first x)))
+                         (foldl mk-output null defs))
+                    (list (set '(Nat1 Z1 S1 p1)
+                               '(Nat2 Z2 S2 p2))))
+
+      (check-equal? (list->set (find-redundancies defs))
+                    (list->set '((Nat2 Nat1) (Z2 Z1) (S2 S1) (p2 p1)))))))
 
 ;; Is X a permutation of Y?
 (define (set-equal? x y)
@@ -1529,7 +1847,7 @@
              (equal? stripped (remove-duplicates stripped)))
            (lambda (stripped)
              (all-of (lambda (name)
-                       (member name (names-in stripped)))
+                       (member? name (names-in stripped)))
                      (map second redundancies)))
            (lambda (stripped)
              (not (any-of (lambda (name)
@@ -1590,7 +1908,51 @@
 ;; Read in the files names in GIVEN-FILES and return a combined, normalised TIP
 ;; benchmark
 (define (mk-final-defs-s given-files)
+  (log "TODO: Pass file content as hashmaps\n")
   (prepare (mk-defs-s given-files)))
+
+;; Takes a hashmap of filename->content and returns a combined, normalised TIP
+;; benchmark
+(define (mk-final-defs-hash given-hashes)
+  (prepare (mk-defs-hash given-hashes)))
+
+(module+ test
+  (def-test-case "mk-final-defs-hash works"
+    (check-equal? (mk-final-defs-hash
+                   (hash "foo/bar.smt2" (format-symbols
+                                        `(,nat-def
+                                          (define-fun redundantZ1 () Nat
+                                            (as Z Nat))
+                                          (define-fun redundantZ2 () Nat
+                                            (as Z Nat))
+                                          (define-fun redundantZ3 () Nat
+                                            (as Z Nat))))))
+                  `((declare-datatypes ()
+                      ((Global666f6f2f6261722e736d74324e6174
+                        (Global666f6f2f6261722e736d74325a)
+                        (Global666f6f2f6261722e736d743253
+                         (global666f6f2f6261722e736d743270
+                          Global666f6f2f6261722e736d74324e6174)))))
+                    (define-fun global666f6f2f6261722e736d7432726564756e64616e745a31 ()
+                      Global666f6f2f6261722e736d74324e6174
+                      (as Global666f6f2f6261722e736d74325a
+                          Global666f6f2f6261722e736d74324e6174))
+                    (define-fun global64657374727563746f722d666f6f2f6261722e736d743270
+                      ((destructor-arg Global666f6f2f6261722e736d74324e6174))
+                      Global666f6f2f6261722e736d74324e6174
+                      (match destructor-arg
+                        (case (Global666f6f2f6261722e736d743253 local-p)
+                          local-p)))
+                    (define-fun global636f6e7374727563746f722d666f6f2f6261722e736d74325a ()
+                      Global666f6f2f6261722e736d74324e6174
+                      (as Global666f6f2f6261722e736d74325a
+                          Global666f6f2f6261722e736d74324e6174))
+                    (define-fun global636f6e7374727563746f722d666f6f2f6261722e736d743253
+                      ((local-p Global666f6f2f6261722e736d74324e6174))
+                      Global666f6f2f6261722e736d74324e6174
+                      (as (Global666f6f2f6261722e736d743253 local-p)
+                          Global666f6f2f6261722e736d74324e6174))
+                    (check-sat)))))
 
 ;; Prefix used to identify temporary files as ours
 (define temp-file-prefix
@@ -1920,19 +2282,12 @@ library
            (log "Forcing theorem deps of ~a\n" f)
            (define normed (normed-theorem-of f))
 
-           ;; Includes all (canonical) types and constructors
-           (define uppercase (uppercase-names (normed-qualified-theorem-files)))
-
            (define constructors
              (expression-constructors (normed-qualified-theorem-files)))
 
            ;; Remove types
            (define raw-names
              (remove* (theorem-types normed) (theorem-globals normed)))
-
-           ;; Remove builtins
-           (define custom-names
-             (remove* native-symbols raw-names))
 
            (define result
              (foldl (lambda (name existing)
@@ -2902,59 +3257,8 @@ library
 
 ;; Everything below here is tests; run using "raco test"
 (module+ test
-  (require rackunit)
-
   ;; Suppress normalisation progress messages during tests
   (quiet)
-
-  ;; For testing, we default to only using a subset of the benchmarks, which we
-  ;; accomplish by overriding theorem-files; this acts as a sanity check, and is
-  ;; much faster than checking everything. For a thorough test of all benchmarks
-  ;; there is a separate "tests" derivation in default.nix, suitable for use in
-  ;; e.g. a continuous integration scenario.
-
-  ;; Please note the following:
-  ;;  - If a particular set of benchmarks has specifically been requested, via
-  ;;    the BENCHMARKS environment variable, we use that whole set, rather than
-  ;;    selecting some subset.
-  ;;  - If a test requires some particular file to be present in this list, it
-  ;;    should use the testing-file function to check that it's present.
-  (define testing-file
-    (let ()
-      ;; We always include the following files, since they're either required by
-      ;; one of our tests, or they're edge-cases/regressions which we want to
-      ;; ensure are getting regularly tested.
-      (define required-testing-files
-        (benchmark-files '("grammars/packrat_unambigPackrat.smt2"
-                           "isaplanner/prop_01.smt2"
-                           "isaplanner/prop_15.smt2"
-                           "isaplanner/prop_35.smt2"
-                           "isaplanner/prop_43.smt2"
-                           "isaplanner/prop_44.smt2"
-                           "isaplanner/prop_84.smt2"
-                           "prod/prop_35.smt2"
-                           "tip2015/fermat_last.smt2"
-                           "tip2015/heap_SortPermutes'.smt2"
-                           "tip2015/list_SelectPermutations.smt2"
-                           "tip2015/nat_pow_one.smt2"
-                           "tip2015/propositional_AndCommutative.smt2"
-                           "tip2015/propositional_AndIdempotent.smt2"
-                           "tip2015/sort_NStoogeSort2Count.smt2"
-                           "tip2015/sort_NStoogeSort2Permutes.smt2"
-                           "tip2015/tree_sort_SortPermutes'.smt2")))
-
-      ;; Override theorem-files to return these chosen files, if no BENCHMARKS
-      ;; were given explicitly
-      (when (member (getenv "BENCHMARKS") '(#f ""))
-        (set-theorem-files! (lambda ()
-                              required-testing-files)))
-
-      ;; The definition of testing-file; checks if the given file is in our
-      ;; selected list.
-      (lambda (f)
-        (unless (member (benchmark-file f) required-testing-files)
-          (error "Testing file not in required list" f))
-        f)))
 
   ;; Loads test data from files
   (define (test-data f)
@@ -2962,31 +3266,7 @@ library
       (error "No TEST_DATA env var given"))
     (string-append (getenv "TEST_DATA") "/" f))
 
-  ;; Select specific test-cases based on regex
-  (define test-case-regex
-    ;; Match everything if no regex given
-    (let ([given (or (getenv "PLT_TEST_REGEX") "")])
-      (match given
-        ["" #rx".*"]
-        [_  (regexp given)])))
-
-  (define-syntax-rule (def-test-case name body ...)
-    (when (regexp-match? test-case-regex name)
-      (test-case name body ...)))
-
   ;; Examples used for tests
-  (define nat-def      '(declare-datatypes () ((Nat (Z) (S (p Nat))))))
-
-  (define constructorZ '(define-fun constructor-Z ()              Nat (as Z Nat)))
-
-  (define constructorS '(define-fun constructor-S ((local-p Nat)) Nat (as (S local-p) Nat)))
-
-  (define redundancies `(,constructorZ
-                         ,constructorS
-                         (define-fun redundantZ1 () Nat (as Z Nat))
-                         (define-fun redundantZ2 () Nat (as Z Nat))
-                         (define-fun redundantZ3 () Nat (as Z Nat))))
-
   (define custom-bool
     '(declare-datatypes () ((CustomBool (CustomTrue) (CustomFalse)))))
 
@@ -3007,9 +3287,6 @@ library
     '(declare-datatypes () ((CustomInt (CustomNeg (custom-succ CustomNat))
                                        (CustomZero)
                                        (CustomPos (custom-pred CustomNat))))))
-
-  (define test-benchmark-defs
-    (mk-defs-s (theorem-files)))
 
   (def-test-case "List manipulation"
     (check-equal? (symbols-in '(lambda ((local1 Nat) (local2 (List Nat)))
@@ -3046,7 +3323,9 @@ library
                    (filter non-empty? (names-in (list expr))))
                  one-liners)))
 
-  (let ([all-result (filter non-empty? (map names-in one-liners))])
+  (let ([all-result (filter non-empty? (map (lambda (x)
+                                              (names-in x))
+                                            one-liners))])
     (with-check-info
      (('f          f)
       ('one-liners one-liners)
@@ -3064,15 +3343,11 @@ library
   (check-false (ss-eq? "foo" 'bar))
   (check-false (ss-eq? "foo" "bar"))
 
-  (check-equal? (find-sub-exprs 'constructor-Z
-                                `(,nat-def ,constructorZ ,constructorS))
-                (list constructorZ))
-
   (let* ([file "tip2015/sort_StoogeSort2IsSort.smt2"]
          [defs (mk-defs-s (list (benchmark-file file)))])
     (for-each (lambda (data)
                 (define def
-                  (find-sub-exprs (string-append file (first data) "-sentinel")
+                  (toplevel-function-defs-of (string-append file (first data) "-sentinel")
                                   defs))
 
                 (with-check-info
@@ -3197,18 +3472,6 @@ library
                      (check-equal? norms (list norm)))))
                 normalised)))
 
-  (check-equal? (get-def-s 'constructor-Z redundancies)
-                (list constructorZ))
-
-  (def-test-case "Can find constructors"
-    (for-each (lambda (c)
-                (define found
-                  (get-def-s c test-benchmark-defs))
-                (with-check-info
-                  (('found found))
-                  (check-equal? (length found) 1)))
-              (expression-constructors test-benchmark-defs)))
-
   (for-each (lambda (sym)
     (define def (get-def sym qual))
 
@@ -3289,7 +3552,7 @@ library
                   (norm raw-def))
 
                 (define raw-def-names
-                  (map remove-suffix (names-in raw-def)))
+                  (map remove-suffix (set->list (names-in raw-def))))
 
                 ;; Compare to all normalised names
                 (for-each (lambda (normal-name-enc)
@@ -3327,7 +3590,8 @@ library
                                              ('normal          normal)
                                              ('raw-name        raw-name)
                                              ('normal-name-enc normal-name-enc)
-                                             ('normal-name     (decode-name normal-name-enc))
+                                             ('normal-name    (decode-name
+                                                               normal-name-enc))
                                              ('raw-def         raw-def)
                                              ('normal-def      normal-def)
                                              ('norm-raw-def    norm-raw-def)
@@ -3363,8 +3627,7 @@ library
                      (tip2015/sort_StoogeSort2IsSort.smt2second
                       isaplanner/prop_58.smt2second-sentinel)))))
 
-  (check-equal? (names-in '(fee fi fo fum))
-                '())
+  (check-equal? (names-in '(fee fi fo fum)) null)
   (check-equal? (names-in '(define-funs-rec
                              ((stooge1sort2 ((x (list Int))) (list Int))
                               (stoogesort ((x (list Int))) (list Int))
@@ -3921,7 +4184,7 @@ library
       ('expect  expect)
       ('names   names)
       ('message "Got expected names"))
-    (check-true (set-equal? names expect))))
+    (check-equal? (list->set names) (list->set expect))))
 
   (names-match "datatype"
                '(declare-datatypes (a) ((list (nil)
@@ -3991,17 +4254,13 @@ library
     (define (symbols-from-file f)
       (names-in (file->list f)))
 
-    (define (contains lst elem)
-      (not (empty? (filter (curry equal? elem)
-                           lst))))
-
     (define (should-have syms kind xs)
       (for-each (lambda (sym)
                   (with-check-info
                    (('sym  sym)
                     ('syms syms)
                     ('kind kind))
-                   (check-true (contains syms sym))))
+                   (check-true (set-member? syms sym))))
                 xs))
 
     (define (should-not-have syms kind xs)
@@ -4010,7 +4269,7 @@ library
                    (('sym  sym)
                     ('syms syms)
                     ('kind kind))
-                   (check-false (contains syms sym))))
+                   (check-false (set-member? syms sym))))
                 xs))
 
     (let* ([f    (benchmark-file "tip2015/int_right_distrib.smt2")]
@@ -4057,12 +4316,15 @@ library
 
   (def-test-case "Name extraction"
     (check-equal?
-     (lowercase-names
-      (file->list (benchmark-file "tip2015/sort_NStoogeSort2Permutes.smt2")))
-     '(custom-p custom-succ custom-pred custom-ite custom-not custom-nat->
-       custom-> custom-<= custom-or custom-bool-converter custom-and head tail
-       first second p twoThirds third take sort2 null length elem drop splitAt
-       delete isPermutation append nstooge2sort2 nstoogesort2 nstooge2sort1))
+     (list->set (lowercase-names
+                 (file->list (benchmark-file
+                              "tip2015/sort_NStoogeSort2Permutes.smt2"))))
+     (list->set '(custom-p custom-succ custom-pred custom-ite custom-not
+                  custom-nat-> custom-> custom-<= custom-or
+                  custom-bool-converter custom-and head tail first second p
+                  twoThirds third take sort2 null length elem drop splitAt
+                  delete isPermutation append nstooge2sort2 nstoogesort2
+                  nstooge2sort1)))
 
     (check-equal?
      (uppercase-names
@@ -4079,11 +4341,17 @@ library
 
     (define test-benchmark-lower-names
       ;; A selection of names, which will be lowercase in Haskell
-      (concat-map lowercase-names test-benchmark-defs))
+      (foldl (lambda (def result)
+               (append result (lowercase-names def)))
+             null
+             test-benchmark-defs))
 
     (define test-benchmark-upper-names
       ;; A selection of names, which will be uppercase in Haskell
-      (concat-map uppercase-names test-benchmark-defs))
+      (foldl (lambda (def result)
+               (append result (uppercase-names def)))
+             null
+             test-benchmark-defs))
 
     (define (tip-lower-rename name)
       "Given a function name NAME, returns TIP's renamed version"
@@ -4129,13 +4397,15 @@ library
       ;; The name will occur immediately after the final "data"
       (string-trim (last (string-split prefix "data"))))
 
-    (for-each (lambda (name)
-                (check-equal? (tip-lower-rename name) (symbol->string name)))
-              test-benchmark-lower-names)
+    (set-for-each test-benchmark-lower-names
+                  (lambda (name)
+                    (check-equal? (tip-lower-rename name)
+                                  (symbol->string name))))
 
-    (for-each (lambda (name)
-                (check-equal? (tip-upper-rename name) (symbol->string name)))
-              test-benchmark-upper-names))
+    (set-for-each test-benchmark-upper-names
+                  (lambda (name)
+                    (check-equal? (tip-upper-rename name)
+                                  (symbol->string name)))))
 
   (def-test-case "Can't reference unbound names"
     (check-exn #rx"tip: Parse failed: Symbol bar .* not bound"
@@ -4205,50 +4475,6 @@ library
                           (MyStream local-a)
                           (as (MyCons local-myHead local-myTail) (MyStream local-a))))))))
 
-  (def-test-case "Bare destructor function type"
-    (check-equal? (add-destructor-funcs '((declare-datatypes
-                                           ()
-                                           ((Nat (Z) (S (p Nat)))))))
-                  '((declare-datatypes
-                     ()
-                     ((Nat (Z) (S (p Nat)))))
-                    (define-fun destructor-p ((destructor-arg Nat)) Nat
-                      (match destructor-arg
-                        (case (S local-p) local-p))))))
-
-  (def-test-case "Parameterised destructor function type"
-    (check-equal? (add-destructor-funcs '((declare-datatypes
-                                           (a b)
-                                           ((OneAndMany (One (theOne a))
-                                                        (Many (head b)
-                                                              (tail (OneAndMany a b))))))))
-                  '((declare-datatypes
-                     (a b)
-                     ((OneAndMany (One (theOne a))
-                                  (Many (head b)
-                                        (tail (OneAndMany a b))))))
-                    (define-fun
-                      (par (local-a local-b)
-                           (destructor-theOne
-                            ((destructor-arg (OneAndMany local-a local-b)))
-                            local-a
-                            (match destructor-arg
-                              (case (One local-theOne) local-theOne)))))
-                    (define-fun
-                      (par (local-a local-b)
-                           (destructor-head
-                            ((destructor-arg (OneAndMany local-a local-b)))
-                            local-b
-                            (match destructor-arg
-                              (case (Many local-head local-tail) local-head)))))
-                    (define-fun
-                      (par (local-a local-b)
-                           (destructor-tail
-                            ((destructor-arg (OneAndMany local-a local-b)))
-                            (OneAndMany local-a local-b)
-                            (match destructor-arg
-                              (case (Many local-head local-tail) local-tail))))))))
-
   (def-test-case "Can extract theorems"
     (for-each (lambda (benchmark-file)
                 (define thms (theorems-from-file benchmark-file))
@@ -4283,10 +4509,12 @@ library
       (replacements-closure (qual-all (theorem-files))))
 
     (for-each (lambda (rep)
-                (check-false         (member (first rep)
-                                             (names-in test-benchmark-defs)))
-                (check-not-equal? #f (member (second rep)
-                                             (names-in test-benchmark-defs))))
+                (check-false         (set-member?
+                                      (names-in test-benchmark-defs)
+                                      (first rep)))
+                (check-not-equal? #f (set-member?
+                                      (names-in test-benchmark-defs)
+                                      (second rep))))
               test-replacements))
 
   (def-test-case "Normalise theorems"
