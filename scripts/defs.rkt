@@ -860,8 +860,12 @@
 
 ;; Read all files named in GIVEN-FILES, combine their definitions together and
 ;; prefix each name with the path of the file it came from
-(define qual-all
-  (memo1 (lambda (given-files)
+(define (qual-all given-files)
+  (qual-all-hashes (foldl (lambda (f result)
+                            (hash-set result f (file->string f)))
+                          (hash)
+                          given-files))
+  #;(memo1 (lambda (given-files)
            (define given-contents
              (map (lambda (pth)
                     (list (path-end pth) (file->list pth)))
@@ -942,6 +946,12 @@
 
 (define (mk-defs-hash given-hashes)
   (norm-defs (qual-all-hashes given-hashes)))
+
+(define (files-to-hashes files)
+  (foldl (lambda (f result)
+           (hash-set result f (file->string f)))
+         (hash)
+         files))
 
 (define (non-empty? x)
   (not (empty? x)))
@@ -1097,7 +1107,8 @@
         f)))
 
   (define test-benchmark-defs
-    (mk-defs-s (theorem-files)))
+    (mk-defs-hash (files-to-hashes (theorem-files)))
+    #;(mk-defs-s (theorem-files)))
 
   (def-test-case "Can find constructor wrappers"
     (check-equal? (get-def-s 'constructor-Z redundancies)
@@ -1908,8 +1919,7 @@
 ;; Read in the files names in GIVEN-FILES and return a combined, normalised TIP
 ;; benchmark
 (define (mk-final-defs-s given-files)
-  (log "TODO: Pass file content as hashmaps\n")
-  (prepare (mk-defs-s given-files)))
+  (mk-final-defs-hash (files-to-hashes given-files)))
 
 ;; Takes a hashmap of filename->content and returns a combined, normalised TIP
 ;; benchmark
@@ -3301,7 +3311,8 @@ library
                 `(,nat-def ,constructorZ ,constructorS))
 
   (for-each (lambda (f)
-              (check-equal? (map ~a (mk-defs-s (string-split f "\n")))
+              (check-equal? (map ~a (mk-defs-hash (files-to-hashes
+                                                   (string-split f "\n"))))
                             (string-split (string-trim (pipe f mk-defs)) "\n")))
             (benchmark-files '("grammars/simp_expr_unambig1.smt2"
                                "grammars/simp_expr_unambig4.smt2"
@@ -3370,7 +3381,7 @@ library
                        "tip2015/sort_BSortPermutes.smt2")))
 
   (define test-defs
-    (mk-defs-s test-files))
+    (mk-defs-hash (files-to-hashes test-files)))
 
   (def-test-case "Real symbols qualified"
     (let* ([fs (benchmark-files '("tip2015/propositional_AndCommutative.smt2"
@@ -3390,7 +3401,8 @@ library
                    "or2 symbol is qualified")
 
       (check-true (string-contains? (format-symbols
-                                     (symbols-of-theorems-s (mk-defs-s fs)))
+                                     (symbols-of-theorems-s
+                                      (mk-defs-hash (files-to-hashes fs))))
                                     "or2-sentinel")
                   "Found 'or2' symbol")))
 
