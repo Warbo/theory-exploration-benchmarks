@@ -860,24 +860,6 @@
 
 ;; Read all files named in GIVEN-FILES, combine their definitions together and
 ;; prefix each name with the path of the file it came from
-(define (qual-all given-files)
-  (qual-all-hashes (foldl (lambda (f result)
-                            (hash-set result f (file->string f)))
-                          (hash)
-                          given-files))
-  #;(memo1 (lambda (given-files)
-           (define given-contents
-             (map (lambda (pth)
-                    (list (path-end pth) (file->list pth)))
-                  given-files))
-
-           (define qualified-contents
-             (map (lambda (name-content)
-                    (qualify (first name-content) (second name-content)))
-                  given-contents))
-
-           (trim (apply append qualified-contents)))))
-
 (define (qual-all-hashes given-hashes)
   (foldl (lambda (elem result)
            (define pth     (car elem))
@@ -2212,12 +2194,14 @@ library
      (lambda ()
        (set! are-generating #f)))))
 
+(define (qual-hashes-theorem-files)
+  (qual-all-hashes (files-to-hashes (theorem-files))))
+
 (memo0 normalised-theorems
   (if (generating?)
       ;; Can't use cache yet, generate
       (let ()
-        (define qualified
-          (qual-all (theorem-files)))
+        (define qualified (qual-hashes-theorem-files))
 
         ;; First get replacements used in definitions
         (define replacements
@@ -2282,7 +2266,7 @@ library
     [_                        '()]))
 
 (memo0 normed-qualified-theorem-files
-       (preprepare (norm-defs (qual-all (theorem-files)))))
+       (preprepare (norm-defs (qual-hashes-theorem-files))))
 
 (define theorem-deps-of
   (memo1 (lambda (f)
@@ -3323,7 +3307,7 @@ library
     (benchmark-file "grammars/simp_expr_unambig3.smt2"))
 
   (define one-liners
-    (qual-all (string-split f "\n")))
+    (qual-all-hashes (files-to-hashes (string-split f "\n"))))
 
   (define result
     (filter non-empty?
@@ -3388,7 +3372,7 @@ library
                                   "tip2015/relaxedprefix_correct.smt2"
                                   "tip2015/propositional_AndIdempotent.smt2"
                                   "tip2015/propositional_AndImplication.smt2"))]
-           [q (qual-all fs)]
+           [q (qual-all-hashes (files-to-hashes fs))]
            [s (symbols-of-theorems-s q)])
 
       (check-true (string-contains? (~a s) "or2-sentinel")
@@ -3430,7 +3414,7 @@ library
                    tip2015/sort_StoogeSort2IsSort.smt2ztake-sentinel
                    tip2015/sort_StoogeSort2IsSort.smt2stooge2sort2-sentinel))
 
-  (define qual (format-symbols (qual-all test-files)))
+  (define qual (format-symbols (qual-all-hashes (files-to-hashes test-files))))
 
   (let ([syms (symbols-of-theorems-s (read-benchmark qual))])
 
@@ -3538,7 +3522,7 @@ library
                              "isaplanner/prop_58.smt2"
                              "tip2015/list_PairUnpair.smt2"))))
 
-    (define raw       (qual-all files))
+    (define raw       (qual-all-hashes (files-to-hashes files)))
     (define raw-names (names-in raw))
 
     ;; Remove redundancies
@@ -4515,7 +4499,7 @@ library
                   (list->set '((min2 min1))))
 
     (define test-replacements
-      (replacements-closure (qual-all (theorem-files))))
+      (replacements-closure (qual-hashes-theorem-files)))
 
     (for-each (lambda (rep)
                 (check-false         (set-member?
