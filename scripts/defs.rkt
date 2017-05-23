@@ -942,7 +942,7 @@
 ;; Read all files named in GIVEN-FILES, combine their definitions together and
 ;; remove alpha-equivalent duplicates
 (define (mk-defs-s given-files)
-  (norm-defs (qual-all given-files)))
+  (mk-defs-hash (files-to-hashes given-files)))
 
 (define (mk-defs-hash given-hashes)
   (norm-defs (qual-all-hashes given-hashes)))
@@ -958,12 +958,9 @@
 
 ;; Equality which allows symbols and strings
 (define (ss-eq? x y)
-  (cond ([symbol? x]
-         (ss-eq? (symbol->string x) y))
-        ([symbol? y]
-         (ss-eq?  x (symbol->string y)))
-        (#t
-         (equal? x y))))
+  (cond ([symbol? x] (ss-eq? (symbol->string x)                y))
+        ([symbol? y] (ss-eq?                 x (symbol->string y)))
+        (#t          (equal?                 x                 y))))
 
 ;; Extracts all defined names from a vector of definitions, returning a sorted
 ;; vector of (name index) pairs, where the indices point at the definitions.
