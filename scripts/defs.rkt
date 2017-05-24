@@ -78,6 +78,22 @@
           (log "Finished ~a\n" name))
         result))))
 
+;; Memoise a unary function
+(define (memo1 init)
+  (let ([results (make-hash)])
+    (lambda (arg)
+      (hash-ref! results
+                 arg
+                 (lambda () (init arg))))))
+
+;; Memoise a binary function
+(define (memo2 init)
+  (let ([results (make-hash)])
+    (lambda (arg1 arg2)
+      (hash-ref! results
+                 (list arg1 arg2)
+                 (lambda () (init arg1 arg2))))))
+
 (define benchmark-dir
   (or (getenv "BENCHMARKS")
       (getenv "BENCHMARKS_FALLBACK")
@@ -343,22 +359,6 @@
 ;; Reverse the characters of a string
 (define (string-reverse s)
   (list->string (reverse (string->list s))))
-
-;; Memoise a unary function
-(define (memo1 init)
-  (let ([results (make-hash)])
-    (lambda (arg)
-      (hash-ref! results
-                 arg
-                 (lambda () (init arg))))))
-
-;; Memoise a binary function
-(define (memo2 init)
-  (let ([results (make-hash)])
-    (lambda (arg1 arg2)
-      (hash-ref! results
-                 (list arg1 arg2)
-                 (lambda () (init arg1 arg2))))))
 
 ;; Use this thunk to find the set of paths we're benchmarking.
 (define theorem-files
@@ -1822,7 +1822,7 @@
              (equal? stripped (remove-duplicates stripped)))
            (lambda (stripped)
              (all-of (lambda (name)
-                       (member? name (names-in stripped)))
+                       (member name (names-in stripped)))
                      (map second redundancies)))
            (lambda (stripped)
              (not (any-of (lambda (name)
