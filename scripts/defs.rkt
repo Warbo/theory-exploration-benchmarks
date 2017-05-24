@@ -105,28 +105,33 @@
 ;; it contains. This includes globals being defined, globals being used,
 ;; functions, types and other values, but does *not* include keywords or bound
 ;; local variables (e.g. using 'let or 'lambda)
-(define (symbols-in exp)
-  (define (case-symbols c)
-    (match c
-      ;; Remove the symbols occuring in pat from body. This will remove fresh
-      ;; variables, but may also remove constructors. That's fine though,
-      ;; since we extract constructors separately anyway.
-      [(list 'case pat body) (remove* (symbols-in pat) (symbols-in body))]
-      [_                     (error "Unexpected case form")]))
+(define symbols-in
+  (let ()
+    (define (case-symbols c)
+      (match c
+        ;; Remove the symbols occuring in pat from body. This will remove fresh
+        ;; variables, but may also remove constructors. That's fine though,
+        ;; since we extract constructors separately anyway.
+        [(list 'case pat body) (remove* (flatten (go pat))
+                                        (flatten (go body)))]
+        [_                     (error "Unexpected case form")]))
 
-  (remove* native-symbols (match exp
-    [(cons 'match (cons arg cases)) (append (symbols-in arg)
-                                            (symbols-in (map case-symbols cases)))]
-    [(list 'lambda args body)       (remove* (map car args)
-                                             (symbols-in body))]
-    [(list 'let defs body)          (remove* (map car defs)
-                                             (append (symbols-in (map cdr defs))
-                                                     (symbols-in body)))]
-    [(list 'as val typ)             (append (symbols-in val)
-                                            (symbols-in typ))]
-    [(cons a b)                     (append (symbols-in a)
-                                            (symbols-in b))]
-    [_                              (if (symbol? exp) (list exp) null)])))
+    (define (go exp)
+      (match exp
+        [(cons 'match (cons arg cases)) (cons (go arg)
+                                              (go (map case-symbols cases)))]
+        [(list 'lambda args body)       (remove* (map car args)
+                                                 (flatten (go body)))]
+        [(list 'let defs body)          (remove* (map car defs)
+                                                 (flatten
+                                                  (cons (go (map cdr defs))
+                                                        (go body))))]
+        [(list 'as val typ)             (cons (go val) (go typ))]
+        [(cons a b)                     (cons (go a) (go b))]
+        [_                              (if (symbol? exp) (list exp) null)]))
+
+    (lambda (exp)
+      (remove* native-symbols (flatten (go exp))))))
 
 ;; Return a list of constructors defined in a given expression, e.g. '(Nil Cons)
 ;; if given a definition of List
@@ -455,20 +460,24 @@
 
 ;; Return the names of all functions defined in the given expr, including
 ;; destructors; i.e. those things which need lowercase initials in Haskell.
-(define (lowercase-names expr)
-  (append (toplevel-function-names-in expr)
-          (match expr
-            [(list 'declare-datatypes _ decs)
-             (foldl (lambda (dec result)
-                      (define constructor-decs
-                        (cdr dec))
-                      (define destructor-decs
-                        (concat-map cdr constructor-decs))
-                      (append (map first destructor-decs) result))
-                    null
-                    decs)]
-            [(cons a b) (append (lowercase-names a) (lowercase-names b))]
-            [_          null])))
+(define lowercase-names
+  (let ()
+    (define (go expr)
+      (cons (toplevel-function-names-in expr)
+            (match expr
+              [(list 'declare-datatypes _ decs)
+               (foldl (lambda (dec result)
+                        (define constructor-decs
+                          (cdr dec))
+                        (define destructor-decs
+                          (concat-map cdr constructor-decs))
+                        (cons (map first destructor-decs) result))
+                      null
+                      decs)]
+              [(cons a b) (cons (go a) (go b))]
+              [_          null])))
+
+    (lambda (expr) (flatten (go expr)))))
 
 ;; Return the names of all types and constructors defined in the given expr;
 ;; i.e. those things which need uppercase initials in Haskell.
