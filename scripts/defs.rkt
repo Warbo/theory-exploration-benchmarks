@@ -844,17 +844,14 @@
                             "our output, affecting our sampling, etc."))
       (string-join (take-from-end 2 bits) "/")))
 
-;; Read all files named in GIVEN-FILES, combine their definitions together and
-;; prefix each name with the path of the file it came from
+;; Combine together the definitions from each hash table entry and prefix each
+;; name with the (suffix of) the key it came from
 (define (qual-all-hashes given-hashes)
-  (foldl (lambda (elem result)
-           (define pth     (car elem))
-           (define content (cdr elem))
-
-           (append (qualify (path-end pth) (read-benchmark content))
-                   result))
-         '()
-         (sort (hash->list given-hashes) string<? #:key car)))
+  (append* (map (lambda (elem)
+                  (define pth     (car elem))
+                  (define content (cdr elem))
+                  (qualify (path-end pth) (read-benchmark content)))
+                (sort (hash->list given-hashes) string<? #:key car))))
 
 (module+ test
   (def-test-case "Can qualify filename/content hashes"
