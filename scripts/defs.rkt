@@ -952,16 +952,16 @@
     (match e
       [(list 'define-fun name _ _ _)                          (if (ss-eq? name f)
                                                                   (list e)
-                                                                  '())]
+                                                                  #f)]
       [(list 'define-fun (list 'par _ (list name _ _ _)))     (if (ss-eq? name f)
                                                                   (list e)
-                                                                  '())]
+                                                                  #f)]
       [(list 'define-fun-rec   name _ _ _)                    (if (ss-eq? name f)
                                                                   (list e)
-                                                                  '())]
+                                                                  #f)]
       [(list 'define-fun-rec (list 'par _ (list name _ _ _))) (if (ss-eq? name f)
                                                                   (list e)
-                                                                  '())]
+                                                                  #f)]
       [(list 'define-funs-rec names _)  (if (any-of (lambda (n)
                                                       (match n
                                                         [(list 'par ps (list name args return))
@@ -970,12 +970,26 @@
                                                          (ss-eq? name f)]))
                                                     names)
                                             (list e)
-                                            '())]
-      [_ '()]))
+                                            #f)]
+      [(cons 'declare-datatypes _) #f]
+      [(cons 'assert-not _)        #f]
+      [_                           #t]))
   (let ([found (match-expr x)])  ;; see if x is a definition of f
     (match found
-      ['() (concat-map match-expr x)]  ;; nope; try each element it contains
-      [_   found])))                   ;; yep;  return it as-is
+      ;; No, x defines something else.
+      [#f '()]
+
+      ;; No, but x might contain f's definition.
+      [#t (foldl (lambda (elem result)
+                   (match (match-expr elem)
+                     [#f          result]
+                     [#t          result]
+                     [(cons d _) (cons d result)]))
+                 '()
+                 x)]
+
+      ;; Yes. Return it as-is.
+      [_   found])))
 
 (module+ test
   (def-test-case "Can find toplevel function definitions"
