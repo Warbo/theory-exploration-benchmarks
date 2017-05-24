@@ -810,7 +810,7 @@
 
 ;; Apply F to each element of XS, and append the results together
 (define (concat-map f xs)
-  (apply append (map f xs)))
+  (append* (map f xs)))
 
 ;; Backported from Racket 6.7
 (define index-where
@@ -962,10 +962,16 @@
       [(list 'define-fun-rec (list 'par _ (list name _ _ _))) (if (ss-eq? name f)
                                                                   (list e)
                                                                   '())]
-      [(list 'define-funs-rec _ _)       (if (member f (names-in e) ss-eq?)
-                                             (list e)
-                                             '())]
-      [_                                 '()]))
+      [(list 'define-funs-rec names _)  (if (any-of (lambda (n)
+                                                      (match n
+                                                        [(list 'par ps (list name args return))
+                                                         (ss-eq? name f)]
+                                                        [(list name args return)
+                                                         (ss-eq? name f)]))
+                                                    names)
+                                            (list e)
+                                            '())]
+      [_ '()]))
   (let ([found (match-expr x)])  ;; see if x is a definition of f
     (match found
       ['() (concat-map match-expr x)]  ;; nope; try each element it contains
@@ -987,15 +993,17 @@
 
 ;; Returns TRUE if any element of XS passes predicate F, FALSE otherwise
 (define (any-of f xs)
-  (match xs
-    [(cons a b) (or (f a) (any-of f b))]
-    [_          #f]))
+  (foldl (lambda (x y)
+           (or (f x) y))
+         #f
+         xs))
 
 ;; Returns FALSE if any element of XS fails predicate F, TRUE otherwise
 (define (all-of f xs)
-  (match xs
-    [(cons a b) (and (f a) (all-of f b))]
-    [_          #t]))
+  (foldl (lambda (x y)
+           (and (f x) y))
+         #t
+         xs))
 
 ;; Return any definitions of NAME appearing in EXPRS, where NAME can be of a
 ;; function, type, constructor or destructor
