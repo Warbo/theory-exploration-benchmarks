@@ -336,12 +336,10 @@
 
 ;; For each (OLD NEW) in REPS, replace OLD with NEW in EXPR
 (define (replace-all reps expr)
-  (if (empty? reps)
-      expr
-      (replace-all (cdr reps)
-                   (replace-in (first  (first reps))
-                               (second (first reps))
-                               expr))))
+  (foldl (lambda (rep expr)
+           (replace-in (first rep) (second rep) expr))
+         expr
+         reps))
 
 ;; Format a list of expressions to a string, with one expression per line. The
 ;; list's parens aren't included.
