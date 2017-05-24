@@ -854,7 +854,7 @@
            (append (qualify (path-end pth) (read-benchmark content))
                    result))
          '()
-         (hash->list given-hashes)))
+         (sort (hash->list given-hashes) string<? #:key car)))
 
 (module+ test
   (def-test-case "Can qualify filename/content hashes"
