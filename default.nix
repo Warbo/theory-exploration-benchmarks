@@ -227,10 +227,18 @@ rec {
 
     buildInputs = [ env makeWrapper ];
 
+    buildPhase = ''
+      echo "Generating cache" 1>&2
+      ./make_sampling_data.rkt > benchmarks_cache
+    '';
+
     installPhase = ''
       # Install Racket scripts
       mkdir -p    "$out/lib"
       cp    *.rkt "$out/lib/"
+
+      # Install cache
+      cp benchmarks_cache "$out/benchmarks_cache"
 
       # Compile Racket scripts to bytecode for speed
       raco make "$out/lib/"*.rkt
@@ -248,11 +256,12 @@ rec {
 
         # Wrap the one-liner so we can provide an appropriate environment.
         # Set PLT_COMPILED_FILE_CHECK to avoid checking bytecode timestamps.
-        wrapProgram "$out/bin/$NAME"           \
-          --prefix PATH : "${env}/bin"         \
-          --set PWD "$out/lib"                 \
-          --set PLT_COMPILED_FILE_CHECK exists \
-          --set BENCHMARKS_FALLBACK "${tip-benchmarks}"
+        wrapProgram "$out/bin/$NAME"                            \
+          --prefix PATH : "${env}/bin"                          \
+          --set PWD                     "$out/lib"              \
+          --set PLT_COMPILED_FILE_CHECK exists                  \
+          --set BENCHMARKS_CACHE        "$out/benchmarks_cache" \
+          --set BENCHMARKS_FALLBACK     "${tip-benchmarks}"
       done
     '';
 

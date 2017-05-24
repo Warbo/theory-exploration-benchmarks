@@ -14,6 +14,7 @@
 (provide eqs-to-json-wrapper)
 (provide full-haskell-package)
 (provide log)
+(provide make-sampling-data)
 (provide mk-defs)
 (provide mk-final-defs)
 (provide mk-signature)
@@ -364,21 +365,6 @@
                               (sequence->list (in-directory benchmark-dir))))
                  string<=?))
     all-theorem-files))
-
-;; A hash based on the contents of theorem-files, which we can use to identify
-;; cached data
-(memo0 benchmarks-hash
-       ;; Hash file contents
-       (define hashes
-         (map (lambda (f)
-                (sha256 (file->string f)))
-              (theorem-files)))
-
-       ;; Sort hashes and collapse into a Merkle chain
-       (foldl (lambda (hash result)
-                (sha256 (~a hash result)))
-              ""
-              (sort hashes arbitrary<=?)))
 
 ;; Override the theorem files to be used. If you're going to use this, do it
 ;; before computing anything, to prevent stale values being memoised. Basically
@@ -919,13 +905,10 @@
 
 ;; Apply mk-defs to stdio
 (define (mk-defs)
-  (show (mk-defs-s (port->lines (current-input-port)))))
+  (show (mk-defs-hash (files-to-hashes (port->lines (current-input-port))))))
 
 ;; Read all files named in GIVEN-FILES, combine their definitions together and
 ;; remove alpha-equivalent duplicates
-(define (mk-defs-s given-files)
-  (mk-defs-hash (files-to-hashes given-files)))
-
 (define (mk-defs-hash given-hashes)
   (norm-defs (qual-all-hashes given-hashes)))
 
@@ -1086,8 +1069,7 @@
         f)))
 
   (define test-benchmark-defs
-    (mk-defs-hash (files-to-hashes (theorem-files)))
-    #;(mk-defs-s (theorem-files)))
+    (mk-defs-hash (theorem-files-hashes)))
 
   (def-test-case "Can find constructor wrappers"
     (check-equal? (get-def-s 'constructor-Z redundancies)
@@ -1456,9 +1438,6 @@
   (string->symbol (string-append "Global"
                                  (encode16 (symbol->string name)))))
 
-(define global-length
-  (string-length "global"))
-
 ;; Replace occurences of "GlobalXXXX" and "globalXXXX" in S with their decoded
 ;; variants
 (define (decode-string s)
@@ -1483,7 +1462,7 @@
               (substring s end))
 
             (define encoded-name
-              (substring s (+ start global-length) end))
+              (substring s (+ start (string-length "global")) end))
 
             (define name
               (decode16 encoded-name))
@@ -2194,8 +2173,11 @@ library
      (lambda ()
        (set! are-generating #f)))))
 
+(define (theorem-files-hashes)
+  (files-to-hashes (theorem-files)))
+
 (define (qual-hashes-theorem-files)
-  (qual-all-hashes (files-to-hashes (theorem-files))))
+  (qual-all-hashes (theorem-files-hashes)))
 
 (memo0 normalised-theorems
   (if (generating?)
@@ -2291,6 +2273,15 @@ library
                     raw-names))
            (log "Finished theorem deps of ~a\n" f)
            result)))
+
+(log "FIXME: Reenable\n")
+#;(module+ test
+  (def-test-case "Expected dependencies"
+    (let ([deps (theorem-deps-of
+                 (benchmark-file "tip2015/bin_plus_comm.smt2"))])
+      (with-check-info
+        (('deps deps))
+        (check-equal? (length deps) 1)))))
 
 (memo0 all-theorem-deps
        (map (lambda (f) (list (path-end f) (list->set (theorem-deps-of f))))
@@ -2570,98 +2561,57 @@ library
                    'theorem-deps
                    'equation-names))
 
+(define/test-contract (make-sampling-data)
+  (-> sampling-data?)
+
+  ;; Makes generating? return true, which prevents the following invocations
+  ;; from trying to look up cached data.
+  (start-generating!)
+  (normalised-theorems)
+
+  (define result
+    `((all-canonical-function-names
+       ;; Theorem deps aren't hex encoded, so sample with
+       ;; decoded versions
+       ,(map decode-name (lowercase-benchmark-names)))
+
+      ;; read/write doesn't work for sets :(
+      (theorem-deps
+       ,(map (lambda (t-d)
+               (list (first t-d) (set->list (second t-d))))
+             (all-theorem-deps)))
+
+      (equation-names
+       ,(filter (lambda (f)
+                  (not (empty? (equation-from f))))
+                (theorem-files)))
+
+      (normalised-theorems
+       ,(normalised-theorems))))
+
+  ;; We've populated the cache so functions can start returning cached results
+  (stop-generating!)
+
+  ;; Return the generated data
+  result)
+
 (define/test-contract (get-sampling-data)
   (-> sampling-data?)
 
   ;; Check if we have cached data, if so then we return that. If not, we run
-  ;; the thunk MK-DATA, cache the result to disk, then return the result.
-
-  (define/test-contract (mk-data)
-    (-> sampling-data?)
-
-    ;; Makes generating? return true, which prevents the following invocations
-    ;; from trying to look up cached data.
-    (start-generating!)
-    (normalised-theorems)
-
-    (define result
-      `((all-canonical-function-names
-         ;; Theorem deps aren't hex encoded, so sample with
-         ;; decoded versions
-         ,(map decode-name (lowercase-benchmark-names)))
-
-        ;; read/write doesn't work for sets :(
-        (theorem-deps
-         ,(map (lambda (t-d)
-                 (list (first t-d) (set->list (second t-d))))
-               (all-theorem-deps)))
-
-        (equation-names
-         ,(filter (lambda (f)
-                    (not (empty? (equation-from f))))
-                  (theorem-files)))
-
-        (normalised-theorems
-         ,(normalised-theorems))))
-
-    ;; We've populated the cache so functions can start returning cached results
-    (stop-generating!)
-
-    ;; Return the generated data
-    result)
-
-  ;; The path where we'll cache data. To avoid runaway file deletion, we include
-  ;; both "/tmp" and the disambiguating prefix in a single hard-coded string.
-  ;; This guarantees that concatenating with dodgy variables, like "", will
-  ;; never try to delete important paths like "/" or "/tmp".
-  (define path-prefix "/tmp/tebenchmarktemp-cache-")
-
-  ;; If you change the format of the data being stored, bump the version number
-  ;; to avoid being given the old format. Our cache key includes the filenames
-  ;; which we've been given
+  ;; the thunk MAKE-SAMPLING-DATA.
   (define cache-path
-    (string-append path-prefix
-                   (bytes->hex (sha256 (~a `(version-7 ,(benchmarks-hash)))))))
+    (getenv "BENCHMARKS_CACHE"))
 
-  ;; Check if cached data exists for these parameters
-  (define (have-cached-data?)
-    (file-exists? cache-path))
-
-  (unless (have-cached-data?)
-    ;; Don't create an unbounded number of files; delete if there are too many
-    (define existing
-      (filter (lambda (name)
-                (string-prefix? (string-append "/tmp/" name)
-                                path-prefix))
-              (map some-system-path->string (directory-list "/tmp"))))
-
-    (when (> (length existing) 1000)
-      (log "Cache too big, deleting some files matching ~a*\n" path-prefix)
-      (for-each (lambda (name)
-                  (define suffix
-                    (substring (some-system-path->string name)
-                               (- (length path-prefix) (length "/tmp/"))))
-                  (delete-directory/files
-                   (string-append path-prefix suffix)))
-                (take existing 100)))
-
-    (log "No cached data found, calculating from scratch\n")
-    (define out
-      (open-output-file cache-path #:exists 'replace))
-    (write (mk-data) out)
-    (close-output-port out)
-
-    (unless (have-cached-data?)
-      (raise-user-error
-       'cache-to-disk
-       "Sanity check failed: couldn't find cache after writing it ~s"
-       cache-path)))
-
-  (define in   (open-input-file cache-path))
-  (define data (read in))
-  (close-input-port in)
-
-  data)
+  (if (and cache-path (file-exists? cache-path))
+      (let ()
+        (define in   (open-input-file cache-path))
+        (define data (read in))
+        (close-input-port in)
+        data)
+      (let ()
+        (log "No cached data found, calculating from scratch\n")
+        (make-sampling-data))))
 
 (define (assoc-get key val)
   (second (assoc key val)))
@@ -3336,7 +3286,7 @@ library
   (check-false (ss-eq? "foo" "bar"))
 
   (let* ([file "tip2015/sort_StoogeSort2IsSort.smt2"]
-         [defs (mk-defs-s (list (benchmark-file file)))])
+         [defs (mk-defs-hash (files-to-hashes (list (benchmark-file file))))])
     (for-each (lambda (data)
                 (define def
                   (toplevel-function-defs-of (string-append file (first data) "-sentinel")
