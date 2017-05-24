@@ -318,12 +318,10 @@
       [_ null]))
 
   (define (prefix-all locals expr)
-    (if (empty? locals)
-        expr
-        (prefix-all (cdr locals)
-                    (replace-in (car locals)
-                                (prefix-local (car locals))
-                                expr))))
+    (foldl (lambda (local expr)
+             (replace-in local (prefix-local local) expr))
+           expr
+           locals))
 
   (prefix-all (locals-in expr) expr))
 
