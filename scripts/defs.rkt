@@ -344,9 +344,7 @@
 ;; Format a list of expressions to a string, with one expression per line. The
 ;; list's parens aren't included.
 (define (format-symbols syms)
-  (if (null? syms)
-      ""
-      (format "~s\n~a" (car syms) (format-symbols (cdr syms)))))
+  (string-join (map ~s syms) "\n"))
 
 ;; Print a list of expressions to (current-output-port)
 (define (show x)
