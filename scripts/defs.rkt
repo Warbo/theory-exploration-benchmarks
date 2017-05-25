@@ -26,6 +26,8 @@
 (provide types-from-defs)
 (provide write-json)
 
+;; General infrastructure setup, not problem-specific
+
 ;; Set up our testing framework. We declare a bunch of integration tests at the
 ;; end of this file, but we also try to write unit tests next to each function's
 ;; definition and documentation. All testing goes in the 'test' submodule.
@@ -40,10 +42,24 @@
         ["" #rx".*"]
         [_  (regexp given)])))
 
+  ;; This macro will define a test case if it matches a given regex, or skip it
+  ;; otherwise. Use this in favour of raw rackunit, so tests are skippable.
   (define-syntax-rule (def-test-case name body ...)
     (when (regexp-match? test-case-regex name)
       (test-case name body ...))))
 
+;; Uses 'define/contract' when specified by the environment (e.g. during
+;; testing), and 'define' otherwise. Useful since 'define/contract' can be very
+;; slow, e.g. checking every recursive call.
+(define-syntax (define/test-contract stx)
+  (syntax-case stx ()
+    [(define/test-contract sig contract body ...)
+     (if (and (getenv "PLT_TR_CONTRACTS") #t)
+         #'(define/contract sig contract body ...)
+         #'(define          sig          body ...))]))
+
+;; Define a 'log' function for printing progress info to stderr. We also define
+;; a 'quiet' function for turning off progress info.
 (define-values (quiet log)
   (let ([verbose #t])
     (values (lambda ()
@@ -54,18 +70,21 @@
               (when verbose
                 (eprintf (apply format args)))))))
 
-;; Uses 'define/contract' during testing, and 'define' otherwise. Useful since
-;; 'define/contract' can be very slow, e.g. checking every recursive call.
-(define-syntax (define/test-contract stx)
-  (syntax-case stx ()
-    [(define/test-contract sig contract body ...)
-     (if (and (getenv "PLT_TR_CONTRACTS") #t)
-         #'(define/contract sig contract body ...)
-         #'(define          sig          body ...))]))
+;; Suppress progress info during tests, as it's verbose and confusing. This can
+;; be bypassed by setting the DEBUG env var, but it's suggested to also set the
+;; PLT_TEST_REGEX env var so you only get output from specific tests.
+(module+ test
+  (quiet))
 
-;; Memoise a value, so it's only computed if needed and the result is reused on
-;; subsequent calls. Note that the resulting value will be a function, which
-;; needs to be called to get the value.
+;; Macros for memoising functions. Memoised functions store their return values,
+;; which can be returned immediately if called again with the same arguments.
+;; Useful for long computations when RAM is cheap. NOTE: Recursive functions
+;; will store all intermediate return values if memoised. To avoid this, you can
+;; memoise a lambda which calls your recursive function, then only the top-level
+;; argument/return value pairs will be stored.
+
+;; Memoise a nullary function. Since there are no arguments, we write the body
+;; inline, rather than requiring a lambda wrapper.
 (define-syntax-rule (memo0 name body ...)
   (define name
     (let ([result #f]
@@ -93,6 +112,207 @@
       (hash-ref! results
                  (list arg1 arg2)
                  (lambda () (init arg1 arg2))))))
+
+;; Helper functions
+
+;; Replace all occurrences of OLD with REPLACEMENT in EXPR
+(define (replace-in old replacement expr)
+  (if (equal? old expr)
+      replacement
+      (match expr
+        [(cons a b) (cons (replace-in old replacement a)
+                          (replace-in old replacement b))]
+        [_          expr])))
+
+;; For each (OLD NEW) in REPS, replace OLD with NEW in EXPR
+(define (replace-all reps expr)
+  (foldl (lambda (rep expr)
+           (replace-in (first rep) (second rep) expr))
+         expr
+         reps))
+
+;; Format a list of expressions to a string, with one expression per line. The
+;; list's parens aren't included.
+(define (format-symbols syms)
+  (string-join (map ~s syms) "\n"))
+
+;; Print a list of expressions to (current-output-port)
+(define (show x)
+  (displayln (format-symbols x)))
+
+;; Reverse the characters of a string
+(define (string-reverse s)
+  (list->string (reverse (string->list s))))
+
+;; Reads a list of expressions from the given string
+(define (read-benchmark x)
+  (let* ([content (string-append "(\n" x "\n)")])
+    (with-input-from-string content
+      read)))
+
+;; Reads a list of expressions from the given file
+(define (file->list f)
+  (read-benchmark (file->string f)))
+
+;; Prefix symbol N with string P
+(define (prefix-name n p)
+  (string->symbol (string-append p (symbol->string n))))
+
+;; Apply F to each element of XS, and append the results together
+(define (concat-map f xs)
+  (append* (map f xs)))
+
+;; Backported from Racket 6.7
+(define index-where
+  (let ()
+    (define (index-where-acc acc lst proc)
+      (if (empty? lst)
+          #f
+          (if (proc (car lst))
+              acc
+              (index-where-acc (+ 1 acc) (cdr lst) proc))))
+    (lambda (lst proc)
+      (index-where-acc 0 lst proc))))
+
+;; Returns the last N elements of LST
+(define (take-from-end n lst)
+  (reverse (take (reverse lst) n)))
+
+(define (non-empty? x)
+  (not (empty? x)))
+
+;; Idempotent symbol->string
+(define (as-str x)
+  (if (string? x)
+      x
+      (symbol->string x)))
+
+;; Returns TRUE if any element of XS passes predicate F, FALSE otherwise
+(define (any-of f xs)
+  (foldl (lambda (x y)
+           (or (f x) y))
+         #f
+         xs))
+
+;; Returns FALSE if any element of XS fails predicate F, TRUE otherwise
+(define (all-of f xs)
+  (foldl (lambda (x y)
+           (and (f x) y))
+         #t
+         xs))
+
+;; Equality which allows symbols and strings
+(define (ss-eq? x y)
+  (cond ([symbol? x] (ss-eq? (symbol->string x)                y))
+        ([symbol? y] (ss-eq?                 x (symbol->string y)))
+        (#t          (equal?                 x                 y))))
+
+;; Everything from here on is specific to the TIP/TE benchmark domain
+
+;; Example data for tests
+(module+ test
+  (define nat-def
+    '(declare-datatypes () ((Nat (Z) (S (p Nat))))))
+
+  (define constructorZ
+    '(define-fun constructor-Z ()              Nat (as  Z          Nat)))
+
+  (define constructorS
+    '(define-fun constructor-S ((local-p Nat)) Nat (as (S local-p) Nat)))
+
+  (define redundancies `(,constructorZ
+                         ,constructorS
+                         (define-fun redundantZ1 () Nat (as Z Nat))
+                         (define-fun redundantZ2 () Nat (as Z Nat))
+                         (define-fun redundantZ3 () Nat (as Z Nat)))))
+
+;; Predicates, types and contracts
+
+;; A TIP definition, e.g. for a type or function
+(define (definition? x)
+  (and (list? x)
+       (not (empty? x))
+       (member (first x) '(declare-datatypes
+                           define-fun
+                           define-fun-rec
+                           define-funs-rec))))
+
+;; A TIP theorem statement
+(define (theorem? x)
+  (match x
+    [(cons 'assert-not _) #t]
+    [_                    #f]))
+
+;; A TIP benchmark problem, i.e. a list of definitions and a theorem statement
+(define (tip-problem? x)
+  (match x
+    [(list defs thm) (and (list? defs)
+                          (not (empty? defs))  ;; Overkill, but helps spot bugs
+                          (all-of definition? defs)
+                          (theorem? thm))]
+    [_ #f]))
+
+(module+ test
+  (def-test-case "TIP problem accepts"
+    (check-true (tip-problem? (list (list nat-def)
+                                    '(assert-not (= 1 1))))))
+  (def-test-case "TIP problem rejects"
+    (check-false (tip-problem? (list nat-def)))
+    (check-false (tip-problem? (list (list nat-def) nat-def)))))
+
+;; The filename of a TIP problem, used to disambiguate type/function names. To
+;; avoid ambiguous filenames, we include their directory, but we don't go any
+;; further up the path, because we don't want such system-specific details to
+;; affect things like our sampling.
+(define (tip-path? x)
+  (and (string? x)
+       (string-suffix? x ".smt2")
+       (string-contains? x "/")
+       (= (length (string-split x "/")) 2)
+       (not (string-prefix? x "/"))
+       (not (string-suffix? x "/.smt2"))))
+
+(module+ test
+  (def-test-case "Path predicate accepts"
+    (for-each (lambda (pth)
+                (with-check-info
+                  (('path pth))
+                  (check-true (tip-path? pth))))
+              '("grammars/simp_expr_unambig1.smt2"
+                "grammars/simp_expr_unambig4.smt2"
+                "tip2015/propositional_AndCommutative.smt2"
+                "tip2015/propositional_Sound.smt2"
+                "tip2015/propositional_Okay.smt2"
+                "tip2015/regexp_RecSeq.smt2"
+                "tip2015/relaxedprefix_correct.smt2"
+                "tip2015/propositional_AndIdempotent.smt2"
+                "tip2015/propositional_AndImplication.smt2")))
+  (def-test-case "Path predicate rejects"
+    (for-each (lambda (pth)
+                (with-check-info
+                  (('path pth))
+                  (check-false (tip-path? pth))))
+              '(;; No .smt2 extension
+                "foo"
+                "grammars/simp_expr_unambig1"
+
+                ;; No directory
+                "propositional_AndCommutative.smt2"
+                "simp_expr_unambig4.smt2"
+
+                ;; Empty names
+                "tip2015/.smt2"
+                "/regexp_RecSeq.smt2"
+
+                ;; Too much path
+                "benchmarks/grammars/simp_expr_unambig4.smt2"
+                "/nix/store/1vgm16yp1vrwn8a9mnn1ji62a0jgi3sl-tip-benchmarks/isaplanner/prop_10.smt2"))))
+
+;; A set of TIP benchmark problems, mapping filenames to problems
+(define (tip-benchmarks? x)
+  (hash/c tip-path? tip-problem?))
+
+;; Globals
 
 (define benchmark-dir
   (or (getenv "BENCHMARKS")
@@ -195,6 +415,7 @@
                                                                (remove* (symbols-in given)
                                                                         (symbols-in (map (lambda (x) (constructor-types (cdr x)))
                                                                                          decs))))]
+         [(cons 'define-funs-rec _) (error "Unhandled case: declare-funs-rec")]
          [(cons a b)                                   (append (expression-types a)
                                                                (expression-types b))]
          [_                                            null]))
@@ -219,42 +440,58 @@
                                                     (expression-destructors b))]
       [_                                    null]))
 
-;; Returns all global names defined in the given expression, including
-;; functions, constructors and destructors, but excluding types
-(define (expression-symbols exp)
-  (define expression-funs (memo1 (lambda (exp)
+(define expression-funs
+  (let ()
     (define (fun-rec-expressions decs defs)
       (match (list decs defs)
         [(list (cons (list 'par ps (list name args return)) more-decs)
                (cons body                                   more-defs))
-         (append (cons name (remove* (append ps (map car args))
+         (cons (cons name (remove* (append ps (map car args))
+                                   (symbols-in body)))
+               (fun-rec-expressions more-decs more-defs))]
+
+        [(list (cons (list name args return) more-decs)
+               (cons body                    more-defs))
+         (append (cons name (remove* (map car args)
                                      (symbols-in body)))
                  (fun-rec-expressions more-decs more-defs))]
-        [(list (cons (list name args return) more-decs)
-               (cons body                    more-defs)) (append (cons name (remove* (map car args)
-                                                                                     (symbols-in body)))
-                                                                 (fun-rec-expressions more-decs more-defs))]
-        [_                                                null]))
 
-    (match exp
-      [(list 'define-fun-rec
-             (list 'par p
-                   (list name args return body)))   (cons name (remove* (append (map car args)
-                                                                                (symbols-in p))
-                                                                        (symbols-in body)))]
-      [(list 'define-fun-rec name args return body) (cons name (remove* (map car args) (symbols-in body)))]
-      [(list 'define-funs-rec decs defs)            (fun-rec-expressions decs defs)]
-      [(list 'define-fun
-             (list 'par p
-                   (list name args return body)))   (cons name (remove* (append (map car args)
-                                                                                (symbols-in p))
-                                                                        (symbols-in body)))]
-      [(list 'define-fun     name args return body) (cons name (remove* (map car args) (symbols-in body)))]
+        [_ null]))
 
-      [(cons a b)                                   (append (expression-funs a)
+    (define (go exp)
+      (match exp
+        [(list 'define-fun-rec
+               (list 'par p
+                     (list name args return body)))
+         (cons name (remove* (append (map car args)
+                                     (symbols-in p))
+                             (symbols-in body)))]
+
+        [(list 'define-fun-rec name args return body)
+         (cons name (remove* (map car args) (symbols-in body)))]
+
+        [(list 'define-funs-rec decs defs)
+         (fun-rec-expressions decs defs)]
+
+        [(list 'define-fun
+               (list 'par p
+                     (list name args return body)))
+         (cons name (remove* (append (map car args) (symbols-in p))
+                             (symbols-in body)))]
+
+        [(list 'define-fun     name args return body)
+         (cons name (remove* (map car args) (symbols-in body)))]
+
+        [(cons a b)                                   (cons (expression-funs a)
                                                             (expression-funs b))]
-      [_                                            null]))))
 
+        [_                                            null]))
+
+    (memo1 (lambda (exp) (flatten (go exp))))))
+
+;; Returns all global names defined in the given expression, including
+;; functions, constructors and destructors, but excluding types
+(define (expression-symbols exp)
   (remove* (expression-types exp)
            (append (expression-constructors exp)
                    (expression-destructors  exp)
@@ -325,35 +562,6 @@
 
   (prefix-all (locals-in expr) expr))
 
-;; Replace all occurrences of OLD with REPLACEMENT in EXPR
-(define (replace-in old replacement expr)
-  (if (equal? old expr)
-      replacement
-      (match expr
-        [(cons a b) (cons (replace-in old replacement a)
-                          (replace-in old replacement b))]
-        [_          expr])))
-
-;; For each (OLD NEW) in REPS, replace OLD with NEW in EXPR
-(define (replace-all reps expr)
-  (foldl (lambda (rep expr)
-           (replace-in (first rep) (second rep) expr))
-         expr
-         reps))
-
-;; Format a list of expressions to a string, with one expression per line. The
-;; list's parens aren't included.
-(define (format-symbols syms)
-  (string-join (map ~s syms) "\n"))
-
-;; Print a list of expressions to (current-output-port)
-(define (show x)
-  (displayln (format-symbols x)))
-
-;; Reverse the characters of a string
-(define (string-reverse s)
-  (list->string (reverse (string->list s))))
-
 ;; Use this thunk to find the set of paths we're benchmarking.
 (define theorem-files
   (let ()
@@ -377,16 +585,6 @@
 (define (symbols-of-theorem path)
   (benchmark-symbols (file->list path)))
 
-;; Reads a list of expressions from the given string
-(define (read-benchmark x)
-  (let* ([content (string-append "(\n" x "\n)")])
-    (with-input-from-string content
-      read)))
-
-;; Reads a list of expressions from the given file
-(define (file->list f)
-  (read-benchmark (file->string f)))
-
 ;; Returns a list of names for any functions which the given expression defines.
 ;; Note that expr must itself be a definition; we don't look through its
 ;; subexpressions.
@@ -404,21 +602,6 @@
     [_ null]))
 
 (module+ test
-  (define nat-def
-    '(declare-datatypes () ((Nat (Z) (S (p Nat))))))
-
-  (define constructorZ
-    '(define-fun constructor-Z ()              Nat (as  Z          Nat)))
-
-  (define constructorS
-    '(define-fun constructor-S ((local-p Nat)) Nat (as (S local-p) Nat)))
-
-  (define redundancies `(,constructorZ
-                         ,constructorS
-                         (define-fun redundantZ1 () Nat (as Z Nat))
-                         (define-fun redundantZ2 () Nat (as Z Nat))
-                         (define-fun redundantZ3 () Nat (as Z Nat))))
-
   (def-test-case "Can get function names"
     (check-equal? (map toplevel-function-names-in `(,nat-def
                                                     ,constructorZ
@@ -804,36 +987,12 @@
          x
          (expression-types x)))
 
-;; Prefix symbol N with string P
-(define (prefix-name n p)
-  (string->symbol (string-append p (symbol->string n))))
-
-;; Apply F to each element of XS, and append the results together
-(define (concat-map f xs)
-  (append* (map f xs)))
-
-;; Backported from Racket 6.7
-(define index-where
-  (let ()
-    (define (index-where-acc acc lst proc)
-      (if (empty? lst)
-          #f
-          (if (proc (car lst))
-              acc
-              (index-where-acc (+ 1 acc) (cdr lst) proc))))
-    (lambda (lst proc)
-      (index-where-acc 0 lst proc))))
-
 ;; Remove TIP boilerplate
 (define (trim lst)
   (filter (lambda (x)
             (and (not (equal? (first x) 'assert-not))
                  (not (equal? x '(check-sat)))))
           lst))
-
-;; Returns the last N elements of LST
-(define (take-from-end n lst)
-  (reverse (take (reverse lst) n)))
 
 ;; The last part of a path, which is enough to distinguish a TIP benchmark
 (define (path-end s)
@@ -849,7 +1008,9 @@
 
 ;; Combine together the definitions from each hash table entry and prefix each
 ;; name with the (suffix of) the key it came from
-(define (qual-all-hashes given-hashes)
+(define/test-contract (qual-all-hashes given-hashes)
+  (-> (hash/c string? (*list/c definition?))
+      (*list/c definition?))
   (append* (map (lambda (elem)
                   (define pth     (car elem))
                   (define content (cdr elem))
@@ -912,20 +1073,14 @@
 (define (mk-defs-hash given-hashes)
   (norm-defs (qual-all-hashes given-hashes)))
 
-(define (files-to-hashes files)
+(define/test-contract (files-to-hashes files)
+  (-> (*list/c string?)
+      (hash/c string? (list/c (*list/c definition?) theorem?))
+      (*list/c definition?))
   (foldl (lambda (f result)
            (hash-set result f (file->string f)))
          (hash)
          files))
-
-(define (non-empty? x)
-  (not (empty? x)))
-
-;; Equality which allows symbols and strings
-(define (ss-eq? x y)
-  (cond ([symbol? x] (ss-eq? (symbol->string x)                y))
-        ([symbol? y] (ss-eq?                 x (symbol->string y)))
-        (#t          (equal?                 x                 y))))
 
 ;; Extracts all defined names from a vector of definitions, returning a sorted
 ;; vector of (name index) pairs, where the indices point at the definitions.
@@ -999,25 +1154,6 @@
                                                ,constructorS))
                   (list constructorZ))))
 
-;; Idempotent symbol->string
-(define (as-str x)
-  (if (string? x)
-      x
-      (symbol->string x)))
-
-;; Returns TRUE if any element of XS passes predicate F, FALSE otherwise
-(define (any-of f xs)
-  (foldl (lambda (x y)
-           (or (f x) y))
-         #f
-         xs))
-
-;; Returns FALSE if any element of XS fails predicate F, TRUE otherwise
-(define (all-of f xs)
-  (foldl (lambda (x y)
-           (and (f x) y))
-         #t
-         xs))
 
 ;; Return any definitions of NAME appearing in EXPRS, where NAME can be of a
 ;; function, type, constructor or destructor
@@ -1615,13 +1751,6 @@
       (check-equal? output
                     `((((constructor-Z) (existing-Z)) ,(norm constructorZ)))))))
 
-;; Predicate for whether X defines any TIP type/function/etc.
-(define (definition? x)
-  (and (not (empty? (names-in x)))
-       (not (any-of (lambda (sub-expr)
-                      (not (empty? (names-in sub-expr))))
-                    x))))
-
 ;; Predicate to ensure we're not given encoded names, since their lexicographic
 ;; order will differ from the unencoded versions.
 ;; Strictly speaking, we should allow such names in case the user actually fed
@@ -1725,7 +1854,9 @@
 ;; Note that this has O(n^3) complexity in the worst case: when all definitions
 ;; are equivalent, but reference each other such that only two are
 ;; alpha-equivalent on each pass.
-(define (norm-defs exprs)
+(define/test-contract (norm-defs exprs)
+  (-> (*list/c definition?)
+      (*list/c definition?))
   (first (normed-and-replacements exprs)))
 
 ;; Given a list of definitions, returns the name of those which are
@@ -1739,14 +1870,19 @@
 ;; each equivalent pair A and B that we find, we check for equivalence *given
 ;; that A and B are equivalent*, and so on recursively, until we can't find any
 ;; more.
-(define (replacements-closure exprs)
+(define/test-contract (replacements-closure exprs)
+  (-> (*list/c definition?)
+      (*list/c (list/c symbol? symbol?)))
   (second (normed-and-replacements exprs)))
 
 ;; Removes redundant alpha-equivalent definitions from EXPRS, resulting in a
 ;; normalised form given as the first element of the result.
 ;; Also keeps track of the replacements it's made in the process, returning them
 ;; as the second element of the result.
-(define normed-and-replacements
+(define/test-contract normed-and-replacements
+  (-> (*list/c definition?)
+      (list/c (*list/c definition?)
+              (*list/c (list/c symbol? symbol?))))
   ;; All of the hard work is done inside normed-and-replacements-inner, but that
   ;; function is recursive, so memoising it would fill the lookup table with
   ;; intermediate results.
@@ -3220,8 +3356,6 @@ library
 
 ;; Everything below here is tests; run using "raco test"
 (module+ test
-  ;; Suppress normalisation progress messages during tests
-  (quiet)
 
   ;; Loads test data from files
   (define (test-data f)
