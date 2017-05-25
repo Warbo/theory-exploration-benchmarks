@@ -131,6 +131,17 @@
          expr
          reps))
 
+;; Recurses through EXPR until it finds a sub-expression of the form
+;; (FIND foo bar ...), replaces it with (WRAPPER (FIND foo bar ...)) and returns
+;; the modified EXPR
+(define (wrap-with find wrapper expr)
+  (match expr
+    [(cons x y) (if (equal? x find)
+                    (list wrapper expr)
+                    (cons (wrap-with find wrapper x)
+                          (wrap-with find wrapper y)))]
+    [_              expr]))
+
 ;; Format a list of expressions to a string, with one expression per line. The
 ;; list's parens aren't included.
 (define (format-symbols syms)
@@ -181,11 +192,73 @@
 (define (non-empty? x)
   (not (empty? x)))
 
+;; Creates a list of pairs '((X1 Y1) (X2 Y2) ...) when given a pair of lists
+;; '(X1 X2 ...) and '(Y1 Y2 ...)
+(define (zip xs ys)
+  (if (empty? xs)
+      null
+      (if (empty? ys)
+          null
+          (cons (list (car xs) (car ys))
+                (zip  (cdr xs) (cdr ys))))))
+
 ;; Idempotent symbol->string
 (define (as-str x)
   (if (string? x)
       x
       (symbol->string x)))
+
+;; Compare symbol names lexicographically
+(define (symbol<=? x y)
+  (string<=? (symbol->string x)
+             (symbol->string y)))
+
+;; Compare symbol names lexicographically
+(define (symbol<? x y)
+  (string<? (symbol->string x)
+            (symbol->string y)))
+
+;; Compare values, lexicographically on their displayed output
+(define (arbitrary<=? x y)
+  (string<=? (~a x) (~a y)))
+
+;; Lexicographic comparison of two structures. We only focus on nested lists of
+;; symbols.
+(define (lex<=? x y)
+  (cond
+   ;; Compare symbols lexicographically
+   [(and (symbol? x) (symbol? y)) (symbol<=? x y)]
+
+   ;; Symbols are smaller than other structures
+   [(symbol? x) #t]
+   [(symbol? y) #f]
+
+   ;; Numbers are the second-smallest type (only Reals, due to <='s contract).
+   [(and (real? x) (real? y)) (<= x y)]
+   [(real? x) #t]
+   [(real? y) #f]
+
+   ;; Strings are next
+   [(and (string? x) (string? y)) (string<=? x y)]
+   [(string? x) #t]
+   [(string? y) #f]
+
+   ;; If they're not symbols or strings, they must be lists
+   [(not (list? x)) (error (format "Expected list, got ~s" x))]
+   [(not (list? y)) (error (format "Expected list, got ~s" y))]
+
+   ;; Empty lists are the smallest lists
+   [(empty? x) #t]
+   [(empty? y) #f]
+
+   ;; Recurse on first elements; if not <=, they can't be equal wither, so stop.
+   [(not (lex<=? (first x) (first y))) #f]
+
+   ;; (first x) <= (first y), but are they equal? If not symmetric, we can stop.
+   [(not (lex<=? (first y) (first x))) #t]
+
+   ;; First elements are equal, recurse to the rest of the lists
+   [else (lex<=? (rest x) (rest y))]))
 
 ;; Returns TRUE if any element of XS passes predicate F, FALSE otherwise
 (define (any-of f xs)
@@ -201,11 +274,159 @@
          #t
          xs))
 
+;; Map a function F over the elements of a set S
+(define (map-set f s)
+  (list->set (set-map s f)))
+
 ;; Equality which allows symbols and strings
 (define (ss-eq? x y)
   (cond ([symbol? x] (ss-eq? (symbol->string x)                y))
         ([symbol? y] (ss-eq?                 x (symbol->string y)))
         (#t          (equal?                 x                 y))))
+
+;; Convert STR to a hex encoding of its ASCII bytes
+(define (encode16 str)
+  (define chars
+    (string->list str))
+
+  (define codepoints
+    (map char->integer chars))
+
+  (define rawhex
+    (map (lambda (p)
+           (number->string p 16))
+         codepoints))
+
+  (define padded
+    (map (lambda (s)
+           (string-reverse
+            (substring (string-reverse (string-append "0" s))
+                       0
+                       2)))
+         rawhex))
+  (apply string-append padded))
+
+;; Interpret STR as a hex encoding of ASCII bytes, returning the decoded content
+(define (decode16 str)
+  (define hex-pairs
+    (letrec ([get-pairs (lambda (s)
+                          (if (non-empty-string? s)
+                              (cons (substring s 0 2)
+                                    (get-pairs (substring s 2 (string-length s))))
+                              '()))])
+      (get-pairs str)))
+
+  (define codepoints
+    (map (lambda (pair)
+           (string->number pair 16))
+         hex-pairs))
+
+  (define chars
+    (map integer->char codepoints))
+
+  (list->string chars))
+
+(define/test-contract (bytes->hex bs)
+  (-> bytes?
+      (lambda (result)
+        (unless (string? result)
+          (raise-user-error
+           'bytes-to-hex
+           "Should have made a string, actually made ~a" result))
+        (for-each (lambda (char)
+                    (unless (member char (string->list "0123456789abcdef"))
+                      (raise-user-error
+                       'bytes-to-hex
+                       "Should have outputted hex characters, gave ~a" result)))
+                  (string->list result))))
+  (foldl (lambda (byte rest)
+           (string-append (number->string byte 16) rest))
+         ""
+         (bytes->list bs)))
+
+(define ((assoc-contains? . keys) l)
+  (unless (list? l)
+    (raise-user-error
+     'assoc-contains
+     "Expected a list, given ~s" l))
+  (all-of (lambda (key)
+            (or (any-of (lambda (pair)
+                          (and (pair? pair)
+                               (equal? (car pair) key)))
+                        l)
+                (raise-user-error
+                 'assoc-contains
+                 "Couldn't find entry for ~s in ~s" key l)))
+          keys))
+
+(define (assoc-get key val)
+  (second (assoc key val)))
+
+;; Is X a permutation of Y?
+(define (set-equal? x y)
+  (equal? (list->set x) (list->set y)))
+
+;; For each (SRC DST) in REPS, replaces SRC with DST in STR
+(define (replace-strings str reps)
+  (foldl (lambda (pair so-far)
+           (string-replace so-far (as-str (first  pair))
+                           (as-str (second pair))))
+         str
+         reps))
+
+;; Debug dump to stderr
+(define (dump x)
+  (write x (current-error-port))
+  x)
+
+;; Run BODY with VARS present in the environment variables
+(define (parameterize-env vars body)
+  (let* ([old-env (environment-variables-copy (current-environment-variables))]
+         [new-env (foldl (lambda (nv env)
+                           (environment-variables-set! env (first  nv)
+                                                       (second nv))
+                           env)
+                         old-env
+                         vars)])
+    (parameterize ([current-environment-variables new-env])
+      (body))))
+
+
+;; Run F with the string S as its input port. Returns whatever F writes to its
+;; output port.
+(define (pipe s f)
+  (define o (open-output-string))
+  (parameterize ([current-input-port  (open-input-string s)]
+                 [current-output-port o])
+    (f))
+  (get-output-string o))
+
+;; Deterministically, but unpredictably, shuffle the given NAMES. KEYGEN turns
+;; a name into a hash, and we perform the shuffle by sorting the hashes.
+(define (deterministic-shuffle keygen names)
+  (define sorted
+    (sort (map (lambda (n) (list n (keygen n)))
+               names)
+          (lambda (x y)
+            (not (bytes>? (second x) (second y))))))
+  (map first sorted))
+
+(define lcm
+  (lambda args
+    (match args
+      [(list x)             x]
+      [(cons x (cons y zs)) (apply lcm (cons (* x (/ y (gcd x y)))
+                                             zs))])))
+
+(define/test-contract (precision found wanted)
+  (-> set? set? rational?)
+  (/ (set-count (set-intersect found wanted))
+     (set-count found)))
+
+(define/test-contract (recall found wanted)
+  (-> set? set? rational?)
+  (/ (set-count (set-intersect wanted found))
+     (set-count wanted)))
 
 ;; Everything from here on is specific to the TIP/TE benchmark domain
 
@@ -311,6 +532,23 @@
 ;; A set of TIP benchmark problems, mapping filenames to problems
 (define (tip-benchmarks? x)
   (hash/c tip-path? tip-problem?))
+
+
+;; Unencoded names. Strictly speaking, we should allow such names in case the
+;; user actually fed in such definitions; however, in practice this is a good
+;; indicator that something's wrong in our logic!
+(define (unencoded? exprs)
+  (all-of (lambda (name)
+            (not (regexp-match? "[Gg]lobal[0-9a-f]+"
+                                (symbol->string name))))
+          (names-in exprs)))
+
+;; Like unencoded?, but make sure we're not given normalised names
+(define (unnormalised? exprs)
+  (all-of (lambda (name)
+            (not (regexp-match? "normalise-var-[0-9]"
+                                (symbol->string name))))
+          (names-in exprs)))
 
 ;; Globals
 
@@ -1513,48 +1751,6 @@
                               (case (Many local-head local-tail)
                                 local-tail)))))))))
 
-;; Convert STR to a hex encoding of its ASCII bytes
-(define (encode16 str)
-  (define chars
-    (string->list str))
-
-  (define codepoints
-    (map char->integer chars))
-
-  (define rawhex
-    (map (lambda (p)
-           (number->string p 16))
-         codepoints))
-
-  (define padded
-    (map (lambda (s)
-           (string-reverse
-            (substring (string-reverse (string-append "0" s))
-                       0
-                       2)))
-         rawhex))
-  (apply string-append padded))
-
-;; Interpret STR as a hex encoding of ASCII bytes, returning the decoded content
-(define (decode16 str)
-  (define hex-pairs
-    (letrec ([get-pairs (lambda (s)
-                          (if (non-empty-string? s)
-                              (cons (substring s 0 2)
-                                    (get-pairs (substring s 2 (string-length s))))
-                              '()))])
-      (get-pairs str)))
-
-  (define codepoints
-    (map (lambda (pair)
-           (string->number pair 16))
-         hex-pairs))
-
-  (define chars
-    (map integer->char codepoints))
-
-  (list->string chars))
-
 ;; Decode an encoded "globalXXX" or "GlobalXXX" name
 (define (decode-name name)
   (define no-global
@@ -1652,30 +1848,6 @@
   (def-test-case "Can 'preprepare' a list of definitions"
     (preprepare '())))
 
-;; Creates a list of pairs '((X1 Y1) (X2 Y2) ...) when given a pair of lists
-;; '(X1 X2 ...) and '(Y1 Y2 ...)
-(define (zip xs ys)
-  (if (empty? xs)
-      null
-      (if (empty? ys)
-          null
-          (cons (list (car xs) (car ys))
-                (zip  (cdr xs) (cdr ys))))))
-
-;; Compare symbol names lexicographically
-(define (symbol<=? x y)
-  (string<=? (symbol->string x)
-             (symbol->string y)))
-
-;; Compare symbol names lexicographically
-(define (symbol<? x y)
-  (string<? (symbol->string x)
-            (symbol->string y)))
-
-;; Compare values, lexicographically on their displayed output
-(define (arbitrary<=? x y)
-  (string<=? (~a x) (~a y)))
-
 ;; Choose the smallest name out of the alternatives found in each class.
 ;;
 ;; Example input: '((Pair mkPair first second)
@@ -1751,24 +1923,6 @@
       (check-equal? output
                     `((((constructor-Z) (existing-Z)) ,(norm constructorZ)))))))
 
-;; Predicate to ensure we're not given encoded names, since their lexicographic
-;; order will differ from the unencoded versions.
-;; Strictly speaking, we should allow such names in case the user actually fed
-;; in such definitions; however, in practice this is a good indicator that
-;; something's wrong in our logic!
-(define (unencoded? exprs)
-  (all-of (lambda (name)
-            (not (regexp-match? "[Gg]lobal[0-9a-f]+"
-                                (symbol->string name))))
-          (names-in exprs)))
-
-;; Like unencoded?, but make sure we're not given normalised names
-(define (unnormalised? exprs)
-  (all-of (lambda (name)
-            (not (regexp-match? "normalise-var-[0-9]"
-                                (symbol->string name))))
-          (names-in exprs)))
-
 ;; Looks for alpha-equivalent definitions in RAW-EXPRS, and returns a list of
 ;; name replacements '((OLD1 NEW1) (OLD2 NEW2) ...) which can be used to update
 ;; references and remove redundancies. Each NEW name is the smallest,
@@ -1795,10 +1949,6 @@
       (check-equal? (list->set (find-redundancies defs))
                     (list->set '((Nat2 Nat1) (Z2 Z1) (S2 S1) (p2 p1)))))))
 
-;; Is X a permutation of Y?
-(define (set-equal? x y)
-  (equal? (list->set x) (list->set y)))
-
 ;; TODO: Clean up
 (define (symbols-of-theorems-s expr)
   (filter (lambda (s)
@@ -1815,15 +1965,6 @@
                                     (port->string (current-input-port)))))
                           "\n")))
 
-;; Run F with the string S as its input port. Returns whatever F writes to its
-;; output port.
-(define (pipe s f)
-  (define o (open-output-string))
-  (parameterize ([current-input-port  (open-input-string s)]
-                 [current-output-port o])
-    (f))
-  (get-output-string o))
-
 ;; TODO: Do we need this?
 (define (qualify-given)
   (define given
@@ -1833,14 +1974,6 @@
     (string-replace (getenv "NAME") "'" "_tick_"))
 
   (show (qualify name given)))
-
-;; For each (SRC DST) in REPS, replaces SRC with DST in STR
-(define (replace-strings str reps)
-  (foldl (lambda (pair so-far)
-           (string-replace so-far (as-str (first  pair))
-                                  (as-str (second pair))))
-         str
-         reps))
 
 ;; Remove redundancies from EXPRS, leaving only alpha-distinct definitions. When
 ;; a redundancy is found, we keep the names which appear first lexicographically
@@ -2084,11 +2217,6 @@
 (define temp-file-prefix
   "tebenchmarktemp")
 
-;; Debug dump to stderr
-(define (dump x)
-  (write x (current-error-port))
-  x)
-
 ;; Sends a string INPUT through the `tip` program for conversion to Haskell +
 ;; QuickSpec
 (define (mk-signature-s input)
@@ -2098,18 +2226,6 @@
 ;; A wrapper around `tip`
 (define (mk-signature)
   (display (mk-signature-s (port->string (current-input-port)))))
-
-;; Run BODY with VARS present in the environment variables
-(define (parameterize-env vars body)
-  (let* ([old-env (environment-variables-copy (current-environment-variables))]
-         [new-env (foldl (lambda (nv env)
-                           (environment-variables-set! env (first  nv)
-                                                           (second nv))
-                           env)
-                         old-env
-                        vars)])
-    (parameterize ([current-environment-variables new-env])
-      (body))))
 
 (define (types-from-defs)
   (show (symbols-in
@@ -2451,16 +2567,6 @@ library
             (subset? (second f-deps) s))
           (all-theorem-deps)))
 
-;; Deterministically, but unpredictably, shuffle the given NAMES. KEYGEN turns
-;; a name into a hash, and we perform the shuffle by sorting the hashes.
-(define (deterministic-shuffle keygen names)
-  (define sorted
-    (sort (map (lambda (n) (list n (keygen n)))
-               names)
-          (lambda (x y)
-            (not (bytes>? (second x) (second y))))))
-  (map first sorted))
-
 ;; Deterministically, but unpredictably, select a sample of NAMES. The sample
 ;; size is given by SIZE, whilst REP provides entropy for making the choices
 ;; (e.g. you can run with REP as 0, 1, 2, etc. to get different results).
@@ -2582,13 +2688,6 @@ library
 
   ;; To make the sums easy, we choose M to be the *least common multiple* of the
   ;; lengths: a number which all the lengths divide into without a remainder.
-  (define lcm
-    (lambda args
-      (match args
-        [(list x)             x]
-        [(cons x (cons y zs)) (apply lcm (cons (* x (/ y (gcd x y)))
-                                               zs))])))
-
   (define constraint-lcm
     (apply lcm (map set-count constraints)))
 
@@ -2678,42 +2777,8 @@ library
 (memo0 lowercase-benchmark-names
        (lowercase-names (final-benchmark-defs)))
 
-(define/test-contract (bytes->hex bs)
-  (-> bytes?
-      (lambda (result)
-        (unless (string? result)
-          (raise-user-error
-           'bytes-to-hex
-           "Should have made a string, actually made ~a" result))
-        (for-each (lambda (char)
-                    (unless (member char (string->list "0123456789abcdef"))
-                      (raise-user-error
-                       'bytes-to-hex
-                       "Should have outputted hex characters, gave ~a" result)))
-                  (string->list result))))
-  (foldl (lambda (byte rest)
-           (string-append (number->string byte 16) rest))
-         ""
-         (bytes->list bs)))
-
 ;; Cache data required for sampling in /tmp, so we can draw samples over and
 ;; over from the same benchmarks without recalculating everything each time.
-
-(define ((assoc-contains? . keys) l)
-  (unless (list? l)
-    (raise-user-error
-     'assoc-contains
-     "Expected a list, given ~s" l))
-  (all-of (lambda (key)
-            (or (any-of (lambda (pair)
-                          (and (pair? pair)
-                               (equal? (car pair) key)))
-                        l)
-                (raise-user-error
-                 'assoc-contains
-                 "Couldn't find entry for ~s in ~s" key l)))
-          keys))
-
 (define sampling-data?
   (assoc-contains? 'all-canonical-function-names
                    'theorem-deps
@@ -2771,9 +2836,6 @@ library
         (log "No cached data found, calculating from scratch\n")
         (make-sampling-data))))
 
-(define (assoc-get key val)
-  (second (assoc key val)))
-
 ;; Sample using the names and theorems from BENCHMARKS
 (define (sample-from-benchmarks size rep)
   (define data (get-sampling-data))
@@ -2809,20 +2871,6 @@ library
                  theorem-deps)))
 
   (sample size rep all-canonical-function-names equation-deps))
-
-;; Map a function F over the elements of a set S
-(define (map-set f s)
-  (list->set (set-map s f)))
-
-(define/test-contract (precision found wanted)
-  (-> set? set? rational?)
-  (/ (set-count (set-intersect found wanted))
-     (set-count found)))
-
-(define/test-contract (recall found wanted)
-  (-> set? set? rational?)
-  (/ (set-count (set-intersect wanted found))
-     (set-count wanted)))
 
 (define (find-eqs-intersection found sample)
   (find-eqs-intersection-raw
@@ -2917,44 +2965,6 @@ library
   (filter (lambda (thm)
             (not (empty? (theorem-to-equation thm))))
           (conjectures-admitted-by sample)))
-
-;; Lexicographic comparison of two structures. We only focus on nested lists of
-;; symbols.
-(define (lex<=? x y)
-  (cond
-   ;; Compare symbols lexicographically
-   [(and (symbol? x) (symbol? y)) (symbol<=? x y)]
-
-   ;; Symbols are smaller than other structures
-   [(symbol? x) #t]
-   [(symbol? y) #f]
-
-   ;; Numbers are the second-smallest type (only Reals, due to <='s contract).
-   [(and (real? x) (real? y)) (<= x y)]
-   [(real? x) #t]
-   [(real? y) #f]
-
-   ;; Strings are next
-   [(and (string? x) (string? y)) (string<=? x y)]
-   [(string? x) #t]
-   [(string? y) #f]
-
-   ;; If they're not symbols or strings, they must be lists
-   [(not (list? x)) (error (format "Expected list, got ~s" x))]
-   [(not (list? y)) (error (format "Expected list, got ~s" y))]
-
-   ;; Empty lists are the smallest lists
-   [(empty? x) #t]
-   [(empty? y) #f]
-
-   ;; Recurse on first elements; if not <=, they can't be equal wither, so stop.
-   [(not (lex<=? (first x) (first y))) #f]
-
-   ;; (first x) <= (first y), but are they equal? If not symmetric, we can stop.
-   [(not (lex<=? (first y) (first x))) #t]
-
-   ;; First elements are equal, recurse to the rest of the lists
-   [else (lex<=? (rest x) (rest y))]))
 
 ;; Check if an expression represents an equation in normal form. Normal form
 ;; requires the equal expressions to be in lexicographic order, and for the
@@ -3317,17 +3327,6 @@ library
           (expressions-match? x1 x2))]
 
     [_ #f]))
-
-;; Recurses through EXPR until it finds a sub-expression of the form
-;; (FIND foo bar ...), replaces it with (WRAPPER (FIND foo bar ...)) and returns
-;; the modified EXPR
-(define (wrap-with find wrapper expr)
-  (match expr
-    [(cons x y) (if (equal? x find)
-                    (list wrapper expr)
-                    (cons (wrap-with find wrapper x)
-                          (wrap-with find wrapper y)))]
-    [_              expr]))
 
 (define (equations-from-list lst)
   (map (lambda (thm)
