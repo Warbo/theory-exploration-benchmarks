@@ -19,10 +19,8 @@
 (provide mk-final-defs)
 (provide mk-signature)
 (provide precision-recall-eqs-wrapper)
-(provide qualify-given)
 (provide sample-from-benchmarks)
 (provide sample-equational-from-benchmarks)
-(provide symbols-of-theorems)
 (provide types-from-defs)
 (provide write-json)
 
@@ -46,7 +44,13 @@
   ;; otherwise. Use this in favour of raw rackunit, so tests are skippable.
   (define-syntax-rule (def-test-case name body ...)
     (when (regexp-match? test-case-regex name)
-      (test-case name body ...))))
+      (test-case name body ...)))
+
+  ;; Loads test data from files
+  (define (test-data f)
+    (when (member (getenv "TEST_DATA") '(#f ""))
+      (error "No TEST_DATA env var given"))
+    (string-append (getenv "TEST_DATA") "/" f)))
 
 ;; Uses 'define/contract' when specified by the environment (e.g. during
 ;; testing), and 'define' otherwise. Useful since 'define/contract' can be very
@@ -131,6 +135,20 @@
          expr
          reps))
 
+;; For each (SRC DST) in REPS, replaces SRC with DST in STR
+(define (replace-strings str reps)
+  (foldl (lambda (pair so-far)
+           (string-replace so-far (as-str (first  pair))
+                           (as-str (second pair))))
+         str
+         reps))
+
+(module+ test
+  (def-test-case "replace-strings works"
+    (check-equal? (replace-strings "hello mellow yellow fellow"
+                                 '(("lo" "LO") ("el" "{{el}}")))
+                "h{{el}}LO m{{el}}LOw y{{el}}LOw f{{el}}LOw")))
+
 ;; Recurses through EXPR until it finds a sub-expression of the form
 ;; (FIND foo bar ...), replaces it with (WRAPPER (FIND foo bar ...)) and returns
 ;; the modified EXPR
@@ -172,6 +190,12 @@
 ;; Apply F to each element of XS, and append the results together
 (define (concat-map f xs)
   (append* (map f xs)))
+
+(module+ test
+  (def-test-case "Can concat-map"
+    (check-equal? (concat-map (lambda (x) (list x x x))
+                              '(fee fi fo fum))
+                  '(fee fee fee fi fi fi fo fo fo fum fum fum))))
 
 ;; Backported from Racket 6.7
 (define index-where
@@ -260,6 +284,23 @@
    ;; First elements are equal, recurse to the rest of the lists
    [else (lex<=? (rest x) (rest y))]))
 
+(module+ test
+  (def-test-case "Comparisons"
+    (check-true  (lex<=? 'a       'b))
+    (check-true  (lex<=? 'a       'a))
+    (check-true  (lex<=? 'a       '()))
+    (check-true  (lex<=? '()      '()))
+    (check-true  (lex<=? '()      '(a)))
+    (check-true  (lex<=? '(a)     '(b)))
+    (check-true  (lex<=? '(a)     '(a)))
+    (check-true  (lex<=? '(a b c) '(a c b)))
+
+    (check-false (lex<=? 'b       'a))
+    (check-false (lex<=? '()      'a))
+    (check-false (lex<=? '(a)     '()))
+    (check-false (lex<=? '(b)     '(a)))
+    (check-false (lex<=? '(a c b) '(a b c)))))
+
 ;; Returns TRUE if any element of XS passes predicate F, FALSE otherwise
 (define (any-of f xs)
   (foldl (lambda (x y)
@@ -283,6 +324,18 @@
   (cond ([symbol? x] (ss-eq? (symbol->string x)                y))
         ([symbol? y] (ss-eq?                 x (symbol->string y)))
         (#t          (equal?                 x                 y))))
+
+(module+ test
+  (def-test-case "ss-eq? works"
+    (check-true  (ss-eq? 'foo  'foo))
+    (check-true  (ss-eq? 'foo  "foo"))
+    (check-true  (ss-eq? "foo" 'foo))
+    (check-true  (ss-eq? "foo" "foo"))
+
+    (check-false (ss-eq? 'foo  'bar))
+    (check-false (ss-eq? 'foo  "bar"))
+    (check-false (ss-eq? "foo" 'bar))
+    (check-false (ss-eq? "foo" "bar"))))
 
 ;; Convert STR to a hex encoding of its ASCII bytes
 (define (encode16 str)
@@ -366,14 +419,6 @@
 (define (set-equal? x y)
   (equal? (list->set x) (list->set y)))
 
-;; For each (SRC DST) in REPS, replaces SRC with DST in STR
-(define (replace-strings str reps)
-  (foldl (lambda (pair so-far)
-           (string-replace so-far (as-str (first  pair))
-                           (as-str (second pair))))
-         str
-         reps))
-
 ;; Debug dump to stderr
 (define (dump x)
   (write x (current-error-port))
@@ -391,6 +436,15 @@
     (parameterize ([current-environment-variables new-env])
       (body))))
 
+(module+ test
+  (def-test-case "Can parameterise env vars"
+
+    (let ([a (getenv "HOME")]
+          [b (parameterize-env '([#"HOME" #"foo"])
+                               (lambda () (getenv "HOME")))]
+          [c (getenv "HOME")])
+      (check-equal? a c)
+      (check-equal? b "foo"))))
 
 ;; Run F with the string S as its input port. Returns whatever F writes to its
 ;; output port.
@@ -423,10 +477,31 @@
   (/ (set-count (set-intersect found wanted))
      (set-count found)))
 
+(module+ test
+  (def-test-case "Precision"
+    (check-equal?
+     (/ 1 10)
+     (precision (list->set '(a b c d e f g h i j))
+                (list->set '(j k l m n o p q r s t u v w x y z))))))
+
 (define/test-contract (recall found wanted)
   (-> set? set? rational?)
   (/ (set-count (set-intersect wanted found))
      (set-count wanted)))
+
+(module+ test
+  (def-test-case "Recall"
+    (check-equal? (/ 1 2)
+                  (recall (list->set '(a b c d e f g h i j k l m))
+                          (list->set '(a b c d e f g h i j k l m
+                                         n o p q r s t u v w x y z))))))
+
+(define (in-temp-dir f)
+  (let* ([dir    (make-temporary-file (string-append temp-file-prefix "~a")
+                                      'directory)]
+         [result (f dir)])
+    (delete-directory/files dir)
+    result))
 
 ;; Everything from here on is specific to the TIP/TE benchmark domain
 
@@ -445,7 +520,40 @@
                          ,constructorS
                          (define-fun redundantZ1 () Nat (as Z Nat))
                          (define-fun redundantZ2 () Nat (as Z Nat))
-                         (define-fun redundantZ3 () Nat (as Z Nat)))))
+                         (define-fun redundantZ3 () Nat (as Z Nat))))
+
+  (define custom-bool
+    '(declare-datatypes () ((CustomBool (CustomTrue) (CustomFalse)))))
+
+  (define custom-ite
+    '(define-fun
+       (par (a)
+            (custom-ite
+             ((c CustomBool) (x a) (y a)) a
+             (match c
+               (case CustomTrue  x)
+               (case CustomFalse y))))))
+
+  (define custom-nat
+    '(declare-datatypes () ((CustomNat (CustomZ)
+                                       (CustomS (custom-p CustomNat))))))
+
+  (define custom-int
+    '(declare-datatypes () ((CustomInt (CustomNeg (custom-succ CustomNat))
+                                       (CustomZero)
+                                       (CustomPos (custom-pred CustomNat))))))
+
+  (define form-deps
+    (list custom-nat custom-int))
+
+  (define form
+    '(declare-datatypes ()
+                        ((Form (& (&_0 Form) (&_1 Form))
+                               (Not (Not_0 Form))
+                               (Var (Var_0 CustomInt))))))
+
+  (define form-with-deps
+    (append form-deps (list form))))
 
 ;; Predicates, types and contracts
 
@@ -653,7 +761,9 @@
                                                                (remove* (symbols-in given)
                                                                         (symbols-in (map (lambda (x) (constructor-types (cdr x)))
                                                                                          decs))))]
-         [(cons 'define-funs-rec _) (error "Unhandled case: declare-funs-rec")]
+         [(cons 'define-funs-rec x) (let ()
+                                      (log "FIXME: Unhandled case: declare-funs-rec")
+                                      (expression-types x))]
          [(cons a b)                                   (append (expression-types a)
                                                                (expression-types b))]
          [_                                            null]))
@@ -820,8 +930,56 @@
   (set! theorem-files (lambda ()
                         (sort (proc) string<=?))))
 
-(define (symbols-of-theorem path)
-  (benchmark-symbols (file->list path)))
+;; For testing, we default to only using a subset of the benchmarks, which we
+;; accomplish by overriding theorem-files; this acts as a sanity check, and is
+;; much faster than checking everything. For a thorough test of all benchmarks
+;; there is a separate "tests" derivation in default.nix, suitable for use in
+;; e.g. a continuous integration scenario.
+;;
+;; Please note the following:
+;;  - If a particular set of benchmarks has specifically been requested, via
+;;    the BENCHMARKS environment variable, we use that whole set, rather than
+;;    selecting some subset.
+;;  - If a test requires some particular file to be present in this list, it
+;;    should use the testing-file function to check that it's present.
+(module+ test
+  (define testing-file
+    (let ()
+      ;; We always include the following files, since they're either required by
+      ;; one of our tests, or they're edge-cases/regressions which we want to
+      ;; ensure are getting regularly tested.
+      (define required-testing-files
+        (benchmark-files '("grammars/packrat_unambigPackrat.smt2"
+                           "isaplanner/prop_01.smt2"
+                           "isaplanner/prop_15.smt2"
+                           "isaplanner/prop_35.smt2"
+                           "isaplanner/prop_43.smt2"
+                           "isaplanner/prop_44.smt2"
+                           "isaplanner/prop_84.smt2"
+                           "prod/prop_35.smt2"
+                           "tip2015/bin_plus_comm.smt2"
+                           "tip2015/fermat_last.smt2"
+                           "tip2015/heap_SortPermutes'.smt2"
+                           "tip2015/list_SelectPermutations.smt2"
+                           "tip2015/nat_pow_one.smt2"
+                           "tip2015/propositional_AndCommutative.smt2"
+                           "tip2015/propositional_AndIdempotent.smt2"
+                           "tip2015/sort_NStoogeSort2Count.smt2"
+                           "tip2015/sort_NStoogeSort2Permutes.smt2"
+                           "tip2015/tree_sort_SortPermutes'.smt2")))
+
+      ;; Override theorem-files to return these chosen files, if no BENCHMARKS
+      ;; were given explicitly
+      (when (member (getenv "BENCHMARKS") '(#f ""))
+        (set-theorem-files! (lambda ()
+                              required-testing-files)))
+
+      ;; The definition of testing-file; checks if the given file is in our
+      ;; selected list.
+      (lambda (f)
+        (unless (member (benchmark-file f) required-testing-files)
+          (error "Testing file not in required list" f))
+        f))))
 
 ;; Returns a list of names for any functions which the given expression defines.
 ;; Note that expr must itself be a definition; we don't look through its
@@ -894,6 +1052,25 @@
 
     (lambda (expr) (flatten (go expr)))))
 
+(module+ test
+  (def-test-case "Lowercase name extraction"
+    (check-equal?
+     (list->set (lowercase-names
+                 (file->list (benchmark-file
+                              "tip2015/sort_NStoogeSort2Permutes.smt2"))))
+     (list->set '(custom-p custom-succ custom-pred custom-ite custom-not
+                           custom-nat-> custom-> custom-<= custom-or
+                           custom-bool-converter custom-and head tail first second p
+                           twoThirds third take sort2 null length elem drop splitAt
+                           delete isPermutation append nstooge2sort2 nstoogesort2
+                           nstooge2sort1)))
+
+    (check-equal?
+     (uppercase-names
+      (file->list (benchmark-file "tip2015/sort_NStoogeSort2Permutes.smt2")))
+     '(CustomNat CustomZ CustomS CustomInt CustomNeg CustomZero CustomPos
+                 CustomBool CustomTrue CustomFalse list nil cons Pair Pair2 Nat Z S))))
+
 ;; Return the names of all types and constructors defined in the given expr;
 ;; i.e. those things which need uppercase initials in Haskell.
 (define (uppercase-names expr)
@@ -911,10 +1088,6 @@
 
     [(cons a b) (append (uppercase-names a) (uppercase-names b))]
     [_          null]))
-
-;; Symbols used in EXPR. TODO: redundant?
-(define (benchmark-symbols expr)
-  (remove-duplicates (expression-symbols expr)))
 
 ;; Normalise an expression: all type parameters, local variables, global
 ;; definitions, etc. are replaced with sequential names. References to global
@@ -1214,6 +1387,143 @@
 (define (names-in defs)
   (append (lowercase-names defs) (uppercase-names defs)))
 
+(module+ test
+  (define (names-match src expr expect)
+    (define names (names-in expr))
+
+    (with-check-info
+      (('src     src)
+       ('expr    expr)
+       ('expect  expect)
+       ('names   names)
+       ('message "Got expected names"))
+      (check-equal? (list->set names) (list->set expect))))
+
+  (def-test-case "Can find names defined in expressions"
+      (names-match "datatype"
+               '(declare-datatypes (a) ((list (nil)
+                                              (cons (head a) (tail (list a))))))
+               '(list nil cons head tail))
+
+  (names-match "function"
+               '(define-fun sort2
+                  ((x Int) (y Int)) (list Int)
+                  (ite (<= x y)
+                       (cons x (cons y (as nil (list Int))))
+                       (cons y (cons x (as nil (list Int))))))
+               '(sort2))
+
+  (names-match "parameterised function"
+               '(define-fun
+                  (par (a)
+                       (zsplitAt ((x Int) (y (list a))) (Pair (list a) (list a))
+                                 (Pair2 (ztake x y) (zdrop x y)))))
+               '(zsplitAt))
+
+  (names-match "recursive function"
+               '(define-fun-rec insert2
+                  ((x Int) (y (list Int))) (list Int)
+                  (match y
+                    (case nil (cons x (as nil (list Int))))
+                    (case (cons z xs) (ite (<= x z)
+                                           (cons x y)
+                                           (cons z (insert2 x xs))))))
+               '(insert2))
+
+  (names-match "recursive parameterised function"
+               '(define-fun-rec
+                  (par (a)
+                       (ztake ((x Int) (y (list a))) (list a)
+                              (ite (= x 0)
+                                   (as nil (list a))
+                                   (match y
+                                     (case nil (as nil (list a)))
+                                     (case (cons z xs) (cons z
+                                                             (ztake (- x 1)
+                                                                    xs))))))))
+               '(ztake))
+
+  (names-match "mutually recursive functions"
+               '(define-funs-rec
+                  ((stooge2sort2 ((x (list Int))) (list Int))
+                   (stoogesort2  ((x (list Int))) (list Int))
+                   (stooge2sort1 ((x (list Int))) (list Int)))
+                  ((match (zsplitAt (div (+ (* 2 (zlength x)) 1) 3) x)
+                     (case (Pair2 ys zs) (append (stoogesort2 ys) zs)))
+                   (match x
+                     (case nil (as nil (list Int)))
+                     (case (cons y z)
+                       (match z
+                         (case nil (cons y (as nil (list Int))))
+                         (case (cons y2 x2)
+                           (match x2
+                             (case nil (sort2 y y2))
+                             (case (cons x3 x4)
+                               (stooge2sort2 (stooge2sort1 (stooge2sort2 x)))))))))
+                   (match (zsplitAt (div (zlength x) 3) x)
+                     (case (Pair2 ys zs) (append ys (stoogesort2 zs))))))
+               '(stooge2sort2 stoogesort2 stooge2sort1)))
+
+    (def-test-case "Symbol lookup"
+    (define (symbols-from-file f)
+      (names-in (file->list f)))
+
+    (define (should-have syms kind xs)
+      (for-each (lambda (sym)
+                  (with-check-info
+                   (('sym  sym)
+                    ('syms syms)
+                    ('kind kind))
+                   (check-true (set-member? syms sym))))
+                xs))
+
+    (define (should-not-have syms kind xs)
+      (for-each (lambda (sym)
+                  (with-check-info
+                   (('sym  sym)
+                    ('syms syms)
+                    ('kind kind))
+                   (check-false (set-member? syms sym))))
+                xs))
+
+    (let* ([f    (benchmark-file "tip2015/int_right_distrib.smt2")]
+           [syms (symbols-from-file f)])
+
+      (should-have syms 'constructor '(Pos Neg Zero Succ P N))
+
+      (should-have syms 'destructor  '(pred P_0 N_0))
+
+      (should-have syms 'function '(toInteger sign plus2 opposite
+                                    timesSign mult minus plus absVal
+                                    times))
+
+      (should-not-have syms 'variable '(x  x-sentinel
+                                        y  y-sentinel
+                                        z  z-sentinel
+                                        m  m-sentinel
+                                        m2 m2-sentinel
+                                        n  n-sentinel
+                                        n2 n2-sentinel
+                                        n3 n3-sentinel
+                                        o  o-sentinel))
+
+      (should-not-have syms 'keyword  '(match             match-sentinel
+                                        case              case-sentinel
+                                        define-fun        define-fun-sentinel
+                                        declare-datatypes declare-datatypes-sentinel
+                                        assert-not        assert-not-sentinel
+                                        forall            forall-sentinel
+                                        =                 =-sentinel
+                                        check-sat         check-sat-sentinel)))
+
+    (let* ([f    (benchmark-file "tip2015/list_PairEvens.smt2")]
+           [syms (symbols-from-file f)])
+      (should-not-have syms 'higher-order-type '(=> =>-sentinel)))
+
+    (let* ([f    (benchmark-file "tip2015/propositional_AndCommutative.smt2")]
+           [syms (symbols-from-file f)])
+      (should-have syms 'function '(or2)))))
+
 ;; Rename types in X to begin with "type-"
 (define (tag-types x)
   ;; Tag types with 'type-' to disambiguate
@@ -1231,6 +1541,12 @@
             (and (not (equal? (first x) 'assert-not))
                  (not (equal? x '(check-sat)))))
           lst))
+
+(module+ test
+  (def-test-case "Can trim"
+    (check-equal? (trim '((hello)))                      '((hello)))
+    (check-equal? (trim '((foo) (assert-not bar) (baz))) '((foo) (baz)))
+    (check-equal? (trim '((foo) (check-sat) (bar)))      '((foo) (bar)))))
 
 ;; The last part of a path, which is enough to distinguish a TIP benchmark
 (define (path-end s)
@@ -1415,55 +1731,6 @@
                              (defs-from exprs))))
 
 (module+ test
-  ;; For testing, we default to only using a subset of the benchmarks, which we
-  ;; accomplish by overriding theorem-files; this acts as a sanity check, and is
-  ;; much faster than checking everything. For a thorough test of all benchmarks
-  ;; there is a separate "tests" derivation in default.nix, suitable for use in
-  ;; e.g. a continuous integration scenario.
-
-  ;; Please note the following:
-  ;;  - If a particular set of benchmarks has specifically been requested, via
-  ;;    the BENCHMARKS environment variable, we use that whole set, rather than
-  ;;    selecting some subset.
-  ;;  - If a test requires some particular file to be present in this list, it
-  ;;    should use the testing-file function to check that it's present.
-  (define testing-file
-    (let ()
-      ;; We always include the following files, since they're either required by
-      ;; one of our tests, or they're edge-cases/regressions which we want to
-      ;; ensure are getting regularly tested.
-      (define required-testing-files
-        (benchmark-files '("grammars/packrat_unambigPackrat.smt2"
-                           "isaplanner/prop_01.smt2"
-                           "isaplanner/prop_15.smt2"
-                           "isaplanner/prop_35.smt2"
-                           "isaplanner/prop_43.smt2"
-                           "isaplanner/prop_44.smt2"
-                           "isaplanner/prop_84.smt2"
-                           "prod/prop_35.smt2"
-                           "tip2015/fermat_last.smt2"
-                           "tip2015/heap_SortPermutes'.smt2"
-                           "tip2015/list_SelectPermutations.smt2"
-                           "tip2015/nat_pow_one.smt2"
-                           "tip2015/propositional_AndCommutative.smt2"
-                           "tip2015/propositional_AndIdempotent.smt2"
-                           "tip2015/sort_NStoogeSort2Count.smt2"
-                           "tip2015/sort_NStoogeSort2Permutes.smt2"
-                           "tip2015/tree_sort_SortPermutes'.smt2")))
-
-      ;; Override theorem-files to return these chosen files, if no BENCHMARKS
-      ;; were given explicitly
-      (when (member (getenv "BENCHMARKS") '(#f ""))
-        (set-theorem-files! (lambda ()
-                              required-testing-files)))
-
-      ;; The definition of testing-file; checks if the given file is in our
-      ;; selected list.
-      (lambda (f)
-        (unless (member (benchmark-file f) required-testing-files)
-          (error "Testing file not in required list" f))
-        f)))
-
   (define test-benchmark-defs
     (mk-defs-hash (theorem-files-hashes)))
 
@@ -1479,10 +1746,6 @@
                   (('found found))
                   (check-equal? (length found) 1)))
               (expression-constructors test-benchmark-defs))))
-
-;; Applies get-def to a sting of definitions; TODO: remove?
-(define (get-def name str)
-  (get-def-s name (read-benchmark str)))
 
 ;; Strip "-sentinel" once we've finished processing names
 (define (remove-suffix x)
@@ -1600,6 +1863,42 @@
     func)
 
   (append x (map func-for (expression-constructors x))))
+
+(module+ test
+  (def-test-case "Can add constructor functions"
+    (check-equal? (add-constructor-funcs (list nat-def))
+                  `(,nat-def ,constructorZ ,constructorS)))
+
+  (def-test-case "Bare constructor function type"
+    (check-equal? (add-constructor-funcs '((declare-datatypes
+                                            ()
+                                            ((MyBool (MyTrue) (MyFalse))))))
+                  '((declare-datatypes
+                     ()
+                     ((MyBool (MyTrue) (MyFalse))))
+                    (define-fun constructor-MyTrue  () MyBool
+                      (as MyTrue  MyBool))
+                    (define-fun constructor-MyFalse () MyBool
+                      (as MyFalse MyBool)))))
+
+  (def-test-case "Parameterised constructor function type"
+    (check-equal? (add-constructor-funcs
+                   '((declare-datatypes
+                      (local-a)
+                      ((MyStream (MyCons (myHead local-a)
+                                         (myTail (MyStream local-a))))))))
+                  '((declare-datatypes
+                     (local-a)
+                     ((MyStream (MyCons (myHead local-a)
+                                        (myTail (MyStream local-a))))))
+                    (define-fun
+                      (par (local-a)
+                           (constructor-MyCons
+                            ((local-myHead local-a)
+                             (local-myTail (MyStream local-a)))
+                            (MyStream local-a)
+                            (as (MyCons local-myHead local-myTail)
+                                (MyStream local-a)))))))))
 
 ;; Strips off any filename prefix from a symbol, in case it can't be written
 ;; verbatim as a symbol (TIP doesn't support escaping in symbol names like
@@ -1828,6 +2127,11 @@
           (list s 0)
           (regexp-match-positions* #rx"[Gg]lobal[0-9a-f]+" s))))
 
+(module+ test
+  (def-test-case "Decode strings"
+    (check-equal? (decode-string "foo Global68656c6c6f bar global776f726c64")
+                  "foo hello bar world")))
+
 ;; Turns a list of definitions X into a form suitable for sending into the tip
 ;; tools
 (define (prepare x)
@@ -1838,6 +2142,9 @@
   (add-check-sat
    (encode-names
     (preprepare x))))
+
+(module+ test
+  )
 
 (define (preprepare x)
   (add-constructor-funcs
@@ -1936,44 +2243,26 @@
               (map first (foldl mk-output null (remove-duplicates raw-exprs)))))
 
 (module+ test
-  (let ([defs '((declare-datatypes ()
-                                   ((Nat1 (Z1) (S1 (p1 Nat1)))))
-                (declare-datatypes ()
-                                   ((Nat2 (Z2) (S2 (p2 Nat2))))))])
-    (def-test-case "Can find redundancies from definitions list"
-      (check-equal? (map (lambda (x) (list->set (first x)))
-                         (foldl mk-output null defs))
-                    (list (set '(Nat1 Z1 S1 p1)
-                               '(Nat2 Z2 S2 p2))))
+  (def-test-case "Can find redundancies from definitions list"
+    (define defs
+      '((declare-datatypes ()
+                           ((Nat1 (Z1) (S1 (p1 Nat1)))))
+        (declare-datatypes ()
+                           ((Nat2 (Z2) (S2 (p2 Nat2)))))))
 
-      (check-equal? (list->set (find-redundancies defs))
-                    (list->set '((Nat2 Nat1) (Z2 Z1) (S2 S1) (p2 p1)))))))
+    (check-equal? (map (lambda (x) (list->set (first x)))
+                       (foldl mk-output null defs))
+                  (list (set '(Nat1 Z1 S1 p1)
+                             '(Nat2 Z2 S2 p2))))
 
-;; TODO: Clean up
-(define (symbols-of-theorems-s expr)
-  (filter (lambda (s)
-            (not (member s '(true-sentinel
-                             false-sentinel
-                             or-sentinel
-                             ite-sentinel))))
-          (benchmark-symbols expr)))
+    (check-equal? (list->set (find-redundancies defs))
+                  (list->set '((Nat2 Nat1) (Z2 Z1) (S2 S1) (p2 p1))))
 
-;; TODO: Clean up
-(define (symbols-of-theorems)
-  (displayln (string-join (map ~a (symbols-of-theorems-s
-                                   (read-benchmark
-                                    (port->string (current-input-port)))))
-                          "\n")))
-
-;; TODO: Do we need this?
-(define (qualify-given)
-  (define given
-    (read-benchmark (port->string (current-input-port))))
-
-  (define name
-    (string-replace (getenv "NAME") "'" "_tick_"))
-
-  (show (qualify name given)))
+    (check-equal? (list->set (read-benchmark
+                              (replace-strings
+                               (format-symbols    redundancies)
+                               (find-redundancies redundancies))))
+                  (list->set `(,constructorZ ,constructorS)))))
 
 ;; Remove redundancies from EXPRS, leaving only alpha-distinct definitions. When
 ;; a redundancy is found, we keep the names which appear first lexicographically
@@ -1992,6 +2281,40 @@
       (*list/c definition?))
   (first (normed-and-replacements exprs)))
 
+(module+ test
+  (def-test-case "Normalise redundant definitions"
+    (define given
+      '((define-fun min1 ((x Int) (y Int)) Int (ite (<= x y) x y))
+        (define-fun min2 ((a Int) (b Int)) Int (ite (<= a b) a b))))
+
+    (define defs  (norm-defs given))
+    (define syms  (names-in defs))
+    (define min1  (member 'min1 syms))
+    (define min2  (member 'min2 syms))
+
+    (with-check-info
+      (('defs    defs)
+       ('syms    syms)
+       ('min1    min1)
+       ('min2    min2)
+       ('message "Simple redundant functions deduped"))
+      (check-true (or (and min1 (not min2))
+                      (and min2 (not min1)))))
+
+    (let* ([given '((define-fun min1 ((x Int) (y Int)) Int (ite (<= x y) x y))
+                    (define-fun min2 ((a Int) (b Int)) Int (ite (<= a b) a b))
+                    (define-fun fun3 ((x Int)) Int (min2 x x)))]
+           [defs  (norm-defs given)]
+           [syms  (symbols-in
+                   (filter (lambda (expr)
+                             (member 'fun3 expr))
+                           defs))])
+      (with-check-info
+        (('defs    defs)
+         ('syms    syms)
+         ('message "References to discarded duplicates are replaced"))
+        (check-not-equal? (member 'min1 syms) #f)))))
+
 ;; Given a list of definitions, returns the name of those which are
 ;; alpha-equivalent '((DUPE1 CANON1) (DUPE2 CANON2) ...), where each DUPEi is
 ;; the name of a definition that's equivalent to the definition named by CANONi.
@@ -2007,6 +2330,25 @@
   (-> (*list/c definition?)
       (*list/c (list/c symbol? symbol?)))
   (second (normed-and-replacements exprs)))
+
+(module+ test
+  (def-test-case "Have replacements"
+    (define defs '((define-fun min1 ((x Int) (y Int)) Int (ite (<= x y) x y))
+                   (define-fun min2 ((a Int) (b Int)) Int (ite (<= a b) a b))))
+    (check-equal? (list->set (replacements-closure defs))
+                  (list->set '((min2 min1))))
+
+    (define test-replacements
+      (replacements-closure (qual-hashes-theorem-files)))
+
+    (for-each (lambda (rep)
+                (check-false         (set-member?
+                                      (names-in test-benchmark-defs)
+                                      (first rep)))
+                (check-not-equal? #f (set-member?
+                                      (names-in test-benchmark-defs)
+                                      (second rep))))
+              test-replacements)))
 
 ;; Removes redundant alpha-equivalent definitions from EXPRS, resulting in a
 ;; normalised form given as the first element of the result.
@@ -2162,6 +2504,92 @@
 (define (defs-to-sig x)
   (mk-signature-s (format-symbols (mk-final-defs-s (string-split x "\n")))))
 
+(module+ test
+  (def-test-case "Single files"
+    (define files (map (lambda (suf)
+                         (benchmark-file suf))
+                       '(;"isaplanner/prop_54.smt2"
+                         ;"tip2015/propositional_AndIdempotent.smt2"
+                         ;"tip2015/propositional_AndCommutative.smt2"
+                         ;"tip2015/mccarthy91_M2.smt2"
+                         ;"isaplanner/prop_36.smt2"
+                         ;"tip2015/sort_MSortTDPermutes.smt2"
+                         "tip2015/tree_sort_SortPermutes'.smt2"
+                         ;"tip2015/sort_StoogeSort2Permutes.smt2"
+                         ;"tip2015/sort_StoogeSortPermutes.smt2"
+                         ;"tip2015/polyrec_seq_index.smt2"
+                         #;"tip2015/sort_QSortPermutes.smt2")))
+
+    (for-each (lambda (f)
+                (define sig
+                  (defs-to-sig f))
+                (with-check-info
+                  (('sig sig))
+                  (check-true (string-contains? sig "QuickSpec"))))
+              files))
+
+  (def-test-case "Multiple files"
+    (define files
+      (string-join (benchmark-files '("tip2015/tree_SwapAB.smt2"
+                                      "tip2015/list_SelectPermutations.smt2"))
+                   "\n"))
+
+    (define sig
+      (defs-to-sig files))
+
+    (with-check-info
+     (('message "Local variables renamed")
+      ('sig     sig))
+     (check-true (string-contains? sig "local"))))
+
+  (def-test-case "Random files"
+    (define files
+      (string-join (theorem-files) "\n"))
+
+    (define sig
+      (defs-to-sig files))
+
+    (with-check-info
+     (('files   files)
+      ('sig     sig)
+      ('message "Made Haskell for random files"))
+     (check-true (string-contains? sig "QuickSpec"))))
+
+  (def-test-case "Form datatype survives translation"
+    (define sig (string-to-haskell form-with-deps))
+
+    (define data-found
+      (regexp-match? "data[ ]+Global[0-9a-f]+[ ]+="
+                     (string-replace sig "\n" "")))
+
+    (with-check-info
+      (('data-found data-found)
+       ('sig        sig)
+       ('message    "'Form' datatype appears in signature"))
+      (check-true data-found))))
+
+(define (string-to-haskell vals)
+      ;; mk-final-defs takes in filenames, so it can qualify names. This makes
+      ;; and cleans up temporary files for testing.
+
+      ;; Note: We make a file in a directory, to avoid problems if tmpdir begins
+      ;; with a number (e.g. '/var/run/user/1000'); otherwise qualified variable
+      ;; names would be invalid
+      (in-temp-dir (lambda (dir)
+                     (define temp-file (string-append (path->string dir)
+                                                      "/test.smt2"))
+
+                     (for-each (lambda (val)
+                                 (display-to-file val  temp-file
+                                                  #:exists 'append)
+                                 (display-to-file "\n" temp-file
+                                                  #:exists 'append))
+                               vals)
+
+                     (let* ([result (defs-to-sig temp-file)])
+                       (delete-file temp-file)
+                       result))))
+
 (define (mk-final-defs)
   (show (mk-final-defs-s (port->lines (current-input-port)))))
 
@@ -2169,6 +2597,82 @@
 ;; benchmark
 (define (mk-final-defs-s given-files)
   (mk-final-defs-hash (files-to-hashes given-files)))
+
+(module+ test
+  ;; When TIP translates from its smtlib-like format to Haskell, it performs a
+  ;; renaming step, to ensure that all names are valid Haskell identifiers. We
+  ;; need to ensure that the names we produce don't get altered by this step.
+  (def-test-case "Name preservation"
+    (define test-benchmark-defs
+      (mk-final-defs-s (theorem-files)))
+
+    (define test-benchmark-lower-names
+      ;; A selection of names, which will be lowercase in Haskell
+      (foldl (lambda (def result)
+               (append result (lowercase-names def)))
+             null
+             test-benchmark-defs))
+
+    (define test-benchmark-upper-names
+      ;; A selection of names, which will be uppercase in Haskell
+      (foldl (lambda (def result)
+               (append result (uppercase-names def)))
+             null
+             test-benchmark-defs))
+
+    (define (tip-lower-rename name)
+      "Given a function name NAME, returns TIP's renamed version"
+
+      (define input
+        ;; A trivial definition which uses this name
+        `((define-fun-rec ,name () Bool ,name)
+          (check-sat)))
+
+      (define output
+        ;; Run through TIP
+        (run-pipeline/out `(echo ,(format-symbols input))
+                          '(tip --haskell)))
+
+      ;; The definition will be on the only line with an "="
+      (define def-line
+        (first (filter (lambda (line)
+                         (string-contains? line "="))
+                       (string-split output "\n"))))
+
+      ;; The name will be the only thing to the left of the "="
+      (string-trim (first (string-split def-line "="))))
+
+    (define (tip-upper-rename name)
+      "Given a type name NAME, returns TIP's renamed version"
+
+      (define input
+        ;; A trivial definition which uses this name
+        `((declare-datatypes () ((,name)))
+          (check-sat)))
+
+      (define output
+        ;; Run through TIP
+        (run-pipeline/out `(echo ,(format-symbols input))
+                          '(tip --haskell)))
+
+      ;; The definition will be immediately to the left of the only occurrence
+      ;; of "="
+      (define prefix
+        (string-trim (first (string-split (string-replace output "\n" "")
+                                          "="))))
+
+      ;; The name will occur immediately after the final "data"
+      (string-trim (last (string-split prefix "data"))))
+
+    (set-for-each test-benchmark-lower-names
+                  (lambda (name)
+                    (check-equal? (tip-lower-rename name)
+                                  (symbol->string name))))
+
+    (set-for-each test-benchmark-upper-names
+                  (lambda (name)
+                    (check-equal? (tip-upper-rename name)
+                                  (symbol->string name))))))
 
 ;; Takes a hashmap of filename->content and returns a combined, normalised TIP
 ;; benchmark
@@ -2223,6 +2727,45 @@
   (run-pipeline/out `(echo ,input)
                     '(tip --haskell-spec)))
 
+(module+ test
+  (def-test-case "Can't reference unbound names"
+    (check-exn #rx"tip: Parse failed: Symbol bar .* not bound"
+               (lambda ()
+                 (mk-signature-s
+                  (format-symbols
+                   '((declare-datatypes
+                      (a)
+                      ((List (Nil) (Cons (head a) (tail (List a))))))
+                     (define-fun
+                       (par (a) (foo ((x (List a))) a
+                                     (as (bar x) a))))
+                     (check-sat)))))))
+
+  (def-test-case "Can reference destructor names"
+    (check-true (string? (mk-signature-s
+                          (format-symbols
+                           '((declare-datatypes
+                              (a)
+                              ((List (Nil) (Cons (head a) (tail (List a))))))
+                             (define-fun
+                               (par (a) (foo ((x (List a))) a
+                                             (as (head x) a))))
+                             (check-sat)))))))
+
+  (def-test-case "Can't reuse destructor names"
+    (check-exn #rx"tip: Parse failed: Symbol head .* is already globally bound"
+               (lambda ()
+                 (mk-signature-s
+                  (format-symbols
+                   '((declare-datatypes
+                      (a)
+                      ((List (Nil) (Cons (head a) (tail (List a))))))
+                     (define-fun
+                       (par (a) (head ((x (List a))) a
+                                      (match x
+                                        (case (Cons y zs) y)))))
+                     (check-sat))))))))
+
 ;; A wrapper around `tip`
 (define (mk-signature)
   (display (mk-signature-s (port->string (current-input-port)))))
@@ -2233,6 +2776,13 @@
           (symbols-in
            (expression-types
             (read-benchmark (port->string (current-input-port)))))))))
+
+(module+ test
+  (def-test-case "types-from-defs works"
+    (define f (benchmark-file "tip2015/nat_alt_mul_comm.smt2"))
+
+    (check-equal? (string-trim (pipe (file->string f) types-from-defs))
+                  "CustomBool\nNat")))
 
 ;; Create a Haskell package in directory DIR containing rendered benchmark
 ;; definition STR
@@ -2343,6 +2893,94 @@ library
   (display-to-file "Auto-generated from https://github.com/tip-org/benchmarks, the same LICENSE applies"
                    (string-append dir "/LICENSE")))
 
+(module+ test
+  (def-test-case "Module tests"
+    (define files
+      (string-join (theorem-files) "\n"))
+
+    (in-temp-dir
+     (lambda (dir)
+       (define out-dir (path->string dir))
+       (parameterize-env `([#"FILES"   ,(string->bytes/utf-8 files)]
+                           [#"OUT_DIR" ,(string->bytes/utf-8 out-dir)])
+         (lambda ()
+           (full-haskell-package-s
+            (format-symbols (mk-final-defs-s (theorem-files)))
+            out-dir)
+
+           (with-check-info
+            (('files   files)
+             ('message "Made Haskell package"))
+            (check-true (directory-exists? out-dir)))))
+
+       (with-check-info
+        (('message "Made src directory"))
+        (check-true (directory-exists? (string-append out-dir "/src"))))
+
+       (for-each (lambda (f)
+                   (with-check-info
+                    (('f       f)
+                     ('message "Made package file"))
+                    (check-true (file-exists? (string-append out-dir f)))))
+                 '("/src/A.hs" "/tip-benchmark-sig.cabal" "/LICENSE"))
+
+       (parameterize-env `([#"HOME" ,(string->bytes/utf-8 out-dir)])
+         (lambda ()
+           (define stdout (open-output-string))
+           (define stderr (open-output-string))
+           (define output "nothing")
+           (parameterize ([current-directory out-dir]
+                          [current-output-port stdout]
+                          [current-error-port  stderr])
+             (run-pipeline '(cabal configure))
+
+             (set! output
+               (run-pipeline/out '(echo -e "import A\n:browse")
+                                 '(cabal repl -v0))))
+
+           ;; If the import fails, we're stuck with the Prelude, which
+           ;; contains classes like Functor
+           (with-check-info
+             (('output  output)
+              ('stdout  (get-output-string stdout))
+              ('stderr  (get-output-string stderr))
+              ('message "Module imported successfully"))
+             (check-false (string-contains? output "class Functor"))))))))
+
+  (def-test-case "Haskell package made"
+    (in-temp-dir
+     (lambda (out-dir)
+       (parameterize-env `([#"FILES"   ,(string->bytes/utf-8
+                                         (string-join (theorem-files) "\n"))]
+                           [#"OUT_DIR" ,(string->bytes/utf-8
+                                         (path->string out-dir))]
+                           [#"HOME"    ,(string->bytes/utf-8
+                                         (path->string out-dir))])
+         (lambda ()
+           (full-haskell-package-s (format-symbols (mk-final-defs-s (theorem-files)))
+                                   (path->string out-dir))
+
+           (parameterize ([current-directory out-dir])
+
+             (check-true (directory-exists? "src"))
+
+             (check-true (file-exists? "src/A.hs"))
+
+             (check-true (file-exists? "tip-benchmark-sig.cabal"))
+
+             (check-true (file-exists? "LICENSE"))
+
+             (run-pipeline/out '(cabal configure))
+
+             (define out
+               (run-pipeline/out '(echo -e "import A\n:browse")
+                                 '(cabal repl -v0)))
+
+             ;; If the import fails, we're stuck with
+             ;; the Prelude, which contains classes
+             (check-false (string-contains? out
+                                            "class Functor")))))))))
+
 ;; Commandline wrapper around full-haskell-package-s using stdio and env vars
 (define (full-haskell-package)
   (full-haskell-package-s (port->string (current-input-port))
@@ -2353,6 +2991,10 @@ library
 ;; the contract. Many of our generated files (e.g. used for translating) do not
 ;; contain any theorems, and hence it makes no sense to pass them into this
 ;; function. There should never be multiple theorems.
+;; NOTE: We also unwrap any calls to 'custom-bool-converter', which strip-native
+;; adds in to work around TIP's special-casing of '='. Since no exploration
+;; system will include such things in their output, we strip them here to ensure
+;; comparisons will find correct matches.
 (define/test-contract (theorems-from-file f)
   (-> any/c (lambda (result)
               (or (and (list? result)
@@ -2364,11 +3006,31 @@ library
 
   (define (get-theorems x)
     (match x
-      [(list 'assert-not _) (list x)]
+      [(list 'assert-not _) (list (unwrap-custom-bool x))]
       [(cons h t)           (append (get-theorems h) (get-theorems t))]
       [_                    '()]))
 
   (get-theorems (file->list f)))
+
+(module+ test
+  (def-test-case "Can extract theorems"
+    (for-each (lambda (benchmark-file)
+                (define thms (theorems-from-file benchmark-file))
+
+                (define content (unwrap-custom-bool
+                                 (file->list benchmark-file)))
+
+                (with-check-info
+                  (('benchmark-file benchmark-file)
+                   ('thms           thms))
+                  (check-equal? (length thms) 1))
+
+                (with-check-info
+                  (('benchmark-file benchmark-file)
+                   ('thms           thms)
+                   ('content        content))
+                  (check-not-equal? (member (car thms) content) #f)))
+              (append (theorem-files) (theorem-files)))))
 
 (memo0 benchmark-theorems
        (make-immutable-hash
@@ -2387,6 +3049,13 @@ library
                "given-file" f
                "benchmark-dir (from BENCHMARKS)" benchmark-dir
                "benchmark-theorems" (benchmark-theorems)))))
+
+(module+ test
+  (def-test-case "Have benchmark theorems"
+    (for-each (lambda (benchmark-file)
+                (check-not-equal? (theorem-of benchmark-file)
+                                  #f))
+              (theorem-files))))
 
 (define (theorem-globals thm)
   (define (thm-locals expr)
@@ -2408,7 +3077,6 @@ library
       [(list 'par _ body)       (thm-names body)]
       [(cons x y)               (append (thm-names x) (thm-names y))]
       [_                        (symbols-in expr)]))
-
 
     (remove* (thm-locals thm) (thm-names thm)))
 
@@ -2452,6 +3120,18 @@ library
 
 (define (qual-hashes-theorem-files)
   (qual-all-hashes (theorem-files-hashes)))
+
+(define (unwrap-custom-bool thm)
+  (match thm
+    [(list 'custom-bool-converter x) (let ()
+                                       (log (string-append "GOT\n" (~a thm)
+                                                           "\nRETURNING\n"
+                                                           (~a x)
+                                                           "\n"))
+                                       (unwrap-custom-bool x))]
+    [(cons x y)                      (cons (unwrap-custom-bool x)
+                                           (unwrap-custom-bool y))]
+    [x                               x]))
 
 (memo0 normalised-theorems
   (if (generating?)
@@ -2498,6 +3178,17 @@ library
       ;; Otherwise return cached version
       (assoc-get 'normalised-theorems (get-sampling-data))))
 
+(module+ test
+  (def-test-case "No custom-bool-converter in theorems"
+    (hash-for-each (normalised-theorems)
+                   (lambda (_ thm)
+                     (define syms (symbols-in thm))
+
+                     (with-check-info
+                       (('theorem thm)
+                        ('symbols syms))
+                       (check-false (member 'custom-bool-converter syms)))))))
+
 (define (normed-theorem-of f)
   (hash-ref (normalised-theorems) (path-end f)
             (lambda ()
@@ -2505,6 +3196,25 @@ library
                'normed-theorem-of
                "No theorem found"
                "given-file" f))))
+
+(module+ test
+  (def-test-case "Normalise theorems"
+    (define (structure-of expr)
+      (match expr
+        [(cons x y) (cons (structure-of x) (structure-of y))]
+        [_          #f]))
+
+    (for-each (lambda (benchmark-file)
+                (define unnormed
+                  (theorem-of benchmark-file))
+                (define normed
+                  (normed-theorem-of benchmark-file))
+
+                (check-equal? (structure-of unnormed) (structure-of normed))
+
+                (check-false (string-contains? (format-symbols normed)
+                                               "-sentinel")))
+              (theorem-files))))
 
 (define (theorem-types expr)
   (match expr
@@ -2537,25 +3247,93 @@ library
              (remove* (theorem-types normed) (theorem-globals normed)))
 
            (define result
-             (foldl (lambda (name existing)
-                      ;; Prefix constructors, so we use the function instead
-                      (cons (if (member name constructors)
-                                (prefix-name name "constructor-")
-                                name)
-                            existing))
-                    '()
-                    raw-names))
+             (remove-duplicates
+              (foldl (lambda (name existing)
+                       ;; Prefix constructors, so we use the function instead
+                       (cons (if (member name constructors)
+                                 (prefix-name name "constructor-")
+                                 name)
+                             existing))
+                     '()
+                     raw-names)))
            (log "Finished theorem deps of ~a\n" f)
            result)))
 
-(log "FIXME: Reenable\n")
-#;(module+ test
+(module+ test
   (def-test-case "Expected dependencies"
     (let ([deps (theorem-deps-of
                  (benchmark-file "tip2015/bin_plus_comm.smt2"))])
       (with-check-info
         (('deps deps))
-        (check-equal? (length deps) 1)))))
+        (check-equal? (length deps) 1))))
+
+  (def-test-case "Theorem deps"
+    (for-each (lambda (name-cases)
+                (for-each (lambda (f-deps)
+                            (define absolute-path
+                              (benchmark-file (first f-deps)))
+
+                            (define (prefix s)
+                              (string->symbol
+                               (string-append (first f-deps)
+                                              (symbol->string s))))
+
+                            (define calc-deps
+                              (theorem-deps-of absolute-path))
+
+                            (with-check-info
+                              (('sort          (first name-cases))
+                               ('absolute-path absolute-path)
+                               ('deps          (second f-deps))
+                               ('calc-deps     calc-deps))
+                              (check-equal? (list->set calc-deps)
+                                            (list->set (second f-deps)))))
+                          (second name-cases)))
+
+              ;; Cases are grouped by type, e.g. whether they require
+              ;; constructor function replacement.
+              ;; Each case has a filename and a list of expected dependencies;
+              ;; we use testing-file to ensure these files are included in the
+              ;; subset of files we're testing with. Since some names might
+              ;; normalise differently in the presence of files with
+              ;; lexicographically-smaller paths, we also ensure the canonical
+              ;; definitions are included (inside the begin blocks).
+              `(("Simple"
+                 ((,(begin
+                      (testing-file "tip2015/list_SelectPermutations.smt2")
+                      (testing-file "tip2015/sort_NStoogeSort2Count.smt2")
+                      (testing-file "tip2015/sort_NStoogeSort2Permutes.smt2"))
+                   (tip2015/list_SelectPermutations.smt2isPermutation
+                    tip2015/sort_NStoogeSort2Count.smt2nstoogesort2))
+
+                  (,(begin
+                      (testing-file "tip2015/heap_SortPermutes'.smt2")
+                      (testing-file "tip2015/tree_sort_SortPermutes'.smt2"))
+                   ,(list (quote |tip2015/heap_SortPermutes'.smt2isPermutation|)
+                          (quote |tip2015/tree_sort_SortPermutes'.smt2tsort|)))))
+
+                ("With constructors"
+                 ((,(testing-file "tip2015/propositional_AndCommutative.smt2")
+                   (tip2015/propositional_AndCommutative.smt2valid
+                    constructor-tip2015/propositional_AndCommutative.smt2&))
+
+                  (,(begin
+                      (testing-file "tip2015/propositional_AndCommutative.smt2")
+                      (testing-file "tip2015/propositional_AndIdempotent.smt2"))
+                   (tip2015/propositional_AndCommutative.smt2valid
+                    constructor-tip2015/propositional_AndCommutative.smt2&))
+
+                  (,(begin
+                      (testing-file "prod/prop_35.smt2")
+                      (testing-file "isaplanner/prop_01.smt2")
+                      (testing-file "tip2015/nat_pow_one.smt2"))
+                   (prod/prop_35.smt2exp
+                    constructor-isaplanner/prop_01.smt2S
+                    constructor-isaplanner/prop_01.smt2Z))
+                  (,(begin
+                      (testing-file "isaplanner/prop_35.smt2"))
+                   (constructor-CustomFalse
+                    isaplanner/prop_35.smt2dropWhile))))))))
 
 (memo0 all-theorem-deps
        (map (lambda (f) (list (path-end f) (list->set (theorem-deps-of f))))
@@ -2768,6 +3546,37 @@ library
 
   (list->set (append (set->list chosen-constraint) padding)))
 
+(module+ test
+    (def-test-case "Sampling"
+
+    (define names
+      '(a b c d e f g h i j k l m n o p q r s t u v w x y z))
+
+    (define name-constraints
+      (map (lambda (x) (list->set (list x)))
+           names))
+
+    ;; There's no deep reason for these values, they're just the results spat
+    ;; out when this test was added. Since sampling is deterministic, these
+    ;; shouldn't change, unless e.g. we change the hashing function.
+
+    (check-equal? (sample 5 0 names name-constraints)
+                  (list->set '(a j q t w)))
+
+    (check-equal? (sample 5 1 names name-constraints)
+                  (list->set '(i t u x y)))
+
+    ;; Check invariants over a selection of values
+    (for-each (lambda (size)
+                (for-each (lambda (rep)
+                            (define s (sample size rep names name-constraints))
+
+                            (check-true (subset? s (list->set names)))
+
+                            (check-equal? size (set-count s)))
+                          (range 0 10)))
+              (range 1 10))))
+
 ;; Normalised benchmark from given BENCHMARKS
 (memo0 final-benchmark-defs
        (mk-final-defs-s (theorem-files)))
@@ -2852,6 +3661,42 @@ library
   ;; Hex encode sample so it's usable with e.g. Haskell translation
   (map-set encode-lower-name sampled))
 
+(module+ test
+  (def-test-case "Smart sampling"
+    (define all-deps
+      (apply set-union (map second (all-theorem-deps))))
+
+    (define sampled
+      (map-set decode-name (sample-from-benchmarks 10 0)))
+
+    (with-check-info
+      (('sampled sampled))
+      (check-true (sample-admits-conjecture? sampled)
+                  "Sampling from benchmark files should admit their theorems"))
+
+    (for-each (lambda (f-deps)
+                (define deps (second f-deps))
+
+                (check-true (sample-admits-conjecture? deps)
+                            "A theorem's deps admit at least one theorem")
+
+                (check-equal? deps
+                              (sample (set-count deps)
+                                      0
+                                      (set->list deps)
+                                      (list deps))
+                              "Sampling just from deps returns those deps")
+
+                (check-equal? deps
+                              (sample (set-count deps)
+                                      0
+                                      (append (set->list deps)
+                                              '(a b c d e f g h i j k l m
+                                                n o p q r s t u v w x y z))
+                                      (list deps))
+                              "Sampling with one deps constraint returns deps"))
+              (all-theorem-deps))))
+
 ;; Sample using the names and equational theorems from BENCHMARKS
 (define (sample-equational-from-benchmarks size rep)
   (define data (get-sampling-data))
@@ -2917,6 +3762,35 @@ library
 (define (conjectures-admitted-by sample)
   (map second (theorem-files-and-conjectures-for-sample sample)))
 
+(module+ test
+  (def-test-case "Conjecture-finding"
+    (for-each (lambda (f)
+                (with-check-info
+                  (('file f))
+                  (define conjectures
+                    (conjectures-admitted-by (theorem-deps-of f)))
+                  (check-not-equal? #f (member (normed-theorem-of f)
+                                               conjectures)
+                                    "Theorems can be derived from their deps")
+
+                  (define super
+                    (conjectures-admitted-by (append '(fee fi fo fum)
+                                                     (theorem-deps-of f))))
+                  (check-not-equal? #f (member (normed-theorem-of f) super)
+                                    "Supersets of deps admit derivation")
+
+                  (define eqs
+                    (equations-admitted-by-sample (theorem-deps-of f)))
+                  (check-true (subset? eqs conjectures)
+                              "Equations are a subset of theorems")
+
+                  (for-each (lambda (c)
+                              (unless (empty? (theorem-to-equation c))
+                                (check-not-equal? #f (member c eqs)
+                                                  "All equations are found")))
+                            conjectures)))
+                (theorem-files))))
+
 (define (conjectures-admitted-by-sample-wrapper)
   (define sample (read-benchmark (port->string)))
   (show (conjectures-admitted-by sample)))
@@ -2977,6 +3851,33 @@ library
                              (lex<=? lhs rhs)
                              (canonical-variables? expr))]
     [_ #f]))
+
+(module+ test
+  (def-test-case "Equations"
+    (check-true  (equation? '(~= (apply (constant f "Int -> Int")
+                                        (variable 0 "Int"))
+                                 (apply (constant g "Bool -> Int")
+                                        (variable 0 "Bool"))))
+                 "Valid equation accepted")
+
+    (check-false (equation? '(~= (apply (constant b "Int -> Int")
+                                        (variable 0 "Int"))
+                                 (apply (constant a "Bool -> Int")
+                                        (variable 0 "Bool"))))
+                 "Reject expressions in non-lexicographical order")
+
+    (check-false (equation? '(~= (apply (constant f "Int -> Int")
+                                        (variable 1 "Int"))
+                                 (apply (constant g "Bool -> Int")
+                                        (variable 1 "Bool"))))
+                 "Reject variables not starting from 0")
+
+    (check-false (equation? '(~= (apply (apply (constant f "Int -> Int -> Bool")
+                                               (variable 1 "Int"))
+                                        (variable 0 "Int"))
+                                 (apply (constant g "Int -> Bool")
+                                        (variable 0 "Int"))))
+                 "Reject variables in the wrong order")))
 
 ;; Check if an equation's variable indices are in canonical order
 (define (canonical-variables? eq)
@@ -3041,6 +3942,91 @@ library
 ;; empty upon failure.
 (define (equation-from f)
   (theorem-to-equation (normed-theorem-of f)))
+
+(module+ test
+  (def-test-case "Read equations"
+    (check-equal? (equation-from
+                   (benchmark-file
+                    (testing-file "grammars/packrat_unambigPackrat.smt2")))
+                  '()
+                  "Theorem which isn't equation doesn't get converted")
+
+    (check-true (list? (map testing-file
+                            '("grammars/packrat_unambigPackrat.smt2"
+                              "isaplanner/prop_44.smt2"
+                              "isaplanner/prop_01.smt2"
+                              "isaplanner/prop_15.smt2")))
+                "Files containing normal forms are included")
+    (check-equal? (equation-from
+                   (benchmark-file
+                    (testing-file "isaplanner/prop_84.smt2")))
+
+                  '((~=
+                     (apply (apply (constant grammars/packrat_unambigPackrat.smt2append "unknown")
+                                   (apply (apply (constant isaplanner/prop_44.smt2zip "unknown")
+                                                 (apply (apply (constant isaplanner/prop_01.smt2take "unknown")
+                                                               (apply (constant isaplanner/prop_15.smt2len "unknown")
+                                                                      (variable 0 "(grammars/packrat_unambigPackrat.smt2list b)")))
+                                                        (variable 0 "(grammars/packrat_unambigPackrat.smt2list a)")))
+                                          (variable 0 "(grammars/packrat_unambigPackrat.smt2list b)")))
+                            (apply (apply (constant isaplanner/prop_44.smt2zip "unknown")
+                                          (apply (apply (constant isaplanner/prop_01.smt2drop "unknown")
+                                                        (apply (constant isaplanner/prop_15.smt2len "unknown")
+                                                               (variable 0 "(grammars/packrat_unambigPackrat.smt2list b)")))
+                                                 (variable 0 "(grammars/packrat_unambigPackrat.smt2list a)")))
+                                   (variable 1 "(grammars/packrat_unambigPackrat.smt2list b)")))
+
+                     (apply (apply (constant isaplanner/prop_44.smt2zip "unknown")
+                                   (variable 0 "(grammars/packrat_unambigPackrat.smt2list a)"))
+                            (apply (apply (constant grammars/packrat_unambigPackrat.smt2append "unknown")
+                                          (variable 0 "(grammars/packrat_unambigPackrat.smt2list b)"))
+                                   (variable 1 "(grammars/packrat_unambigPackrat.smt2list b)")))))
+
+                  "Theorem which is equation gets converted")
+
+    (for-each (lambda (f)
+                (check-true (< (length (equation-from f)) 2)
+                            "Extracting equations doesn't crash"))
+              (theorem-files))
+
+    (for-each (lambda (f)
+                (define thm (normed-theorem-of f))
+
+                (define eqs (equation-from f))
+
+                (define (strip-args expr)
+                  (match expr
+                    [(list 'forall vars body) body]
+                    [(list 'lambda vars body) body]
+                    [(cons x y)               (cons (strip-args x)
+                                                    (strip-args y))]
+                    [x                        x]))
+
+                (define seems-valid
+                  (cond
+                    ;; Equations must contain =
+                    [(not (member '= (flatten thm))) #f]
+
+                    ;; If we see a '=> before a '= then *either* the equation is
+                    ;; conditional, *or* there's a function type somewhere in
+                    ;; the arguments. We strip off arguments functions to
+                    ;; discard this latter case.
+                    [(let ([syms (flatten (strip-args thm))])
+                       (and (member 'custom-=> syms)
+                            (> (length (member 'custom-=> syms))
+                               (length (member '=  syms))))) #f]
+
+                    [else #t]))
+
+                (with-check-info
+                  (('f           f)
+                   ('thm         thm)
+                   ('eqs         eqs)
+                   ('seems-valid seems-valid))
+                  (check-equal? (length eqs)
+                                (if seems-valid 1 0)
+                                "Can extract equations from unconditional =")))
+              (theorem-files))))
 
 ;; Turns a list, such as '(f x y) into nested unary applications, like
 ;; '(apply (apply f x) y)
@@ -3127,17 +4113,13 @@ library
     [(list 'par _ body)       (theorem-to-equation body)]
 
     ;; We've found an equation, convert the inner terms
-    [`(,sym (= ,lhs ,rhs)) (if (string-suffix? (symbol->string sym)
-                                               "custom-bool-converter")
-                               (let ([x (to-expression lhs)]
-                                     [y (to-expression rhs)])
-                                 (if (or (empty? x) (empty? y))
-                                     '()
-                                     (if (lex<=? (first x) (first y))
-                                         (list (list '~= (first x) (first y)))
-                                         (list (list '~= (first y) (first x))))))
-                               (error (format "Equation without wrapper ~s"
-                                              `(,sym (= ,lhs ,rhs)))))]
+    [(list '= lhs rhs) (let ([x (to-expression lhs)]
+                             [y (to-expression rhs)])
+                         (if (or (empty? x) (empty? y))
+                             '()
+                             (if (lex<=? (first x) (first y))
+                                 (list (list '~= (first x) (first y)))
+                                 (list (list '~= (first y) (first x))))))]
 
     ;; Non-equations; some of these could be solved by, e.g., an SMT solver
 
@@ -3156,7 +4138,9 @@ library
     [(? (lambda (x)
           (and (list? x)
                (symbol? (first x))
-               (not (member (first x) native-symbols))))) '()]))
+               (not (member (first x) native-symbols))))) '()]
+
+    [x (error (string-append "Unhandled case: " (~a x)))]))
 
 ;; Try to parse the given string as a JSON representation of an equation, e.g.
 ;; from reduce-equations. Returns a list containing the result on success, or an
@@ -3166,6 +4150,90 @@ library
                     empty?))
   (with-handlers ([exn:fail:read? (lambda (e) '())])
     (parse-equation (string->jsexpr str))))
+
+(module+ test
+  (def-test-case "Parse JSON"
+    (define json-eq
+      "{
+         \"relation\": \"~=\",
+         \"lhs\": {
+           \"role\": \"application\",
+           \"lhs\": {
+             \"role\": \"application\",
+             \"lhs\": {
+               \"role\": \"constant\",
+               \"type\": \"Nat -> Nat -> Nat\",
+               \"symbol\": \"plus\"
+             },
+             \"rhs\": {
+               \"role\": \"variable\",
+               \"type\": \"Nat\",
+               \"id\": 1
+             }
+           },
+           \"rhs\": {
+             \"role\": \"variable\",
+             \"type\": \"Nat\",
+             \"id\": 0
+           }
+         },
+         \"rhs\": {
+           \"role\": \"application\",
+           \"lhs\": {
+             \"role\": \"application\",
+             \"lhs\": {
+               \"role\": \"constant\",
+               \"type\": \"Nat -> Nat -> Nat\",
+               \"symbol\": \"plus\"
+             },
+             \"rhs\": {
+               \"role\": \"variable\",
+               \"type\": \"Nat\",
+               \"id\": 0
+             }
+           },
+           \"rhs\": {
+             \"role\": \"variable\",
+             \"type\": \"Nat\",
+             \"id\": 1
+           }
+         }
+       }")
+
+    (define parsed
+      (parse-json-equation json-eq))
+
+    ;; We switch the lhs and rhs, so they're in lexicographic order
+    (define expected
+      '(~= (apply (apply (constant plus "Nat -> Nat -> Nat")
+                         (variable 0 "Nat"))
+                  (variable 1 "Nat"))
+           (apply (apply (constant plus "Nat -> Nat -> Nat")
+                         (variable 1 "Nat"))
+                  (variable 0 "Nat"))))
+
+    (with-check-info
+      (('expected expected)
+       ('parsed   parsed))
+
+      (check-true (and (list? parsed)
+                       (not (empty? parsed))
+                       (equation? (first parsed)))
+                  "Parsing JSON gives an equation")
+
+      (check-equal? parsed (list expected)
+                    "Parsing gives expected value"))
+
+    (define test-eqs
+      (file->string (test-data "nat-simple-raw.json")))
+
+    (check-true  (jsexpr? (string->jsexpr test-eqs)))
+    (check-true  (list?   (string->jsexpr test-eqs)))
+    (check-false (empty?  (string->jsexpr test-eqs)))
+
+    (for-each (lambda (obj)
+                (check-pred equation? obj))
+              (parse-json-equations test-eqs))))
 
 (define/test-contract (parse-equation raw-eq)
   (-> jsexpr? (or/c (list/c equation?)
@@ -3305,6 +4373,50 @@ library
   (and (expressions-match? x-l y-l)
        (expressions-match? x-r y-r)))
 
+(module+ test
+    (def-test-case "Equation matching"
+    (check-true (equations-match? '(~= (constant bar "foo")
+                                       (variable 0   "foo"))
+                                  '(~= (constant bar "foo")
+                                       (variable 0   "foo")))
+                "Identical equations match")
+
+    (check-true (equations-match? '(~= (apply (constant func "unknown")
+                                              (variable 0    "foo"))
+                                       (constant bar "foo"))
+                                  '(~= (apply (constant func "baz")
+                                              (variable 0    "foo"))
+                                       (constant bar "foo")))
+                "Constant types don't affect match")
+
+    (check-false (equations-match? '(~= (apply (constant bar "foo")
+                                               (variable 0   "baz"))
+                                        (variable 0   "baz"))
+                                   '(~= (apply (constant bar "foo")
+                                               (variable 0   "baz"))
+                                        (variable 1   "baz")))
+                 "Different indices don't match")
+
+    (check-false (equations-match? '(~= (constant bar "foo")
+                                        (variable 0   "foo"))
+                                   '(~= (constant bar "foo")
+                                        (variable 0   "baz")))
+                 "Different variable types don't match")
+
+    (check-false (equations-match? '(~= (constant bar "foo")
+                                        (variable 0   "foo"))
+                                   '(~= (constant baz "foo")
+                                        (variable 0   "foo")))
+                 "Different constant names don't match")
+
+    (check-false (equations-match? '(~= (apply (constant baz "unknown")
+                                               (variable 0   "foo"))
+                                        (constant bar "foo"))
+                                   '(~= (apply (variable 0   "Int -> Bool")
+                                               (variable 0   "foo"))
+                                        (constant bar "foo")))
+                 "Different structures don't match")))
+
 (define/test-contract (expressions-match? x y)
   (-> expression? expression? boolean?)
 
@@ -3332,8 +4444,7 @@ library
   (map (lambda (thm)
          (equation-to-jsexpr
           (first
-           (theorem-to-equation
-            (wrap-with '= 'custom-bool-converter thm)))))
+           (theorem-to-equation thm))))
        lst))
 
 (define (eqs-to-json-wrapper)
@@ -3345,8 +4456,7 @@ library
 
   (define ground-truth
     (map (lambda (thm)
-           (list truth-source
-                 (wrap-with '= 'custom-bool-converter thm)))
+           (list truth-source thm))
          (read-benchmark (file->string g-truth))))
 
   (fix-json-for-output
@@ -3356,45 +4466,10 @@ library
 ;; Everything below here is tests; run using "raco test"
 (module+ test
 
-  ;; Loads test data from files
-  (define (test-data f)
-    (when (member (getenv "TEST_DATA") '(#f ""))
-      (error "No TEST_DATA env var given"))
-    (string-append (getenv "TEST_DATA") "/" f))
-
-  ;; Examples used for tests
-  (define custom-bool
-    '(declare-datatypes () ((CustomBool (CustomTrue) (CustomFalse)))))
-
-  (define custom-ite
-    '(define-fun
-       (par (a)
-            (custom-ite
-             ((c CustomBool) (x a) (y a)) a
-             (match c
-               (case CustomTrue  x)
-               (case CustomFalse y))))))
-
-  (define custom-nat
-    '(declare-datatypes () ((CustomNat (CustomZ)
-                                       (CustomS (custom-p CustomNat))))))
-
-  (define custom-int
-    '(declare-datatypes () ((CustomInt (CustomNeg (custom-succ CustomNat))
-                                       (CustomZero)
-                                       (CustomPos (custom-pred CustomNat))))))
-
   (def-test-case "List manipulation"
     (check-equal? (symbols-in '(lambda ((local1 Nat) (local2 (List Nat)))
                                  (free1 local1)))
-                  '(free1))
-
-    (check-equal? (concat-map (lambda (x) (list x x x))
-                              '(fee fi fo fum))
-                  '(fee fee fee fi fi fi fo fo fo fum fum fum)))
-
-  (check-equal? (add-constructor-funcs (list nat-def))
-                `(,nat-def ,constructorZ ,constructorS))
+                  '(free1)))
 
   (for-each (lambda (f)
               (check-equal? (map ~a (mk-defs-hash (files-to-hashes
@@ -3403,10 +4478,6 @@ library
             (benchmark-files '("grammars/simp_expr_unambig1.smt2"
                                "grammars/simp_expr_unambig4.smt2"
                                "tip2015/sort_StoogeSort2IsSort.smt2")))
-
-  (check-equal? (trim '((hello)))                      '((hello)))
-  (check-equal? (trim '((foo) (assert-not bar) (baz))) '((foo) (baz)))
-  (check-equal? (trim '((foo) (check-sat) (bar)))      '((foo) (bar)))
 
   (define f
     (benchmark-file "grammars/simp_expr_unambig3.smt2"))
@@ -3429,16 +4500,6 @@ library
       ('result     result)
       ('all-result all-result))
      (check-equal? all-result result)))
-
-  (check-true  (ss-eq? 'foo  'foo))
-  (check-true  (ss-eq? 'foo  "foo"))
-  (check-true  (ss-eq? "foo" 'foo))
-  (check-true  (ss-eq? "foo" "foo"))
-
-  (check-false (ss-eq? 'foo  'bar))
-  (check-false (ss-eq? 'foo  "bar"))
-  (check-false (ss-eq? "foo" 'bar))
-  (check-false (ss-eq? "foo" "bar"))
 
   (let* ([file "tip2015/sort_StoogeSort2IsSort.smt2"]
          [defs (mk-defs-hash (files-to-hashes (list (benchmark-file file))))])
@@ -3478,7 +4539,7 @@ library
                                   "tip2015/propositional_AndIdempotent.smt2"
                                   "tip2015/propositional_AndImplication.smt2"))]
            [q (qual-all-hashes (files-to-hashes fs))]
-           [s (symbols-of-theorems-s q)])
+           [s (names-in q)])
 
       (check-true (string-contains? (~a s) "or2-sentinel")
                   "Found an or2 symbol")
@@ -3487,7 +4548,7 @@ library
                    "or2 symbol is qualified")
 
       (check-true (string-contains? (format-symbols
-                                     (symbols-of-theorems-s
+                                     (names-in
                                       (mk-defs-hash (files-to-hashes fs))))
                                     "or2-sentinel")
                   "Found 'or2' symbol")))
@@ -3521,7 +4582,7 @@ library
 
   (define qual (format-symbols (qual-all-hashes (files-to-hashes test-files))))
 
-  (let ([syms (symbols-of-theorems-s (read-benchmark qual))])
+  (let ([syms (names-in (read-benchmark qual))])
 
     (for-each (lambda (sym)
                 (with-check-info
@@ -3539,7 +4600,7 @@ library
                                    #f)))
               subset))
 
-  (let ([syms (symbols-of-theorems-s test-defs)])
+  (let ([syms (names-in test-defs)])
     (for-each (lambda (sym)
                 (with-check-info
                   (('sym       sym)
@@ -3571,7 +4632,7 @@ library
                 normalised)))
 
   (for-each (lambda (sym)
-    (define def (get-def sym qual))
+    (define def (get-def-s sym (read-benchmark qual)))
 
     (let ([count (length def)])
       (with-check-info
@@ -3930,85 +4991,6 @@ library
                                          (> normalise-var-1 normalise-var-3))
                                        normalise-var-2))))))
 
-  (check-equal? (replace-strings "hello mellow yellow fellow"
-                                 '(("lo" "LO") ("el" "{{el}}")))
-                "h{{el}}LO m{{el}}LOw y{{el}}LOw f{{el}}LOw")
-
-  (check-equal? (list->set (read-benchmark
-                            (replace-strings (format-symbols      redundancies)
-                                             (find-redundancies redundancies))))
-                (list->set `(,constructorZ ,constructorS)))
-
-  (let* ([given '((define-fun min1 ((x Int) (y Int)) Int (ite (<= x y) x y))
-                  (define-fun min2 ((a Int) (b Int)) Int (ite (<= a b) a b)))]
-         [defs  (norm-defs given)]
-         [syms  (symbols-of-theorems-s defs)]
-         [min1  (member 'min1 syms)]
-         [min2  (member 'min2 syms)])
-    (with-check-info
-     (('defs    defs)
-      ('syms    syms)
-      ('min1    min1)
-      ('min2    min2)
-      ('message "Simple redundant functions deduped"))
-     (check-true (or (and min1 (not min2))
-                     (and min2 (not min1))))))
-
-  (let* ([given '((define-fun min1 ((x Int) (y Int)) Int (ite (<= x y) x y))
-                  (define-fun min2 ((a Int) (b Int)) Int (ite (<= a b) a b))
-                  (define-fun fun3 ((x Int)) Int (min2 x x)))]
-         [defs  (norm-defs given)]
-         [syms  (symbols-of-theorems-s
-                 (filter (lambda (expr)
-                           (member 'fun3 expr))
-                         defs))])
-    (with-check-info
-     (('defs    defs)
-      ('syms    syms)
-      ('message "References to discarded duplicates are replaced"))
-     (check-not-equal? (member 'min1 syms) #f)))
-
-  (define (in-temp-dir f)
-    (let* ([dir    (make-temporary-file (string-append temp-file-prefix "~a")
-                                        'directory)]
-           [result (f dir)])
-      (delete-directory/files dir)
-      result))
-
-  (define (string-to-haskell vals)
-    ;; mk-final-defs takes in filenames, so it can qualify names. This makes
-    ;; and cleans up temporary files for testing.
-
-    ;; Note: We make a file in a directory, to avoid problems if tmpdir begins
-    ;; with a number (e.g. '/var/run/user/1000'); otherwise qualified variable
-    ;; names would be invalid
-    (in-temp-dir (lambda (dir)
-                   (define temp-file (string-append (path->string dir)
-                                                    "/test.smt2"))
-
-                   (for-each (lambda (val)
-                               (display-to-file val  temp-file
-                                                #:exists 'append)
-                               (display-to-file "\n" temp-file
-                                                #:exists 'append))
-                             vals)
-
-                   (let* ([result (defs-to-sig temp-file)])
-                     (delete-file temp-file)
-                     result))))
-
-  (define form-deps
-    (list custom-nat custom-int))
-
-  (define form
-    '(declare-datatypes ()
-                        ((Form (& (&_0 Form) (&_1 Form))
-                               (Not (Not_0 Form))
-                               (Var (Var_0 CustomInt))))))
-
-  (define form-with-deps
-    (append form-deps (list form)))
-
   (def-test-case "Can get form constructors"
     (check-equal? (get-def-s '& form-with-deps)
                   (list form)))
@@ -4028,18 +5010,7 @@ library
       (check-not-equal? #f
                         (member 'declare-datatypes (flatten prepared)))))
 
-  (def-test-case "Form datatype survives translation"
-    (define sig (string-to-haskell form-with-deps))
 
-    (define data-found
-      (regexp-match? "data[ ]+Global[0-9a-f]+[ ]+="
-                     (string-replace sig "\n" "")))
-
-    (with-check-info
-      (('data-found data-found)
-       ('sig        sig)
-       ('message    "'Form' datatype appears in signature"))
-      (check-true data-found)))
 
   (def-test-case "Mutual recursion"
     (define mut (list custom-bool
@@ -4073,10 +5044,10 @@ library
     (define prepared (prepare mut))
 
     (with-check-info
-     (('prepared prepared)
-      ('message "Mutually-recursive function definitions survive preparation"))
-    (check-not-equal? #f
-                      (member 'define-funs-rec (flatten prepared)))
+      (('prepared prepared)
+       ('message "Mutually-recursive function definitions survive preparation"))
+      (check-not-equal? #f
+                        (member 'define-funs-rec (flatten prepared))))
 
     (define sig (string-to-haskell mut))
 
@@ -4105,957 +5076,6 @@ library
           ('sig       sig)
           ('message   "Function defined in signature"))
          (check-true def-found)))
-     (list "models" "models2" "models5"))))
+     (list "models" "models2" "models5")))
 
-  (def-test-case "Single files"
-    (define files (map (lambda (suf)
-                         (benchmark-file suf))
-                       '(;"isaplanner/prop_54.smt2"
-                         ;"tip2015/propositional_AndIdempotent.smt2"
-                         ;"tip2015/propositional_AndCommutative.smt2"
-                         ;"tip2015/mccarthy91_M2.smt2"
-                         ;"isaplanner/prop_36.smt2"
-                         ;"tip2015/sort_MSortTDPermutes.smt2"
-                         "tip2015/tree_sort_SortPermutes'.smt2"
-                         ;"tip2015/sort_StoogeSort2Permutes.smt2"
-                         ;"tip2015/sort_StoogeSortPermutes.smt2"
-                         ;"tip2015/polyrec_seq_index.smt2"
-                         #;"tip2015/sort_QSortPermutes.smt2")))
-
-    (for-each (lambda (f)
-                (define sig
-                  (defs-to-sig f))
-                (with-check-info
-                  (('sig sig))
-                  (check-true (string-contains? sig "QuickSpec"))))
-              files))
-
-  (def-test-case "Multiple files"
-    (define files
-      (string-join (benchmark-files '("tip2015/tree_SwapAB.smt2"
-                                      "tip2015/list_SelectPermutations.smt2"))
-                   "\n"))
-
-    (define sig
-      (defs-to-sig files))
-
-    (with-check-info
-     (('message "Local variables renamed")
-      ('sig     sig))
-     (check-true (string-contains? sig "local"))))
-
-  (def-test-case "Random files"
-    (define files
-      (string-join (theorem-files) "\n"))
-
-    (define sig
-      (defs-to-sig files))
-
-    (with-check-info
-     (('files   files)
-      ('sig     sig)
-      ('message "Made Haskell for random files"))
-     (check-true (string-contains? sig "QuickSpec"))))
-
-  (let ([a (getenv "HOME")]
-        [b (parameterize-env '([#"HOME" #"foo"])
-                             (lambda () (getenv "HOME")))]
-        [c (getenv "HOME")])
-    (check-equal? a c)
-    (check-equal? b "foo"))
-
-  (def-test-case "Module tests"
-    (define files
-      (string-join (theorem-files) "\n"))
-
-    (in-temp-dir
-     (lambda (dir)
-       (define out-dir (path->string dir))
-       (parameterize-env `([#"FILES"   ,(string->bytes/utf-8 files)]
-                           [#"OUT_DIR" ,(string->bytes/utf-8 out-dir)])
-         (lambda ()
-           (full-haskell-package-s
-            (format-symbols (mk-final-defs-s (theorem-files)))
-            out-dir)
-
-           (with-check-info
-            (('files   files)
-             ('message "Made Haskell package"))
-            (check-true (directory-exists? out-dir)))))
-
-       (with-check-info
-        (('message "Made src directory"))
-        (check-true (directory-exists? (string-append out-dir "/src"))))
-
-       (for-each (lambda (f)
-                   (with-check-info
-                    (('f       f)
-                     ('message "Made package file"))
-                    (check-true (file-exists? (string-append out-dir f)))))
-                 '("/src/A.hs" "/tip-benchmark-sig.cabal" "/LICENSE"))
-
-       (parameterize-env `([#"HOME" ,(string->bytes/utf-8 out-dir)])
-         (lambda ()
-           (define stdout (open-output-string))
-           (define stderr (open-output-string))
-           (define output "nothing")
-           (parameterize ([current-directory out-dir]
-                          [current-output-port stdout]
-                          [current-error-port  stderr])
-             (run-pipeline '(cabal configure))
-
-             (set! output
-               (run-pipeline/out '(echo -e "import A\n:browse")
-                                 '(cabal repl -v0))))
-
-           ;; If the import fails, we're stuck with the Prelude, which
-           ;; contains classes like Functor
-           (with-check-info
-             (('output  output)
-              ('stdout  (get-output-string stdout))
-              ('stderr  (get-output-string stderr))
-              ('message "Module imported successfully"))
-             (check-false (string-contains? output "class Functor"))))))))
-
-  (define regressions
-    (benchmark-files '("tip2015/propositional_AndCommutative.smt2")))
-
-  (for-each (lambda (file)
-    (define name  (last (string-split file "/")))
-    (define name2 (string-replace name "'" "_tick_"))
-    (define syms  (symbols-of-theorems-s
-                   (qualify name2
-                            (file->list file))))
-
-    (with-check-info
-     (('file    file)
-      ('name2   name2)
-      ('syms    syms)
-      ('message "Symbols qualified"))
-     (check-equal? '()
-                   (filter (lambda (sym)
-                             (and (not (empty? sym))
-                                  (not (string-contains? (~a sym) name2))))
-                           syms))))
-    (append regressions (theorem-files)))
-
-  (def-test-case "Haskell package made"
-    (in-temp-dir
-     (lambda (out-dir)
-       (parameterize-env `([#"FILES"   ,(string->bytes/utf-8
-                                         (string-join (theorem-files) "\n"))]
-                           [#"OUT_DIR" ,(string->bytes/utf-8
-                                         (path->string out-dir))]
-                           [#"HOME"    ,(string->bytes/utf-8
-                                         (path->string out-dir))])
-         (lambda ()
-           (full-haskell-package-s (format-symbols (mk-final-defs-s (theorem-files)))
-                                   (path->string out-dir))
-
-           (parameterize ([current-directory out-dir])
-
-             (check-true (directory-exists? "src"))
-
-             (check-true (file-exists? "src/A.hs"))
-
-             (check-true (file-exists? "tip-benchmark-sig.cabal"))
-
-             (check-true (file-exists? "LICENSE"))
-
-             (run-pipeline/out '(cabal configure))
-
-             (define out
-               (run-pipeline/out '(echo -e "import A\n:browse")
-                                 '(cabal repl -v0)))
-
-             ;; If the import fails, we're stuck with
-             ;; the Prelude, which contains classes
-             (check-false (string-contains? out
-                                            "class Functor"))))))))
-
-  (define (names-match src expr expect)
-    (define names (names-in expr))
-
-    (with-check-info
-     (('src     src)
-      ('expr    expr)
-      ('expect  expect)
-      ('names   names)
-      ('message "Got expected names"))
-    (check-equal? (list->set names) (list->set expect))))
-
-  (names-match "datatype"
-               '(declare-datatypes (a) ((list (nil)
-                                              (cons (head a) (tail (list a))))))
-               '(list nil cons head tail))
-
-  (names-match "function"
-               '(define-fun sort2
-                  ((x Int) (y Int)) (list Int)
-                  (ite (<= x y)
-                       (cons x (cons y (as nil (list Int))))
-                       (cons y (cons x (as nil (list Int))))))
-               '(sort2))
-
-  (names-match "parameterised function"
-               '(define-fun
-                  (par (a)
-                       (zsplitAt ((x Int) (y (list a))) (Pair (list a) (list a))
-                                 (Pair2 (ztake x y) (zdrop x y)))))
-               '(zsplitAt))
-
-  (names-match "recursive function"
-               '(define-fun-rec insert2
-                  ((x Int) (y (list Int))) (list Int)
-                  (match y
-                    (case nil (cons x (as nil (list Int))))
-                    (case (cons z xs) (ite (<= x z)
-                                           (cons x y)
-                                           (cons z (insert2 x xs))))))
-               '(insert2))
-
-  (names-match "recursive parameterised function"
-               '(define-fun-rec
-                  (par (a)
-                       (ztake ((x Int) (y (list a))) (list a)
-                              (ite (= x 0)
-                                   (as nil (list a))
-                                   (match y
-                                     (case nil (as nil (list a)))
-                                     (case (cons z xs) (cons z
-                                                             (ztake (- x 1)
-                                                                    xs))))))))
-               '(ztake))
-
-  (names-match "mutually recursive functions"
-               '(define-funs-rec
-                  ((stooge2sort2 ((x (list Int))) (list Int))
-                   (stoogesort2  ((x (list Int))) (list Int))
-                   (stooge2sort1 ((x (list Int))) (list Int)))
-                  ((match (zsplitAt (div (+ (* 2 (zlength x)) 1) 3) x)
-                     (case (Pair2 ys zs) (append (stoogesort2 ys) zs)))
-                   (match x
-                     (case nil (as nil (list Int)))
-                     (case (cons y z)
-                       (match z
-                         (case nil (cons y (as nil (list Int))))
-                         (case (cons y2 x2)
-                           (match x2
-                             (case nil (sort2 y y2))
-                             (case (cons x3 x4)
-                               (stooge2sort2 (stooge2sort1 (stooge2sort2 x)))))))))
-                   (match (zsplitAt (div (zlength x) 3) x)
-                     (case (Pair2 ys zs) (append ys (stoogesort2 zs))))))
-               '(stooge2sort2 stoogesort2 stooge2sort1))
-
-  (def-test-case "Symbol lookup"
-    (define (symbols-from-file f)
-      (names-in (file->list f)))
-
-    (define (should-have syms kind xs)
-      (for-each (lambda (sym)
-                  (with-check-info
-                   (('sym  sym)
-                    ('syms syms)
-                    ('kind kind))
-                   (check-true (set-member? syms sym))))
-                xs))
-
-    (define (should-not-have syms kind xs)
-      (for-each (lambda (sym)
-                  (with-check-info
-                   (('sym  sym)
-                    ('syms syms)
-                    ('kind kind))
-                   (check-false (set-member? syms sym))))
-                xs))
-
-    (let* ([f    (benchmark-file "tip2015/int_right_distrib.smt2")]
-           [syms (symbols-from-file f)])
-
-      (should-have syms 'constructor '(Pos Neg Zero Succ P N))
-
-      (should-have syms 'destructor  '(pred P_0 N_0))
-
-      (should-have syms 'function '(toInteger sign plus2 opposite
-                                    timesSign mult minus plus absVal
-                                    times))
-
-      (should-not-have syms 'variable '(x  x-sentinel
-                                        y  y-sentinel
-                                        z  z-sentinel
-                                        m  m-sentinel
-                                        m2 m2-sentinel
-                                        n  n-sentinel
-                                        n2 n2-sentinel
-                                        n3 n3-sentinel
-                                        o  o-sentinel))
-
-      (should-not-have syms 'keyword  '(match             match-sentinel
-                                        case              case-sentinel
-                                        define-fun        define-fun-sentinel
-                                        declare-datatypes declare-datatypes-sentinel
-                                        assert-not        assert-not-sentinel
-                                        forall            forall-sentinel
-                                        =                 =-sentinel
-                                        check-sat         check-sat-sentinel)))
-
-    (let* ([f    (benchmark-file "tip2015/list_PairEvens.smt2")]
-           [syms (symbols-from-file f)])
-      (should-not-have syms 'higher-order-type '(=> =>-sentinel)))
-
-    (let* ([f    (benchmark-file "tip2015/propositional_AndCommutative.smt2")]
-           [syms (symbols-from-file f)])
-      (should-have syms 'function '(or2))))
-
-  (let ([f (benchmark-file "tip2015/nat_alt_mul_comm.smt2")])
-    (check-equal? (string-trim (pipe (file->string f) types-from-defs))
-                  "CustomBool\nNat"))
-
-  (def-test-case "Name extraction"
-    (check-equal?
-     (list->set (lowercase-names
-                 (file->list (benchmark-file
-                              "tip2015/sort_NStoogeSort2Permutes.smt2"))))
-     (list->set '(custom-p custom-succ custom-pred custom-ite custom-not
-                  custom-nat-> custom-> custom-<= custom-or
-                  custom-bool-converter custom-and head tail first second p
-                  twoThirds third take sort2 null length elem drop splitAt
-                  delete isPermutation append nstooge2sort2 nstoogesort2
-                  nstooge2sort1)))
-
-    (check-equal?
-     (uppercase-names
-      (file->list (benchmark-file "tip2015/sort_NStoogeSort2Permutes.smt2")))
-     '(CustomNat CustomZ CustomS CustomInt CustomNeg CustomZero CustomPos
-       CustomBool CustomTrue CustomFalse list nil cons Pair Pair2 Nat Z S)))
-
-  ;; When TIP translates from its smtlib-like format to Haskell, it performs a
-  ;; renaming step, to ensure that all names are valid Haskell identifiers. We
-  ;; need to ensure that the names we produce don't get altered by this step.
-  (def-test-case "Name preservation"
-    (define test-benchmark-defs
-      (mk-final-defs-s (theorem-files)))
-
-    (define test-benchmark-lower-names
-      ;; A selection of names, which will be lowercase in Haskell
-      (foldl (lambda (def result)
-               (append result (lowercase-names def)))
-             null
-             test-benchmark-defs))
-
-    (define test-benchmark-upper-names
-      ;; A selection of names, which will be uppercase in Haskell
-      (foldl (lambda (def result)
-               (append result (uppercase-names def)))
-             null
-             test-benchmark-defs))
-
-    (define (tip-lower-rename name)
-      "Given a function name NAME, returns TIP's renamed version"
-
-      (define input
-        ;; A trivial definition which uses this name
-        `((define-fun-rec ,name () Bool ,name)
-          (check-sat)))
-
-      (define output
-        ;; Run through TIP
-        (run-pipeline/out `(echo ,(format-symbols input))
-                          '(tip --haskell)))
-
-      ;; The definition will be on the only line with an "="
-      (define def-line
-        (first (filter (lambda (line)
-                         (string-contains? line "="))
-                       (string-split output "\n"))))
-
-      ;; The name will be the only thing to the left of the "="
-      (string-trim (first (string-split def-line "="))))
-
-    (define (tip-upper-rename name)
-      "Given a type name NAME, returns TIP's renamed version"
-
-      (define input
-        ;; A trivial definition which uses this name
-        `((declare-datatypes () ((,name)))
-          (check-sat)))
-
-      (define output
-        ;; Run through TIP
-        (run-pipeline/out `(echo ,(format-symbols input))
-                          '(tip --haskell)))
-
-      ;; The definition will be immediately to the left of the only occurrence
-      ;; of "="
-      (define prefix
-        (string-trim (first (string-split (string-replace output "\n" "")
-                                          "="))))
-
-      ;; The name will occur immediately after the final "data"
-      (string-trim (last (string-split prefix "data"))))
-
-    (set-for-each test-benchmark-lower-names
-                  (lambda (name)
-                    (check-equal? (tip-lower-rename name)
-                                  (symbol->string name))))
-
-    (set-for-each test-benchmark-upper-names
-                  (lambda (name)
-                    (check-equal? (tip-upper-rename name)
-                                  (symbol->string name)))))
-
-  (def-test-case "Can't reference unbound names"
-    (check-exn #rx"tip: Parse failed: Symbol bar .* not bound"
-               (lambda ()
-                 (mk-signature-s
-                  (format-symbols
-                   '((declare-datatypes
-                      (a)
-                      ((List (Nil) (Cons (head a) (tail (List a))))))
-                     (define-fun
-                       (par (a) (foo ((x (List a))) a
-                                     (as (bar x) a))))
-                     (check-sat)))))))
-
-  (def-test-case "Can reference destructor names"
-    (check-true (string? (mk-signature-s
-                          (format-symbols
-                           '((declare-datatypes
-                              (a)
-                              ((List (Nil) (Cons (head a) (tail (List a))))))
-                             (define-fun
-                               (par (a) (foo ((x (List a))) a
-                                             (as (head x) a))))
-                             (check-sat)))))))
-
-  (def-test-case "Can't reuse destructor names"
-    (check-exn #rx"tip: Parse failed: Symbol head .* is already globally bound"
-               (lambda ()
-                 (mk-signature-s
-                  (format-symbols
-                   '((declare-datatypes
-                      (a)
-                      ((List (Nil) (Cons (head a) (tail (List a))))))
-                     (define-fun
-                       (par (a) (head ((x (List a))) a
-                                      (match x
-                                        (case (Cons y zs) y)))))
-                     (check-sat)))))))
-
-  (def-test-case "Decode strings"
-    (check-equal? (decode-string "foo Global68656c6c6f bar global776f726c64")
-                  "foo hello bar world"))
-
-  (def-test-case "Bare constructor function type"
-    (check-equal? (add-constructor-funcs '((declare-datatypes
-                                            ()
-                                            ((MyBool (MyTrue) (MyFalse))))))
-                  '((declare-datatypes
-                     ()
-                     ((MyBool (MyTrue) (MyFalse))))
-                    (define-fun constructor-MyTrue  () MyBool (as MyTrue  MyBool))
-                    (define-fun constructor-MyFalse () MyBool (as MyFalse MyBool)))))
-
-  (def-test-case "Parameterised constructor function type"
-    (check-equal? (add-constructor-funcs '((declare-datatypes
-                                            (local-a)
-                                            ((MyStream (MyCons (myHead local-a)
-                                                               (myTail (MyStream local-a))))))))
-                  '((declare-datatypes
-                     (local-a)
-                     ((MyStream (MyCons (myHead local-a)
-                                        (myTail (MyStream local-a))))))
-                    (define-fun
-                      (par (local-a)
-                        (constructor-MyCons
-                          ((local-myHead local-a) (local-myTail (MyStream local-a)))
-                          (MyStream local-a)
-                          (as (MyCons local-myHead local-myTail) (MyStream local-a))))))))
-
-  (def-test-case "Can extract theorems"
-    (for-each (lambda (benchmark-file)
-                (define thms (theorems-from-file benchmark-file))
-
-                (define content (file->list benchmark-file))
-
-                (with-check-info
-                  (('benchmark-file benchmark-file)
-                   ('thms           thms))
-                  (check-equal? (length thms) 1))
-
-                (with-check-info
-                  (('benchmark-file benchmark-file)
-                   ('thms           thms)
-                   ('content        content))
-                  (check-not-equal? (member (car thms) content) #f)))
-              (append (theorem-files) (theorem-files))))
-
-  (def-test-case "Have benchmark theorems"
-    (for-each (lambda (benchmark-file)
-                (check-not-equal? (theorem-of benchmark-file)
-                                  #f))
-              (theorem-files)))
-
-  (def-test-case "Have replacements"
-    (define defs '((define-fun min1 ((x Int) (y Int)) Int (ite (<= x y) x y))
-                   (define-fun min2 ((a Int) (b Int)) Int (ite (<= a b) a b))))
-    (check-equal? (list->set (replacements-closure defs))
-                  (list->set '((min2 min1))))
-
-    (define test-replacements
-      (replacements-closure (qual-hashes-theorem-files)))
-
-    (for-each (lambda (rep)
-                (check-false         (set-member?
-                                      (names-in test-benchmark-defs)
-                                      (first rep)))
-                (check-not-equal? #f (set-member?
-                                      (names-in test-benchmark-defs)
-                                      (second rep))))
-              test-replacements))
-
-  (def-test-case "Normalise theorems"
-    (define (structure-of expr)
-      (match expr
-        [(cons x y) (cons (structure-of x) (structure-of y))]
-        [_          #f]))
-
-    (for-each (lambda (benchmark-file)
-                (define unnormed
-                  (theorem-of benchmark-file))
-                (define normed
-                  (normed-theorem-of benchmark-file))
-
-                (check-equal? (structure-of unnormed) (structure-of normed))
-
-                (check-false (string-contains? (format-symbols normed)
-                                               "-sentinel")))
-              (theorem-files)))
-
-  (def-test-case "Theorem deps"
-    (for-each (lambda (name-cases)
-                (for-each (lambda (f-deps)
-                            (define absolute-path
-                              (benchmark-file (first f-deps)))
-
-                            (define (prefix s)
-                              (string->symbol
-                               (string-append (first f-deps)
-                                              (symbol->string s))))
-
-                            (define calc-deps
-                              (theorem-deps-of absolute-path))
-
-                            (with-check-info
-                              (('sort          (first name-cases))
-                               ('absolute-path absolute-path)
-                               ('deps          (second f-deps))
-                               ('calc-deps     calc-deps))
-                              (check-equal? (list->set calc-deps)
-                                            (list->set (second f-deps)))))
-                          (second name-cases)))
-
-              ;; Cases are grouped by type, e.g. whether they require
-              ;; constructor function replacement.
-              ;; Each case has a filename and a list of expected dependencies;
-              ;; we use testing-file to ensure these files are included in the
-              ;; subset of files we're testing with. Since some names might
-              ;; normalise differently in the presence of files with
-              ;; lexicographically-smaller paths, we also ensure the canonical
-              ;; definitions are included (inside the begin blocks).
-              `(("Simple"
-                 ((,(begin
-                      (testing-file "tip2015/list_SelectPermutations.smt2")
-                      (testing-file "tip2015/sort_NStoogeSort2Count.smt2")
-                      (testing-file "tip2015/sort_NStoogeSort2Permutes.smt2"))
-                   (tip2015/list_SelectPermutations.smt2isPermutation
-                    tip2015/sort_NStoogeSort2Count.smt2nstoogesort2))
-
-                  (,(begin
-                      (testing-file "tip2015/heap_SortPermutes'.smt2")
-                      (testing-file "tip2015/tree_sort_SortPermutes'.smt2"))
-                   ,(list (quote |tip2015/heap_SortPermutes'.smt2isPermutation|)
-                          (quote |tip2015/tree_sort_SortPermutes'.smt2tsort|)))))
-
-                ("With constructors"
-                 ((,(testing-file "tip2015/propositional_AndCommutative.smt2")
-                   (custom-bool-converter
-                    tip2015/propositional_AndCommutative.smt2valid
-                    constructor-tip2015/propositional_AndCommutative.smt2&))
-
-                  (,(begin
-                      (testing-file "tip2015/propositional_AndCommutative.smt2")
-                      (testing-file "tip2015/propositional_AndIdempotent.smt2"))
-                   (tip2015/propositional_AndCommutative.smt2valid
-                    constructor-tip2015/propositional_AndCommutative.smt2&
-                    custom-bool-converter))
-
-                  (,(begin
-                      (testing-file "prod/prop_35.smt2")
-                      (testing-file "isaplanner/prop_01.smt2")
-                      (testing-file "tip2015/nat_pow_one.smt2"))
-                   (prod/prop_35.smt2exp
-                    constructor-isaplanner/prop_01.smt2S
-                    constructor-isaplanner/prop_01.smt2Z
-                    custom-bool-converter))
-                  (,(begin
-                      (testing-file "isaplanner/prop_35.smt2"))
-                   (constructor-CustomFalse
-                    isaplanner/prop_35.smt2dropWhile
-                    custom-bool-converter)))))))
-
-  (def-test-case "Sampling"
-
-    (define names
-      '(a b c d e f g h i j k l m n o p q r s t u v w x y z))
-
-    (define name-constraints
-      (map (lambda (x) (list->set (list x)))
-           names))
-
-    ;; There's no deep reason for these values, they're just the results spat
-    ;; out when this test was added. Since sampling is deterministic, these
-    ;; shouldn't change, unless e.g. we change the hashing function.
-
-    (check-equal? (sample 5 0 names name-constraints)
-                  (list->set '(a j q t w)))
-
-    (check-equal? (sample 5 1 names name-constraints)
-                  (list->set '(i t u x y)))
-
-    ;; Check invariants over a selection of values
-    (for-each (lambda (size)
-                (for-each (lambda (rep)
-                            (define s (sample size rep names name-constraints))
-
-                            (check-true (subset? s (list->set names)))
-
-                            (check-equal? size (set-count s)))
-                          (range 0 10)))
-              (range 1 10)))
-
-  (def-test-case "Smart sampling"
-    (define all-deps
-      (apply set-union (map second (all-theorem-deps))))
-
-    (define sampled
-      (map-set decode-name (sample-from-benchmarks 10 0)))
-
-    (with-check-info
-      (('sampled sampled))
-      (check-true (sample-admits-conjecture? sampled)
-                  "Sampling from benchmark files should admit their theorems"))
-
-    (for-each (lambda (f-deps)
-                (define deps (second f-deps))
-
-                (check-true (sample-admits-conjecture? deps)
-                            "A theorem's deps admit at least one theorem")
-
-                (check-equal? deps
-                              (sample (set-count deps)
-                                      0
-                                      (set->list deps)
-                                      (list deps))
-                              "Sampling just from deps returns those deps")
-
-                (check-equal? deps
-                              (sample (set-count deps)
-                                      0
-                                      (append (set->list deps)
-                                              '(a b c d e f g h i j k l m
-                                                n o p q r s t u v w x y z))
-                                      (list deps))
-                              "Sampling with one deps constraint returns deps"))
-              (all-theorem-deps)))
-
-  (def-test-case "Conjecture-finding"
-    (for-each (lambda (f)
-                (with-check-info
-                  (('file f))
-                  (define conjectures
-                    (conjectures-admitted-by (theorem-deps-of f)))
-                  (check-not-equal? #f (member (normed-theorem-of f)
-                                               conjectures)
-                                    "Theorems can be derived from their deps")
-
-                  (define super
-                    (conjectures-admitted-by (append '(fee fi fo fum)
-                                                     (theorem-deps-of f))))
-                  (check-not-equal? #f (member (normed-theorem-of f) super)
-                                    "Supersets of deps admit derivation")
-
-                  (define eqs
-                    (equations-admitted-by-sample (theorem-deps-of f)))
-                  (check-true (subset? eqs conjectures)
-                              "Equations are a subset of theorems")
-
-                  (for-each (lambda (c)
-                              (unless (empty? (theorem-to-equation c))
-                                (check-not-equal? #f (member c eqs)
-                                                  "All equations are found")))
-                            conjectures)))
-                (theorem-files)))
-
-  (def-test-case "Precision"
-    (check-equal? (/ 1 10)
-                  (precision (list->set '(a b c d e f g h i j))
-                             (list->set '(j k l m n o p q r s t u v w x y z)))))
-
-  (def-test-case "Recall"
-    (check-equal? (/ 1 2)
-                  (recall (list->set '(a b c d e f g h i j k l m))
-                          (list->set '(a b c d e f g h i j k l m
-                                       n o p q r s t u v w x y z)))))
-
-  (def-test-case "Comparisons"
-    (check-true  (lex<=? 'a       'b))
-    (check-true  (lex<=? 'a       'a))
-    (check-true  (lex<=? 'a       '()))
-    (check-true  (lex<=? '()      '()))
-    (check-true  (lex<=? '()      '(a)))
-    (check-true  (lex<=? '(a)     '(b)))
-    (check-true  (lex<=? '(a)     '(a)))
-    (check-true  (lex<=? '(a b c) '(a c b)))
-
-    (check-false (lex<=? 'b       'a))
-    (check-false (lex<=? '()      'a))
-    (check-false (lex<=? '(a)     '()))
-    (check-false (lex<=? '(b)     '(a)))
-    (check-false (lex<=? '(a c b) '(a b c))))
-
-  (def-test-case "Equations"
-    (check-true  (equation? '(~= (apply (constant f "Int -> Int")
-                                        (variable 0 "Int"))
-                                 (apply (constant g "Bool -> Int")
-                                        (variable 0 "Bool"))))
-                 "Valid equation accepted")
-
-    (check-false (equation? '(~= (apply (constant b "Int -> Int")
-                                        (variable 0 "Int"))
-                                 (apply (constant a "Bool -> Int")
-                                        (variable 0 "Bool"))))
-                 "Reject expressions in non-lexicographical order")
-
-    (check-false (equation? '(~= (apply (constant f "Int -> Int")
-                                        (variable 1 "Int"))
-                                 (apply (constant g "Bool -> Int")
-                                        (variable 1 "Bool"))))
-                 "Reject variables not starting from 0")
-
-    (check-false (equation? '(~= (apply (apply (constant f "Int -> Int -> Bool")
-                                               (variable 1 "Int"))
-                                        (variable 0 "Int"))
-                                 (apply (constant g "Int -> Bool")
-                                        (variable 0 "Int"))))
-                 "Reject variables in the wrong order")
-
-    (check-equal? (equation-from
-                   (benchmark-file
-                    (testing-file "grammars/packrat_unambigPackrat.smt2")))
-                  '()
-                  "Theorem which isn't equation doesn't get converted")
-
-    (check-true (list? (map testing-file
-                            '("grammars/packrat_unambigPackrat.smt2"
-                              "isaplanner/prop_44.smt2"
-                              "isaplanner/prop_01.smt2"
-                              "isaplanner/prop_15.smt2")))
-                "Files containing normal forms are included")
-    (check-equal? (equation-from
-                   (benchmark-file
-                    (testing-file "isaplanner/prop_84.smt2")))
-
-                  '((~=
-                     (apply (apply (constant grammars/packrat_unambigPackrat.smt2append "unknown")
-                                   (apply (apply (constant isaplanner/prop_44.smt2zip "unknown")
-                                                 (apply (apply (constant isaplanner/prop_01.smt2take "unknown")
-                                                               (apply (constant isaplanner/prop_15.smt2len "unknown")
-                                                                      (variable 0 "(grammars/packrat_unambigPackrat.smt2list b)")))
-                                                        (variable 0 "(grammars/packrat_unambigPackrat.smt2list a)")))
-                                          (variable 0 "(grammars/packrat_unambigPackrat.smt2list b)")))
-                            (apply (apply (constant isaplanner/prop_44.smt2zip "unknown")
-                                          (apply (apply (constant isaplanner/prop_01.smt2drop "unknown")
-                                                        (apply (constant isaplanner/prop_15.smt2len "unknown")
-                                                               (variable 0 "(grammars/packrat_unambigPackrat.smt2list b)")))
-                                                 (variable 0 "(grammars/packrat_unambigPackrat.smt2list a)")))
-                                   (variable 1 "(grammars/packrat_unambigPackrat.smt2list b)")))
-
-                     (apply (apply (constant isaplanner/prop_44.smt2zip "unknown")
-                                   (variable 0 "(grammars/packrat_unambigPackrat.smt2list a)"))
-                            (apply (apply (constant grammars/packrat_unambigPackrat.smt2append "unknown")
-                                          (variable 0 "(grammars/packrat_unambigPackrat.smt2list b)"))
-                                   (variable 1 "(grammars/packrat_unambigPackrat.smt2list b)")))))
-
-                  "Theorem which is equation gets converted")
-
-    (for-each (lambda (f)
-                (check-true (< (length (equation-from f)) 2)
-                            "Extracting equations doesn't crash"))
-              (theorem-files))
-
-    (for-each (lambda (f)
-                (define thm (normed-theorem-of f))
-
-                (define eqs (equation-from f))
-
-                (define (strip-args expr)
-                  (match expr
-                    [(list 'forall vars body) body]
-                    [(list 'lambda vars body) body]
-                    [(cons x y)               (cons (strip-args x)
-                                                    (strip-args y))]
-                    [x                        x]))
-
-                (define seems-valid
-                  (cond
-                    ;; Equations must contain =
-                    [(not (member '= (flatten thm))) #f]
-
-                    ;; If we see a '=> before a '= then *either* the equation is
-                    ;; conditional, *or* there's a function type somewhere in
-                    ;; the arguments. We strip off arguments functions to
-                    ;; discard this latter case.
-                    [(let ([syms (flatten (strip-args thm))])
-                       (and (member 'custom-=> syms)
-                            (> (length (member 'custom-=> syms))
-                               (length (member '=  syms))))) #f]
-
-                    [else #t]))
-
-                (with-check-info
-                  (('f           f)
-                   ('thm         thm)
-                   ('eqs         eqs)
-                   ('seems-valid seems-valid))
-                  (check-equal? (length eqs)
-                                (if seems-valid 1 0)
-                                "Can extract equations from unconditional =")))
-              (theorem-files)))
-
-  (def-test-case "Parse JSON"
-    (define json-eq
-      "{
-         \"relation\": \"~=\",
-         \"lhs\": {
-           \"role\": \"application\",
-           \"lhs\": {
-             \"role\": \"application\",
-             \"lhs\": {
-               \"role\": \"constant\",
-               \"type\": \"Nat -> Nat -> Nat\",
-               \"symbol\": \"plus\"
-             },
-             \"rhs\": {
-               \"role\": \"variable\",
-               \"type\": \"Nat\",
-               \"id\": 1
-             }
-           },
-           \"rhs\": {
-             \"role\": \"variable\",
-             \"type\": \"Nat\",
-             \"id\": 0
-           }
-         },
-         \"rhs\": {
-           \"role\": \"application\",
-           \"lhs\": {
-             \"role\": \"application\",
-             \"lhs\": {
-               \"role\": \"constant\",
-               \"type\": \"Nat -> Nat -> Nat\",
-               \"symbol\": \"plus\"
-             },
-             \"rhs\": {
-               \"role\": \"variable\",
-               \"type\": \"Nat\",
-               \"id\": 0
-             }
-           },
-           \"rhs\": {
-             \"role\": \"variable\",
-             \"type\": \"Nat\",
-             \"id\": 1
-           }
-         }
-       }")
-
-    (define parsed
-      (parse-json-equation json-eq))
-
-    ;; We switch the lhs and rhs, so they're in lexicographic order
-    (define expected
-      '(~= (apply (apply (constant plus "Nat -> Nat -> Nat")
-                         (variable 0 "Nat"))
-                  (variable 1 "Nat"))
-           (apply (apply (constant plus "Nat -> Nat -> Nat")
-                         (variable 1 "Nat"))
-                  (variable 0 "Nat"))))
-
-    (with-check-info
-      (('expected expected)
-       ('parsed   parsed))
-
-      (check-true (and (list? parsed)
-                       (not (empty? parsed))
-                       (equation? (first parsed)))
-                  "Parsing JSON gives an equation")
-
-      (check-equal? parsed (list expected)
-                    "Parsing gives expected value"))
-
-    (define test-eqs
-      (file->string (test-data "nat-simple-raw.json")))
-
-    (check-true  (jsexpr? (string->jsexpr test-eqs)))
-    (check-true  (list?   (string->jsexpr test-eqs)))
-    (check-false (empty?  (string->jsexpr test-eqs)))
-
-    (for-each (lambda (obj)
-                (check-pred equation? obj))
-              (parse-json-equations test-eqs)))
-
-  (def-test-case "Equation matching"
-    (check-true (equations-match? '(~= (constant bar "foo")
-                                       (variable 0   "foo"))
-                                  '(~= (constant bar "foo")
-                                       (variable 0   "foo")))
-                "Identical equations match")
-
-    (check-true (equations-match? '(~= (apply (constant func "unknown")
-                                              (variable 0    "foo"))
-                                       (constant bar "foo"))
-                                  '(~= (apply (constant func "baz")
-                                              (variable 0    "foo"))
-                                       (constant bar "foo")))
-                "Constant types don't affect match")
-
-    (check-false (equations-match? '(~= (apply (constant bar "foo")
-                                               (variable 0   "baz"))
-                                        (variable 0   "baz"))
-                                   '(~= (apply (constant bar "foo")
-                                               (variable 0   "baz"))
-                                        (variable 1   "baz")))
-                 "Different indices don't match")
-
-    (check-false (equations-match? '(~= (constant bar "foo")
-                                        (variable 0   "foo"))
-                                   '(~= (constant bar "foo")
-                                        (variable 0   "baz")))
-                 "Different variable types don't match")
-
-    (check-false (equations-match? '(~= (constant bar "foo")
-                                        (variable 0   "foo"))
-                                   '(~= (constant baz "foo")
-                                        (variable 0   "foo")))
-                 "Different constant names don't match")
-
-    (check-false (equations-match? '(~= (apply (constant baz "unknown")
-                                               (variable 0   "foo"))
-                                        (constant bar "foo"))
-                                   '(~= (apply (variable 0   "Int -> Bool")
-                                               (variable 0   "foo"))
-                                        (constant bar "foo")))
-                 "Different structures don't match")))
+  )
