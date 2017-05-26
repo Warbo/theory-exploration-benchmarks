@@ -1563,22 +1563,22 @@
 ;; Combine together the definitions from each hash table entry and prefix each
 ;; name with the (suffix of) the key it came from
 (define/test-contract (qual-all-hashes given-hashes)
-  (-> (hash/c string? (*list/c definition?))
-      (*list/c definition?))
+  (-> tip-benchmarks? (*list/c definition?))
   (append* (map (lambda (elem)
-                  (define pth     (car elem))
-                  (define content (cdr elem))
-                  (qualify (path-end pth) (read-benchmark content)))
+                  (define pth     (car   elem))
+                  (define problem (cdr   elem))
+                  (define defs    (first problem))
+                  (qualify pth defs))
                 (sort (hash->list given-hashes) string<? #:key car))))
 
 (module+ test
   (def-test-case "Can qualify filename/content hashes"
-    (check-equal? (qual-all-hashes (hash "A/B/C/D.smt2"
-                                         (format-symbols (list nat-def))
+    (check-equal? (qual-all-hashes (hash "C/D.smt2"
+                                         `((,nat-def)
+                                           (assert-not (= 1 1)))
 
-                                         "X/Y/Z.smt2"
-                                         (format-symbols
-                                          '((declare-datatypes ()
+                                         "Y/Z.smt2"
+                                         '(((declare-datatypes ()
                                               ((Nat (Z) (S (p Nat)))))
                                             (define-fun Z2 () Nat
                                               (as Z Nat))
@@ -1589,7 +1589,8 @@
                                             (define-fun Z4 () Nat
                                               (as Z Nat))
                                             (define-fun Z5 () Nat
-                                              (as Z Nat))))))
+                                              (as Z Nat)))
+                                           (assert-not (= 2 2)))))
                   '((declare-datatypes ()
                       ((C/D.smt2Nat-sentinel
                          (C/D.smt2Z-sentinel)
@@ -1627,12 +1628,24 @@
 (define (mk-defs-hash given-hashes)
   (norm-defs (qual-all-hashes given-hashes)))
 
+(define (split-contents exprs)
+  (define thm #f)
+  (define defs (filter (lambda (expr)
+                         (match expr
+                           [(cons 'assert-not _) (let ()
+                                                   (set! thm expr)
+                                                   #f)]
+                           [(cons 'check-sat _)  #f]
+                           [_                    #t]))
+                       exprs))
+  (list defs thm))
+
 (define/test-contract (files-to-hashes files)
-  (-> (*list/c string?)
-      (hash/c string? (list/c (*list/c definition?) theorem?))
-      (*list/c definition?))
+  (-> (*list/c string?) tip-benchmarks?)
   (foldl (lambda (f result)
-           (hash-set result f (file->string f)))
+           (hash-set result
+                     (path-end f)
+                     (split-contents (read-benchmark (file->string f)))))
          (hash)
          files))
 
@@ -2682,14 +2695,14 @@
 (module+ test
   (def-test-case "mk-final-defs-hash works"
     (check-equal? (mk-final-defs-hash
-                   (hash "foo/bar.smt2" (format-symbols
-                                        `(,nat-def
-                                          (define-fun redundantZ1 () Nat
-                                            (as Z Nat))
-                                          (define-fun redundantZ2 () Nat
-                                            (as Z Nat))
-                                          (define-fun redundantZ3 () Nat
-                                            (as Z Nat))))))
+                   (hash "foo/bar.smt2" `((,nat-def
+                                           (define-fun redundantZ1 () Nat
+                                             (as Z Nat))
+                                           (define-fun redundantZ2 () Nat
+                                             (as Z Nat))
+                                           (define-fun redundantZ3 () Nat
+                                             (as Z Nat)))
+                                          (assert-not (= 1 1)))))
                   `((declare-datatypes ()
                       ((Global666f6f2f6261722e736d74324e6174
                         (Global666f6f2f6261722e736d74325a)
