@@ -15,12 +15,10 @@
 (provide full-haskell-package)
 (provide log)
 (provide make-sampling-data)
-(provide mk-defs)
 (provide mk-final-defs)
 (provide mk-signature)
 (provide precision-recall-eqs-wrapper)
 (provide sample-from-benchmarks)
-(provide sample-equational-from-benchmarks)
 (provide types-from-defs)
 (provide write-json)
 
@@ -148,17 +146,6 @@
     (check-equal? (replace-strings "hello mellow yellow fellow"
                                  '(("lo" "LO") ("el" "{{el}}")))
                 "h{{el}}LO m{{el}}LOw y{{el}}LOw f{{el}}LOw")))
-
-;; Recurses through EXPR until it finds a sub-expression of the form
-;; (FIND foo bar ...), replaces it with (WRAPPER (FIND foo bar ...)) and returns
-;; the modified EXPR
-(define (wrap-with find wrapper expr)
-  (match expr
-    [(cons x y) (if (equal? x find)
-                    (list wrapper expr)
-                    (cons (wrap-with find wrapper x)
-                          (wrap-with find wrapper y)))]
-    [_              expr]))
 
 ;; Format a list of expressions to a string, with one expression per line. The
 ;; list's parens aren't included.
@@ -910,16 +897,13 @@
 
   (prefix-all (locals-in expr) expr))
 
-;; Use this thunk to find the set of paths we're benchmarking.
-(define theorem-files
-  (let ()
-    ;; By default, use all  files in benchmark-dir.
-    (memo0 all-theorem-files
-           (sort (map path->string
-                      (filter (lambda (x) (string-suffix? (path->string x) ".smt2"))
-                              (sequence->list (in-directory benchmark-dir))))
-                 string<=?))
-    all-theorem-files))
+;; Use this thunk to find the set of paths we're benchmarking. By default, use
+;; all  files in benchmark-dir.
+(memo0 theorem-files
+       (sort (map path->string
+                  (filter (lambda (x) (string-suffix? (path->string x) ".smt2"))
+                          (sequence->list (in-directory benchmark-dir))))
+             string<=?))
 
 ;; Override the theorem files to be used. If you're going to use this, do it
 ;; before computing anything, to prevent stale values being memoised. Basically
@@ -980,6 +964,8 @@
         (unless (member (benchmark-file f) required-testing-files)
           (error "Testing file not in required list" f))
         f))))
+
+(memo0 theorem-hashes (files-to-hashes (theorem-files)))
 
 ;; Returns a list of names for any functions which the given expression defines.
 ;; Note that expr must itself be a definition; we don't look through its
@@ -1619,10 +1605,6 @@
                       Y/Z.smt2Nat-sentinel
                       (as Y/Z.smt2Z-sentinel Y/Z.smt2Nat-sentinel))))))
 
-;; Apply mk-defs to stdio
-(define (mk-defs)
-  (show (mk-defs-hash (files-to-hashes (port->lines (current-input-port))))))
-
 ;; Read all files named in GIVEN-FILES, combine their definitions together and
 ;; remove alpha-equivalent duplicates
 (define (mk-defs-hash given-hashes)
@@ -1745,7 +1727,7 @@
 
 (module+ test
   (define test-benchmark-defs
-    (mk-defs-hash (theorem-files-hashes)))
+    (mk-defs-hash (theorem-hashes)))
 
   (def-test-case "Can find constructor wrappers"
     (check-equal? (get-def-s 'constructor-Z redundancies)
@@ -2515,7 +2497,8 @@
       (normed-and-replacements-inner stripped replacement-closure)))
 
 (define (defs-to-sig x)
-  (mk-signature-s (format-symbols (mk-final-defs-s (string-split x "\n")))))
+  (mk-signature-s (format-symbols (mk-final-defs-hash
+                                   (files-to-hashes x)))))
 
 (module+ test
   (def-test-case "Single files"
@@ -2535,7 +2518,7 @@
 
     (for-each (lambda (f)
                 (define sig
-                  (defs-to-sig f))
+                  (defs-to-sig (list f)))
                 (with-check-info
                   (('sig sig))
                   (check-true (string-contains? sig "QuickSpec"))))
@@ -2543,9 +2526,8 @@
 
   (def-test-case "Multiple files"
     (define files
-      (string-join (benchmark-files '("tip2015/tree_SwapAB.smt2"
-                                      "tip2015/list_SelectPermutations.smt2"))
-                   "\n"))
+      (benchmark-files '("tip2015/tree_SwapAB.smt2"
+                         "tip2015/list_SelectPermutations.smt2")))
 
     (define sig
       (defs-to-sig files))
@@ -2557,7 +2539,7 @@
 
   (def-test-case "Random files"
     (define files
-      (string-join (theorem-files) "\n"))
+      (theorem-files))
 
     (define sig
       (defs-to-sig files))
@@ -2599,17 +2581,18 @@
                                                   #:exists 'append))
                                vals)
 
-                     (let* ([result (defs-to-sig temp-file)])
+                     (let* ([result (defs-to-sig (list temp-file))])
                        (delete-file temp-file)
                        result))))
 
 (define (mk-final-defs)
-  (show (mk-final-defs-s (port->lines (current-input-port)))))
+  (show (mk-final-defs-hash
+         (files-to-hashes (port->lines (current-input-port))))))
 
-;; Read in the files names in GIVEN-FILES and return a combined, normalised TIP
+;; Takes a hashmap of filename->content and returns a combined, normalised TIP
 ;; benchmark
-(define (mk-final-defs-s given-files)
-  (mk-final-defs-hash (files-to-hashes given-files)))
+(define (mk-final-defs-hash given-hashes)
+  (prepare (mk-defs-hash given-hashes)))
 
 (module+ test
   ;; When TIP translates from its smtlib-like format to Haskell, it performs a
@@ -2617,7 +2600,7 @@
   ;; need to ensure that the names we produce don't get altered by this step.
   (def-test-case "Name preservation"
     (define test-benchmark-defs
-      (mk-final-defs-s (theorem-files)))
+      (mk-final-defs-hash (theorem-hashes)))
 
     (define test-benchmark-lower-names
       ;; A selection of names, which will be lowercase in Haskell
@@ -2685,14 +2668,8 @@
     (set-for-each test-benchmark-upper-names
                   (lambda (name)
                     (check-equal? (tip-upper-rename name)
-                                  (symbol->string name))))))
+                                  (symbol->string name)))))
 
-;; Takes a hashmap of filename->content and returns a combined, normalised TIP
-;; benchmark
-(define (mk-final-defs-hash given-hashes)
-  (prepare (mk-defs-hash given-hashes)))
-
-(module+ test
   (def-test-case "mk-final-defs-hash works"
     (check-equal? (mk-final-defs-hash
                    (hash "foo/bar.smt2" `((,nat-def
@@ -2918,7 +2895,7 @@ library
                            [#"OUT_DIR" ,(string->bytes/utf-8 out-dir)])
          (lambda ()
            (full-haskell-package-s
-            (format-symbols (mk-final-defs-s (theorem-files)))
+            (format-symbols (mk-final-defs-hash (theorem-hashes)))
             out-dir)
 
            (with-check-info
@@ -2970,7 +2947,7 @@ library
                            [#"HOME"    ,(string->bytes/utf-8
                                          (path->string out-dir))])
          (lambda ()
-           (full-haskell-package-s (format-symbols (mk-final-defs-s (theorem-files)))
+           (full-haskell-package-s (format-symbols (mk-final-defs-hash (theorem-hashes)))
                                    (path->string out-dir))
 
            (parameterize ([current-directory out-dir])
@@ -3128,11 +3105,8 @@ library
      (lambda ()
        (set! are-generating #f)))))
 
-(define (theorem-files-hashes)
-  (files-to-hashes (theorem-files)))
-
 (define (qual-hashes-theorem-files)
-  (qual-all-hashes (theorem-files-hashes)))
+  (qual-all-hashes (theorem-hashes)))
 
 (define (unwrap-custom-bool thm)
   (match thm
@@ -3592,7 +3566,7 @@ library
 
 ;; Normalised benchmark from given BENCHMARKS
 (memo0 final-benchmark-defs
-       (mk-final-defs-s (theorem-files)))
+       (mk-final-defs-hash (theorem-hashes)))
 
 ;; All function names defined in given BENCHMARKS. NOTE: These will be
 ;; hex-encoded.
@@ -3603,8 +3577,7 @@ library
 ;; over from the same benchmarks without recalculating everything each time.
 (define sampling-data?
   (assoc-contains? 'all-canonical-function-names
-                   'theorem-deps
-                   'equation-names))
+                   'theorem-deps))
 
 (define/test-contract (make-sampling-data)
   (-> sampling-data?)
@@ -3625,11 +3598,6 @@ library
        ,(map (lambda (t-d)
                (list (first t-d) (set->list (second t-d))))
              (all-theorem-deps)))
-
-      (equation-names
-       ,(filter (lambda (f)
-                  (not (empty? (equation-from f))))
-                (theorem-files)))
 
       (normalised-theorems
        ,(normalised-theorems))))
@@ -3709,26 +3677,6 @@ library
                                       (list deps))
                               "Sampling with one deps constraint returns deps"))
               (all-theorem-deps))))
-
-;; Sample using the names and equational theorems from BENCHMARKS
-(define (sample-equational-from-benchmarks size rep)
-  (define data (get-sampling-data))
-
-  (define-values (all-canonical-function-names theorem-deps equation-names)
-    (values                (assoc-get 'all-canonical-function-names data)
-            (map list->set (assoc-get 'theorem-deps                 data))
-                           (assoc-get 'equation-names               data)))
-
-  ;; Throw away (theorem dependencies) pairs if theorem isn't in equation-names,
-  ;; then turn the resulting pairs into sets of dependencies.
-  (define equation-deps
-    (map (lambda (t-d)
-           (list->set (second t-d)))
-         (filter (lambda (t-d)
-                   (member (first t-d) equation-names))
-                 theorem-deps)))
-
-  (sample size rep all-canonical-function-names equation-deps))
 
 (define (find-eqs-intersection found sample)
   (find-eqs-intersection-raw
@@ -4484,14 +4432,6 @@ library
                                  (free1 local1)))
                   '(free1)))
 
-  (for-each (lambda (f)
-              (check-equal? (map ~a (mk-defs-hash (files-to-hashes
-                                                   (string-split f "\n"))))
-                            (string-split (string-trim (pipe f mk-defs)) "\n")))
-            (benchmark-files '("grammars/simp_expr_unambig1.smt2"
-                               "grammars/simp_expr_unambig4.smt2"
-                               "tip2015/sort_StoogeSort2IsSort.smt2")))
-
   (define f
     (benchmark-file "grammars/simp_expr_unambig3.smt2"))
 
@@ -4540,31 +4480,35 @@ library
                        "tip2015/sort_StoogeSort2IsSort.smt2"
                        "tip2015/sort_BSortPermutes.smt2")))
 
+  (define test-hashes
+    (files-to-hashes test-files))
+
   (define test-defs
-    (mk-defs-hash (files-to-hashes test-files)))
+    (mk-defs-hash test-hashes))
 
   (def-test-case "Real symbols qualified"
-    (let* ([fs (benchmark-files '("tip2015/propositional_AndCommutative.smt2"
+    (define fs (benchmark-files '("tip2015/propositional_AndCommutative.smt2"
                                   "tip2015/propositional_Sound.smt2"
                                   "tip2015/propositional_Okay.smt2"
                                   "tip2015/regexp_RecSeq.smt2"
                                   "tip2015/relaxedprefix_correct.smt2"
                                   "tip2015/propositional_AndIdempotent.smt2"
-                                  "tip2015/propositional_AndImplication.smt2"))]
-           [q (qual-all-hashes (files-to-hashes fs))]
-           [s (names-in q)])
+                                  "tip2015/propositional_AndImplication.smt2")))
+    (define hashes (files-to-hashes fs))
+    (define q (qual-all-hashes hashes))
+    (define s (names-in q))
 
-      (check-true (string-contains? (~a s) "or2-sentinel")
-                  "Found an or2 symbol")
+    (check-true (string-contains? (~a s) "or2-sentinel")
+                "Found an or2 symbol")
 
-      (check-false (member 'or2-sentinel s)
-                   "or2 symbol is qualified")
+    (check-false (member 'or2-sentinel s)
+                 "or2 symbol is qualified")
 
-      (check-true (string-contains? (format-symbols
-                                     (names-in
-                                      (mk-defs-hash (files-to-hashes fs))))
-                                    "or2-sentinel")
-                  "Found 'or2' symbol")))
+    (check-true (string-contains? (format-symbols
+                                   (names-in
+                                    (mk-defs-hash hashes)))
+                                  "or2-sentinel")
+                "Found 'or2' symbol"))
 
   (define subset '(grammars/simp_expr_unambig1.smt2append-sentinel
                    grammars/simp_expr_unambig1.smt2lin-sentinel
@@ -4593,7 +4537,7 @@ library
                    tip2015/sort_StoogeSort2IsSort.smt2ztake-sentinel
                    tip2015/sort_StoogeSort2IsSort.smt2stooge2sort2-sentinel))
 
-  (define qual (format-symbols (qual-all-hashes (files-to-hashes test-files))))
+  (define qual (format-symbols (qual-all-hashes test-hashes)))
 
   (let ([syms (names-in (read-benchmark qual))])
 
@@ -4701,11 +4645,12 @@ library
                              "isaplanner/prop_58.smt2"
                              "tip2015/list_PairUnpair.smt2"))))
 
-    (define raw       (qual-all-hashes (files-to-hashes files)))
+    (define hashes    (files-to-hashes files))
+    (define raw       (qual-all-hashes hashes))
     (define raw-names (names-in raw))
 
     ;; Remove redundancies
-    (define normal       (mk-final-defs-s files))
+    (define normal       (mk-final-defs-hash hashes))
     (define normal-names (names-in normal))
 
     ;; If some raw name is smaller than some normalised name, the two names must
