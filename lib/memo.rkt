@@ -1,6 +1,6 @@
 #lang racket
 
-(provide memo0 memo1 memo2)
+(provide memo0 memo1)
 
 ;; Macros for memoising functions. Memoised functions store their return values,
 ;; which can be returned immediately if called again with the same arguments.
@@ -30,11 +30,3 @@
       (hash-ref! results
                  arg
                  (lambda () (init arg))))))
-
-;; Memoise a binary function
-(define (memo2 init)
-  (let ([results (make-hash)])
-    (lambda (arg1 arg2)
-      (hash-ref! results
-                 (list arg1 arg2)
-                 (lambda () (init arg1 arg2))))))

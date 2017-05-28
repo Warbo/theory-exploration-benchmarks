@@ -7,6 +7,9 @@
 (require racket/match)
 (require racket/trace)
 (require shell/pipeline)
+(require "compare.rkt")
+(require "impure.rkt")
+(require "memo.rkt")
 (require "util.rkt")
 
 (provide conjectures-admitted-by-sample-wrapper)
