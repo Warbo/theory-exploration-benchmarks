@@ -224,30 +224,24 @@ rec {
   tools = stdenv.mkDerivation (rec {
     name = "te-benchmark";
     src  = ./scripts;
-    lib  = ./lib;
 
     buildInputs = [ env makeWrapper ];
 
     buildPhase = ''
-      echo "Gathering files"
-      cd ..
-      ln -s "$lib" ./lib
-
       echo "Generating cache" 1>&2
-      ./scripts/make_sampling_data.rkt > benchmarks_cache
+      ./make_sampling_data.rkt > benchmarks_cache
     '';
 
     installPhase = ''
       # Install Racket scripts
       mkdir "$out"
-      cp -r ./lib     "$out/lib"
-      cp -r ./scripts "$out/scripts"
+      cp -r . "$out/scripts"
 
       # Install cache
       cp benchmarks_cache "$out/benchmarks_cache"
 
       # Compile Racket to bytecode for speed
-      raco make "$out/lib/"*.rkt "$out/scripts/"*.rkt
+      raco make "$out/scripts/"*.rkt "$out/scripts/lib/"*.rkt
 
       # For each script, add a wrapper to PATH, without the .rkt suffix
       mkdir -p "$out/bin"
@@ -257,14 +251,15 @@ rec {
 
         # Write a one-liner to invoke this script, since shebangs don't seem to
         # use the bytecode
-        printf '#!/usr/bin/env bash\nexec racket "$F" "$@"' "$F" > "$out/bin/$NAME"
+        printf '#!/usr/bin/env bash\nexec racket "$F" "$@"' \
+               "$F" > "$out/bin/$NAME"
         chmod +x "$out/bin/$NAME"
 
         # Wrap the one-liner so we can provide an appropriate environment.
         # Set PLT_COMPILED_FILE_CHECK to avoid checking bytecode timestamps.
         wrapProgram "$out/bin/$NAME"                            \
           --prefix PATH : "${env}/bin"                          \
-          --set PWD                     "$out"                  \
+          --set PWD                     "$out/scripts"          \
           --set PLT_COMPILED_FILE_CHECK exists                  \
           --set BENCHMARKS_CACHE        "$out/benchmarks_cache" \
           --set BENCHMARKS_FALLBACK     "${tip-benchmarks}"
@@ -300,7 +295,7 @@ rec {
         echo "NOTE: We don't check Racket contracts because it's slow."
         echo "To enable contract checking, set PLT_TR_CONTRACTS to 1"
 
-        echo "You can run tests with e.g. 'raco test lib/defs.rkt'"
+        echo "You can run tests with e.g. 'raco test scripts/lib/defs.rkt'"
         echo "Use PLT_TEST_REGEX env var to limit which test cases are run."
 
         echo "Log messages are suppressed during tests. Set DEBUG to see them."
@@ -311,7 +306,7 @@ rec {
   # Runs tests against all TIP benchmarks, rather than the sub-set used in tools
   tests = stdenv.mkDerivation {
     name         = "tip-tools-tests";
-    src          = ./lib;
+    src          = ./scripts/lib;
 
     # Include tools as a dependency, so we run its fast tests first
     buildInputs  = [ env tools ];
