@@ -1,7 +1,7 @@
 #!/usr/bin/env racket
 #lang racket
 
-(require (file "defs.rkt"))
+(require "lib/defs.rkt")
 
 (define (usage)
   (log "Usage: choose_sample <N> <M>\nWhere N and M are natural numbers.\nN \

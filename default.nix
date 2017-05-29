@@ -224,41 +224,47 @@ rec {
   tools = stdenv.mkDerivation (rec {
     name = "te-benchmark";
     src  = ./scripts;
+    lib  = ./lib;
 
     buildInputs = [ env makeWrapper ];
 
     buildPhase = ''
+      echo "Gathering files"
+      cd ..
+      ln -s "$lib" ./lib
+
       echo "Generating cache" 1>&2
-      ./make_sampling_data.rkt > benchmarks_cache
+      ./scripts/make_sampling_data.rkt > benchmarks_cache
     '';
 
     installPhase = ''
       # Install Racket scripts
-      mkdir -p    "$out/lib"
-      cp    *.rkt "$out/lib/"
+      mkdir "$out"
+      cp -r ./lib     "$out/lib"
+      cp -r ./scripts "$out/scripts"
 
       # Install cache
       cp benchmarks_cache "$out/benchmarks_cache"
 
-      # Compile Racket scripts to bytecode for speed
-      raco make "$out/lib/"*.rkt
+      # Compile Racket to bytecode for speed
+      raco make "$out/lib/"*.rkt "$out/scripts/"*.rkt
 
-      # For each Racket script, add a wrapper to PATH, without the .rkt suffix
+      # For each script, add a wrapper to PATH, without the .rkt suffix
       mkdir -p "$out/bin"
-      for F in "$out/lib"/*.rkt
+      for F in "$out/scripts/"*.rkt
       do
         NAME=$(basename "$F" .rkt)
 
         # Write a one-liner to invoke this script, since shebangs don't seem to
         # use the bytecode
-        echo -e "#!/usr/bin/env bash\nexec racket '$F' \"\$@\"" > "$out/bin/$NAME"
+        printf '#!/usr/bin/env bash\nexec racket "$F" "$@"' "$F" > "$out/bin/$NAME"
         chmod +x "$out/bin/$NAME"
 
         # Wrap the one-liner so we can provide an appropriate environment.
         # Set PLT_COMPILED_FILE_CHECK to avoid checking bytecode timestamps.
         wrapProgram "$out/bin/$NAME"                            \
           --prefix PATH : "${env}/bin"                          \
-          --set PWD                     "$out/lib"              \
+          --set PWD                     "$out"                  \
           --set PLT_COMPILED_FILE_CHECK exists                  \
           --set BENCHMARKS_CACHE        "$out/benchmarks_cache" \
           --set BENCHMARKS_FALLBACK     "${tip-benchmarks}"
@@ -274,7 +280,12 @@ rec {
 
     # Allow testing to be skipped, as it can take a few minutes
     doCheck    = getEnv "SKIP_TESTS" == "";
-    checkPhase = "raco test defs.rkt";
+    checkPhase = ''
+      for F in ./lib/*.rkt
+      do
+        raco test "$F" || exit 1
+      done
+    '';
 
     # Sets up the environment for the scripts and tests, and informs the user
     shellHook = ''
@@ -289,7 +300,7 @@ rec {
         echo "NOTE: We don't check Racket contracts because it's slow."
         echo "To enable contract checking, set PLT_TR_CONTRACTS to 1"
 
-        echo "You can run tests with 'raco test scripts/defs.rkt'"
+        echo "You can run tests with e.g. 'raco test lib/defs.rkt'"
         echo "Use PLT_TEST_REGEX env var to limit which test cases are run."
 
         echo "Log messages are suppressed during tests. Set DEBUG to see them."
@@ -300,12 +311,16 @@ rec {
   # Runs tests against all TIP benchmarks, rather than the sub-set used in tools
   tests = stdenv.mkDerivation {
     name         = "tip-tools-tests";
-    src          = ./scripts;
+    src          = ./lib;
 
     # Include tools as a dependency, so we run its fast tests first
     buildInputs  = [ env tools ];
     buildCommand = ''
-      raco test "$src/defs.rkt" && echo "pass" > "$out"
+      for F in "$src/"*.rkt
+      do
+        raco test "$F" || exit 1
+      done
+      echo "pass" > "$out"
     '';
 
     # Setting BENCHMARKS during tests overrides BENCHMARKS_FALLBACK, and also
