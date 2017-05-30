@@ -6,9 +6,10 @@
 (require "impure.rkt")
 
 (provide benchmark-file benchmark-files check-equal? check-exn check-false
-         check-not-equal? check-true constructorS constructorZ custom-bool
-         custom-int custom-ite custom-nat def-test-case form form-with-deps mut
-         nat-def redundancies test-data test-files with-check-info)
+         check-not-equal? check-pred check-true constructorS constructorZ
+         custom-bool custom-int custom-ite custom-nat def-test-case form
+         form-with-deps mut nat-def redundancies test-data test-files
+         testing-file with-check-info)
 
 ;; Selects specific test-cases based on a regex from the environment
 (define test-case-regex

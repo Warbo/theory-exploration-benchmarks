@@ -1,9 +1,16 @@
 #lang racket
 
+(require json)
+(require "compare.rkt")
 (require "lists.rkt")
+(require "normalise.rkt")
 (require "sampling.rkt")
 (require "theorems.rkt")
+(require "tip.rkt")
 (require "util.rkt")
+
+(module+ test
+  (require "testing.rkt"))
 
 (define (find-eqs-intersection found sample)
   (find-eqs-intersection-raw

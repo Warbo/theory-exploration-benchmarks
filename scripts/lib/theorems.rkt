@@ -7,7 +7,7 @@
 (require "tip.rkt")
 (require "util.rkt")
 
-(provide all-theorem-deps normalised-theorems normed-theorem-of)
+(provide all-theorem-deps normalised-theorems normed-theorem-of theorem-deps-of)
 
 (module+ test
   (require "testing.rkt"))
@@ -162,7 +162,9 @@
                      (cons (path-end f)
                            (unqualify
                             (replace-all final-replacements
-                                         (qual-thm (benchmark-file (path-end f))
+                                         (qual-thm (string-append
+                                                    benchmark-dir "/"
+                                                    (path-end f))
                                                    thm))))))))
       ;; Otherwise return cached version
       (read (file->string (getenv "BENCHMARKS_NORMALISED_THEOREMS")))))
