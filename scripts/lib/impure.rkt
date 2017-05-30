@@ -1,11 +1,14 @@
 #lang racket
 
 (require shell/pipeline)
+(require "memo.rkt")
 (require "util.rkt")
 
-(provide in-temp-dir parameterize-env pipe temp-file-prefix)
+(provide benchmark-dir in-temp-dir msg parameterize-env pipe quiet
+         set-theorem-files! theorem-files temp-file-prefix)
 
 (module+ test
+  ;; Don't use testing.rkt, as that would cause a circular dependency
   (require rackunit))
 
 ;; Run F with the string S as its input port. Returns whatever F writes to its
@@ -44,6 +47,7 @@
   "tebenchmarktemp")
 
 (define (in-temp-dir f)
+  (eprintf "FIXME: Take temp dir from env\n")
   (let* ([dir    (make-temporary-file (string-append temp-file-prefix "~a")
                                       'directory)]
          [result (f dir)])
@@ -62,3 +66,40 @@
 ;; Print a list of expressions to (current-output-port)
 (define (show x)
   (displayln (format-symbols x)))
+
+;; Define a 'msg' function for printing progress info to stderr. We also define
+;; a 'quiet' function for turning off progress info.
+(define-values (quiet msg)
+  (let ([verbose #t])
+    (values (lambda ()
+              (unless (getenv "DEBUG")
+                (set! verbose #f)))
+
+            (lambda args
+              (when verbose
+                (eprintf (apply format args)))))))
+
+(define benchmark-dir
+  (or (getenv "BENCHMARKS")
+      (getenv "BENCHMARKS_FALLBACK")
+      (raise-user-error
+       'benchmark-dir
+       "No BENCHMARKS_FALLBACK env var found; should be set by Nix")))
+
+;; Use this thunk to find the set of paths we're benchmarking. By default, use
+;; all  files in benchmark-dir.
+(memo0 theorem-files
+       (sort (map path->string
+                  (filter (lambda (x) (string-suffix? (path->string x) ".smt2"))
+                          (sequence->list (in-directory benchmark-dir))))
+             string<=?))
+
+
+;; Override the theorem files to be used. If you're going to use this, do it
+;; before computing anything, to prevent stale values being memoised. Basically
+;; only exists for making the test suite quicker.
+;;
+;; REMEMBER: theorem-files should be a thunk returning a list, not a list!
+(define (set-theorem-files! proc)
+  (set! theorem-files (lambda ()
+                        (sort (proc) string<=?))))

@@ -1,12 +1,11 @@
 #lang racket
 
-(provide all-of any-of as-str assoc-contains? assoc-get concat-map
+(provide as-str
          decode16 define/test-contract
          deterministic-shuffle encode16 format-symbols index-where
          map-set non-empty? prefix-name
          read-benchmark replace-all replace-strings
-         replace-in show string-reverse take-from-end
-         zip)
+         replace-in show string-reverse)
 
 (module+ test
   (require rackunit))

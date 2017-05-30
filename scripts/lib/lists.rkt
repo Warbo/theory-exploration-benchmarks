@@ -2,6 +2,8 @@
 
 ;; Useful list functions
 
+(provide all-of any-of assoc-contains? assoc-get concat-map take-from-end zip)
+
 (module+ test
   (require rackunit))
 

@@ -17,10 +17,8 @@
           [called #f])
       (lambda ()
         (when (equal? #f called)
-          (eprintf "Forced ~a\n" name)
           (set! result (let () body ...))
-          (set! called #t)
-          (eprintf "Finished ~a\n" name))
+          (set! called #t))
         result))))
 
 ;; Memoise a unary function
