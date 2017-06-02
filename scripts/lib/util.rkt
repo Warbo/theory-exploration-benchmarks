@@ -2,7 +2,7 @@
 
 (provide as-str
          decode16 define/test-contract
-         deterministic-shuffle encode16 format-symbols index-where
+         deterministic-shuffle encode16 format-symbols hash-foldl index-where
          map-set non-empty? prefix-name
          read-benchmark replace-all replace-strings
          replace-in show string-reverse)
@@ -231,26 +231,8 @@
       [(cons x (cons y zs)) (apply lcm (cons (* x (/ y (gcd x y)))
                                              zs))])))
 
-(define/test-contract (precision found wanted)
-  (-> set? set? rational?)
-  (/ (set-count (set-intersect found wanted))
-     (set-count found)))
-
-(module+ test
-  (test-case "Precision"
-    (check-equal?
-     (/ 1 10)
-     (precision (list->set '(a b c d e f g h i j))
-                (list->set '(j k l m n o p q r s t u v w x y z))))))
-
-(define/test-contract (recall found wanted)
-  (-> set? set? rational?)
-  (/ (set-count (set-intersect wanted found))
-     (set-count wanted)))
-
-(module+ test
-  (test-case "Recall"
-    (check-equal? (/ 1 2)
-                  (recall (list->set '(a b c d e f g h i j k l m))
-                          (list->set '(a b c d e f g h i j k l m
-                                         n o p q r s t u v w x y z))))))
+(define (hash-foldl f init h)
+  (foldl (lambda (kv result)
+           (f (car kv) (cdr kv) result))
+         init
+         (hash->list h)))
