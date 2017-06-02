@@ -23,6 +23,7 @@
 ;; otherwise. Use this in favour of raw rackunit, so tests are skippable.
 (define-syntax-rule (def-test-case name body ...)
   (when (regexp-match? test-case-regex name)
+    (eprintf (string-append name "\n"))
     (test-case name body ...)))
 
 ;; Loads test data from files
