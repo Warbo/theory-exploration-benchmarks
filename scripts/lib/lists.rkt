@@ -2,10 +2,14 @@
 
 ;; Useful list functions
 
-(provide all-of any-of assoc-contains? assoc-get concat-map take-from-end zip)
+(provide all-of any-of assoc-contains? assoc-get concat-map elem nth
+         take-from-end zip)
 
 (module+ test
   (require rackunit))
+
+(define (elem l x)
+  (member x l))
 
 ;; Replace all occurrences of OLD with REPLACEMENT in EXPR
 (define (replace-in old replacement expr)
@@ -25,7 +29,8 @@
 
 ;; Apply F to each element of XS, and append the results together
 (define (concat-map f xs)
-  (append* (map f xs)))
+  (eprintf "FIXME: concat-map is append-map\n")
+  (append-map f xs))
 
 (module+ test
   (test-case "Can concat-map"
@@ -103,3 +108,7 @@
           (lambda (x y)
             (not (bytes>? (second x) (second y))))))
   (map first sorted))
+
+;; list-ref with flipped arguments
+(define (nth n lst)
+  (list-ref lst n))
