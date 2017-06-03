@@ -73,16 +73,6 @@
 (define (prefix-name n p)
   (string->symbol (string-append p (symbol->string n))))
 
-;; Apply F to each element of XS, and append the results together
-(define (concat-map f xs)
-  (append* (map f xs)))
-
-(module+ test
-  (test-case "Can concat-map"
-    (check-equal? (concat-map (lambda (x) (list x x x))
-                              '(fee fi fo fum))
-                  '(fee fee fee fi fi fi fo fo fo fum fum fum))))
-
 ;; Backported from Racket 6.7
 (define index-where
   (let ()
