@@ -7,8 +7,8 @@
 (require "sets.rkt")
 (require "util.rkt")
 
-(provide extend-replacements finalise-replacements replace replacement
-         replacements?)
+(provide extend-replacements finalise-replacements new-of old-of replace
+         replacement replacements?)
 
 (module+ test
   (require "testing.rkt"))
@@ -177,58 +177,45 @@
     [(list 'unmerged reps) reps]))
 
 ;; Add rep to reps, then combine together any overlapping sets
-(define/test-contract (insert-replacement reps rep)
-  (-> replacements? replacement? replacements?)
+(define/test-contract (insert-replacement rep reps)
+  (-> replacement? replacements? replacements?)
   (merge-replacements (set-add reps rep)))
 
 (module+ test
   (def-test-case "Insert replacement"
     ;; Nothing to check when empty, so inserted as-is
-    (check-equal? (insert-replacement (set) (set 'A 'B))
+    (check-equal? (insert-replacement (set 'A 'B) (set))
                   (set (set 'A 'B)))
 
     ;; Disjoint replacements don't interfere
-    (check-equal? (insert-replacement (set (set 'A 'B) (set 'C 'D)) (set 'E 'F))
+    (check-equal? (insert-replacement (set 'E 'F) (set (set 'A 'B) (set 'C 'D)))
                   (set (set 'E 'F) (set 'A 'B) (set 'C 'D)))
 
     ;; Overlapping replacements are merged
-    (check-equal? (insert-replacement (set (set 'A 'B 'C) (set 'D 'E))
-                                      (set 'B 'F))
+    (check-equal? (insert-replacement (set 'B 'F)
+                                      (set (set 'A 'B 'C) (set 'D 'E)))
                   (set (set 'A 'B 'C 'F) (set 'D 'E)))
 
     ;; Overlapping multiple replacements merges all of them
-    (check-equal? (insert-replacement (set (set 'A 'B) (set 'C 'D) (set 'E 'F))
-                                      (set 'A 'D 'G))
+    (check-equal? (insert-replacement (set 'A 'D 'G)
+                                      (set (set 'A 'B) (set 'C 'D) (set 'E 'F)))
                   (set (set 'A 'B 'C 'D 'G) (set 'E 'F)))))
 
-(define/test-contract (extend-replacements xs ys)
-  (->i ([xs replacements?]
-        [ys replacements?])
-       [result (xs ys)
-               (lambda (result)
-                 (define old-xs  (set-map old-of xs))
-                 (define new-xs  (set-map new-of xs))
-                 (define old-ys  (set-map old-of ys))
-                 (define new-ys  (set-map new-of ys))
-                 (define old-out (set-map old-of result))
-                 (define new-out (set-map new-of result))
-                 (define old-in  (set-union old-xs old-ys))
-                 (define new-in  (set-union new-xs new-ys))
+(define/test-contract (extend-replacements . repss)
+  (-> replacements? ... replacements?)
 
-                 (and (replacements? result)
+  ;; Combine all sets, then sort out internal consistency
+  (merge-replacements (apply set-union repss)))
 
-                      ;; All old values should get replaced
-                      (subset? old-in old-out)
-
-                      ;; All of ys's replacements should be honoured
-                      (subset? new-ys new-out)
-
-                      ;; All old values should come from xs and ys
-                      (subset? old-out old-in)
-
-                      ;; All new values should come from xs and ys
-                      (subset? new-out new-in)))])
-  (set-foldl insert-replacement xs ys))
+(module+ test
+  (def-test-case "Extend one set of replacements with another"
+    (check-equal? (set (set 'A 'B 'C) (set 'D 'E 'F) (set 'G))
+                  (foldl extend-replacements
+                         (replacement)
+                         (list (replacement 'A 'B)
+                               (replacement 'A 'C)
+                               (replacement 'D 'E 'F)
+                               (replacement 'G))))))
 
 (define final-replacements? (hash/c symbol? symbol?))
 
@@ -285,5 +272,3 @@
   (hash-foldl replace-in
               x
               f-reps))
-
-(trace replacement)

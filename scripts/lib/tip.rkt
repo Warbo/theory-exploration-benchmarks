@@ -8,9 +8,11 @@
 (require "memo.rkt")
 (require "util.rkt")
 
-(provide expression-constructors expression-destructors expression-symbols
+(provide definition? expression-constructors expression-destructors
+         expression-symbols
          expression-types files-to-hashes get-def-s lowercase-names names-in
-         native-symbols path-end symbols-in theorem-files theorem-hashes
+         native-symbols path-end symbols-in theorem? theorem-files
+         theorem-hashes tip-benchmarks? tip-path?
          toplevel-function-defs-of toplevel-names-in uppercase-names)
 
 (module+ test
@@ -144,7 +146,7 @@
                          (cdr dec))
 
                        (define destructor-decs
-                         (concat-map cdr constructor-decs))
+                         (append-map cdr constructor-decs))
 
                        (append (list type-name)
                                (map first constructor-decs)
@@ -166,7 +168,7 @@
                         (define constructor-decs
                           (cdr dec))
                         (define destructor-decs
-                          (concat-map cdr constructor-decs))
+                          (append-map cdr constructor-decs))
                         (cons (map first destructor-decs) result))
                       null
                       decs)]
@@ -203,7 +205,7 @@
       ;; Type names
       (map first type-decs)
       ;; Constructor names
-      (concat-map (lambda (type-dec)
+      (append-map (lambda (type-dec)
                     (define constructor-decs
                       (cdr type-dec))
                     (map first constructor-decs))
@@ -326,28 +328,20 @@
                                     timesSign mult minus plus absVal
                                     times))
 
-      (should-not-have syms 'variable '(x  x-sentinel
-                                        y  y-sentinel
-                                        z  z-sentinel
-                                        m  m-sentinel
-                                        m2 m2-sentinel
-                                        n  n-sentinel
-                                        n2 n2-sentinel
-                                        n3 n3-sentinel
-                                        o  o-sentinel))
+      (should-not-have syms 'variable '(x y z m m2 n n2 n3 o))
 
-      (should-not-have syms 'keyword  '(match             match-sentinel
-                                        case              case-sentinel
-                                        define-fun        define-fun-sentinel
-                                        declare-datatypes declare-datatypes-sentinel
-                                        assert-not        assert-not-sentinel
-                                        forall            forall-sentinel
-                                        =                 =-sentinel
-                                        check-sat         check-sat-sentinel)))
+      (should-not-have syms 'keyword  '(match
+                                        case
+                                        define-fun
+                                        declare-datatypes
+                                        assert-not
+                                        forall
+                                        =
+                                        check-sat)))
 
     (let* ([f    (benchmark-file "tip2015/list_PairEvens.smt2")]
            [syms (symbols-from-file f)])
-      (should-not-have syms 'higher-order-type '(=> =>-sentinel)))
+      (should-not-have syms 'higher-order-type '(=>)))
 
     (let* ([f    (benchmark-file "tip2015/propositional_AndCommutative.smt2")]
            [syms (symbols-from-file f)])
@@ -444,7 +438,7 @@
 ;; Return any definitions of NAME appearing in EXPRS, where NAME can be of a
 ;; function, type, constructor or destructor
 (define/test-contract (get-def-s name exprs)
-  (-> symbol? any/c any/c)
+  (-> symbol? any/c (*list/c any/c))
 
   (define/test-contract (defs-from exp)
     (-> any/c any/c)
@@ -470,7 +464,8 @@
 ;; be used for function types, use custom-=> for boolean implication.
 (define native-symbols
   '(ite Bool = distinct => ;; Should only appear as per strip-native.rkt
-        @ as forall assert-not lambda case match let))
+        @ as forall assert-not lambda case match let
+          declare-datatypes define-fun define-fun-rec define-funs-rec par))
 
 ;; Given an arbitrary TIP (sub)expression, return the externally-visible symbols
 ;; it contains. This includes globals being defined, globals being used,
@@ -498,11 +493,40 @@
                                                   (cons (go (map cdr defs))
                                                         (go body))))]
         [(list 'as val typ)             (cons (go val) (go typ))]
+        [(list 'forall args body)       (remove* (map first args)
+                                                 (flatten
+                                                  (go (cons (map second args)
+                                                            body))))]
+        [(list 'assert-not body)        (go body)]
+        [(list 'par args body)          (remove* args (go body))]
         [(cons a b)                     (cons (go a) (go b))]
         [_                              (if (symbol? exp) (list exp) null)]))
 
     (lambda (exp)
       (remove* native-symbols (flatten (go exp))))))
+
+(module+ test
+  (def-test-case "Symbols in theorems"
+    (check-equal? (set 'Foo 'bar 'baz)
+                  (list->set (symbols-in
+                              '(assert-not (forall ((x Foo) (y Foo))
+                                                   (= (bar x y) (bar baz x))))))
+                  "Found symbols in theorem")
+    (check-equal?
+     (set 'foo/bar.smt2CustomBool 'foo/bar.smt2list
+          'foo/bar.smt2custom-bool-converter 'foo/bar.smt2append
+          'foo/bar.smt2takeWhile 'foo/bar.smt2dropWhile)
+     (list->set (symbols-in
+                 '(assert-not
+                   (par (local-a)
+                        (forall ((local-p (=> local-a foo/bar.smt2CustomBool))
+                                 (local-xs (foo/bar.smt2list local-a)))
+                                (foo/bar.smt2custom-bool-converter
+                                 (= (foo/bar.smt2append
+                                     (foo/bar.smt2takeWhile local-p local-xs)
+                                     (foo/bar.smt2dropWhile local-p local-xs))
+                                    local-xs)))))))
+     "Found symbols in qualified, parameterised theorem")))
 
 ;; Return a list of constructors defined in a given expression, e.g. '(Nil Cons)
 ;; if given a definition of List
@@ -529,7 +553,7 @@
 (define (expression-types exp)
   (define (constructor-types defs)
     (match defs
-      [(cons h t) (append (concat-map (lambda (x) (symbols-in (cdr x)))
+      [(cons h t) (append (append-map (lambda (x) (symbols-in (cdr x)))
                                       (cdr h))
                           (constructor-types t))]
       [_          null]))
