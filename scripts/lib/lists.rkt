@@ -2,7 +2,7 @@
 
 ;; Useful list functions
 
-(provide all-of any-of assoc-contains? assoc-get concat-map elem nth
+(provide all-of any-of assoc-contains? assoc-get elem nth
          take-from-end zip)
 
 (module+ test
@@ -26,17 +26,6 @@
            (replace-in (first rep) (second rep) expr))
          expr
          reps))
-
-;; Apply F to each element of XS, and append the results together
-(define (concat-map f xs)
-  (eprintf "FIXME: concat-map is append-map\n")
-  (append-map f xs))
-
-(module+ test
-  (test-case "Can concat-map"
-    (check-equal? (concat-map (lambda (x) (list x x x))
-                              '(fee fi fo fum))
-                  '(fee fee fee fi fi fi fo fo fo fum fum fum))))
 
 ;; Backported from Racket 6.7
 (define index-where

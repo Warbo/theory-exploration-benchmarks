@@ -4,6 +4,7 @@
 (require "lists.rkt")
 (require "memo.rkt")
 (require "normalise.rkt")
+(require "replacements.rkt")
 (require "tip.rkt")
 (require "util.rkt")
 
@@ -56,7 +57,7 @@
                    ('thms           thms)
                    ('content        content))
                   (check-not-equal? (member (car thms) content) #f)))
-              (append (theorem-files) (theorem-files)))))
+              (theorem-files))))
 
 (memo0 benchmark-theorems
        (make-immutable-hash
@@ -96,7 +97,7 @@
   (define (thm-names expr)
     (match expr
       [(list 'assert-not x)     (thm-names x)]
-      [(list 'forall vars body) (append (concat-map (lambda (var)
+      [(list 'forall vars body) (append (append-map (lambda (var)
                                                       (symbols-in (second var)))
                                                     vars)
                                         (symbols-in body))]
@@ -106,12 +107,25 @@
 
     (remove* (thm-locals thm) (thm-names thm)))
 
+(module+ test
+  (def-test-case "Normalised theorems"
+    (hash-for-each (normalised-theorems2)
+                   (lambda (path thm)
+                     (for-each (lambda (sym)
+                                 (with-check-info
+                                  (('path path)
+                                   ('thm  thm)
+                                   ('sym  sym))
+                                  (check-equal? sym (norm-name sym)
+                                                "Name is normalised")))
+                               (theorem-globals thm))))))
+
 (define (qual-thm filename thm)
   (replace-all (map (lambda (g)
                       (list g
-                            (string->symbol (string-append (path-end filename)
-                                                           (symbol->string g)
-                                                           "-sentinel"))))
+                            (string->symbol
+                             (string-append (path-end filename)
+                                            (symbol->string g)))))
                     (theorem-globals thm))
                thm))
 
@@ -126,7 +140,9 @@
   (if (member (getenv "BENCHMARKS_NORMALISED_THEOREMS") '(#f ""))
       ;; No cache given, generate
       (let ()
-        (define qualified (qual-hashes-theorem-files))
+        (define all-qualified (qual-hashes-theorem-files))
+
+        (define qualified (first all-qualified))
 
         ;; First get replacements used in definitions
         (define replacements
@@ -135,41 +151,42 @@
         ;; Also replace constructors with constructor functions, skipping
         ;; constructors which are redundant
 
-        (define all-constructors
-          (expression-constructors qualified))
-
         (define constructor-replacements
-          (map (lambda (c)
-                 (list c (prefix-name c "constructor-")))
-               (remove* (map first replacements)
-                        all-constructors)))
+          (constructor-function-replacements (theorem-hashes)))
 
-        ;; Update replacements to use constructor functions rather than
-        ;; constructors
         (define final-replacements
-          (append constructor-replacements
-                  (map (lambda (rep)
-                         (if (member (second rep)
-                                     (map first constructor-replacements))
-                             (list (first rep) (prefix-name (second rep)
-                                                            "constructor-"))
-                             rep))
-                       replacements)))
+          (finalise-replacements
+           (extend-replacements replacements constructor-replacements)))
 
         (make-immutable-hash
          (hash-map (benchmark-theorems)
                    (lambda (f thm)
                      (cons (path-end f)
                            (unqualify
-                            (replace-all final-replacements
-                                         (qual-thm (string-append
-                                                    benchmark-dir "/"
-                                                    (path-end f))
-                                                   thm))))))))
+                            (replace final-replacements
+                                     (qual-thm (string-append
+                                                benchmark-dir "/"
+                                                (path-end f))
+                                               thm))))))))
       ;; Otherwise return cached version
       (read (file->string (getenv "BENCHMARKS_NORMALISED_THEOREMS")))))
 
 (module+ test
+  (def-test-case "Theorem names get normalised"
+    (hash-for-each (normalised-theorems)
+                   (lambda (f thm)
+                     (for-each (lambda (sym)
+                                 (define norm-sym (nn sym))
+
+                                 (with-check-info
+                                   (('thm      thm)
+                                    ('f        f)
+                                    ('sym      sym)
+                                    ('norm-sym norm-sym))
+                                   (check-equal? norm-sym sym
+                                                 "Theorem global is normal")))
+                               (symbols-in thm)))))
+
   (def-test-case "No custom-bool-converter in theorems"
     (hash-for-each (normalised-theorems)
                    (lambda (_ thm)
@@ -201,22 +218,19 @@
                 (define normed
                   (normed-theorem-of benchmark-file))
 
-                (check-equal? (structure-of unnormed) (structure-of normed))
-
-                (check-false (string-contains? (format-symbols normed)
-                                               "-sentinel")))
+                (check-equal? (structure-of unnormed) (structure-of normed)))
               (theorem-files))))
 
 (define (theorem-types expr)
   (match expr
     [(list 'forall vars body) (append (theorem-types body)
-                                      (concat-map (lambda (var)
+                                      (append-map (lambda (var)
                                                     (symbols-in (second var)))
                                                   vars))]
     [(list 'as x t)           (append (theorem-types x)
                                       (symbols-in t))]
     [(list 'lambda vars body) (append (theorem-types body)
-                                      (concat-map (lambda (var)
+                                      (append-map (lambda (var)
                                                     (symbols-in (second var)))
                                                   vars))]
     [(cons x y)               (append (theorem-types x) (theorem-types y))]
@@ -227,23 +241,21 @@
            (define normed (normed-theorem-of f))
 
            (define constructors
-             (expression-constructors (normed-qualified-theorem-files)))
+             (expression-constructors (first (qual-hashes-theorem-files))))
 
            ;; Remove types
            (define raw-names
              (remove* (theorem-types normed) (theorem-globals normed)))
 
-           (define result
-             (remove-duplicates
-              (foldl (lambda (name existing)
-                       ;; Prefix constructors, so we use the function instead
-                       (cons (if (member name constructors)
-                                 (prefix-name name "constructor-")
-                                 name)
-                             existing))
-                     '()
-                     raw-names)))
-           result)))
+           (remove-duplicates
+            (foldl (lambda (name existing)
+                     ;; Prefix constructors, so we use the function instead
+                     (cons (if (member name constructors)
+                               (prefix-name name "constructor-")
+                               name)
+                           existing))
+                   '()
+                   raw-names)))))
 
 (module+ test
   (def-test-case "Expected dependencies"
@@ -256,16 +268,18 @@
   (def-test-case "Theorem deps"
     (for-each (lambda (name-cases)
                 (for-each (lambda (f-deps)
-                            (define absolute-path
-                              (benchmark-file (first f-deps)))
+                            (define f
+                              (first f-deps))
 
-                            (define (prefix s)
-                              (string->symbol
-                               (string-append (first f-deps)
-                                              (symbol->string s))))
+                            (define absolute-path
+                              (benchmark-file f))
+
+                            (define deps
+                              (replace-names (second f-deps)))
 
                             (define calc-deps
-                              (theorem-deps-of absolute-path))
+                              (replace-names
+                               (theorem-deps-of absolute-path)))
 
                             (with-check-info
                               (('sort          (first name-cases))
@@ -273,7 +287,7 @@
                                ('deps          (second f-deps))
                                ('calc-deps     calc-deps))
                               (check-equal? (list->set calc-deps)
-                                            (list->set (second f-deps)))))
+                                            (list->set deps))))
                           (second name-cases)))
 
               ;; Cases are grouped by type, e.g. whether they require

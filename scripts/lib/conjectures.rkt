@@ -229,9 +229,8 @@
 
 (module+ test
   (def-test-case "Read equations"
-    (check-equal? (equation-from
-                   (benchmark-file
-                    (testing-file "grammars/packrat_unambigPackrat.smt2")))
+    (check-equal? (equation-from (testing-file
+                                  "grammars/packrat_unambigPackrat.smt2"))
                   '()
                   "Theorem which isn't equation doesn't get converted")
 
@@ -242,27 +241,26 @@
                               "isaplanner/prop_15.smt2")))
                 "Files containing normal forms are included")
     (check-equal? (equation-from
-                   (benchmark-file
-                    (testing-file "isaplanner/prop_84.smt2")))
+                    (testing-file "isaplanner/prop_84.smt2"))
 
-                  '((~=
-                     (apply (apply (constant grammars/packrat_unambigPackrat.smt2append "unknown")
-                                   (apply (apply (constant isaplanner/prop_44.smt2zip "unknown")
-                                                 (apply (apply (constant isaplanner/prop_01.smt2take "unknown")
-                                                               (apply (constant isaplanner/prop_15.smt2len "unknown")
+                  `((~=
+                     (apply (apply (constant ,(nn 'grammars/packrat_unambigPackrat.smt2append) "unknown")
+                                   (apply (apply (constant ,(nn 'isaplanner/prop_44.smt2zip) "unknown")
+                                                 (apply (apply (constant ,(nn 'isaplanner/prop_01.smt2take) "unknown")
+                                                               (apply (constant ,(nn 'isaplanner/prop_15.smt2len) "unknown")
                                                                       (variable 0 "(grammars/packrat_unambigPackrat.smt2list b)")))
                                                         (variable 0 "(grammars/packrat_unambigPackrat.smt2list a)")))
                                           (variable 0 "(grammars/packrat_unambigPackrat.smt2list b)")))
-                            (apply (apply (constant isaplanner/prop_44.smt2zip "unknown")
-                                          (apply (apply (constant isaplanner/prop_01.smt2drop "unknown")
-                                                        (apply (constant isaplanner/prop_15.smt2len "unknown")
+                            (apply (apply (constant ,(nn 'isaplanner/prop_44.smt2zip) "unknown")
+                                          (apply (apply (constant ,(nn 'isaplanner/prop_01.smt2drop) "unknown")
+                                                        (apply (constant ,(nn 'isaplanner/prop_15.smt2len) "unknown")
                                                                (variable 0 "(grammars/packrat_unambigPackrat.smt2list b)")))
                                                  (variable 0 "(grammars/packrat_unambigPackrat.smt2list a)")))
                                    (variable 1 "(grammars/packrat_unambigPackrat.smt2list b)")))
 
-                     (apply (apply (constant isaplanner/prop_44.smt2zip "unknown")
+                     (apply (apply (constant ,(nn 'isaplanner/prop_44.smt2zip) "unknown")
                                    (variable 0 "(grammars/packrat_unambigPackrat.smt2list a)"))
-                            (apply (apply (constant grammars/packrat_unambigPackrat.smt2append "unknown")
+                            (apply (apply (constant ,(nn 'grammars/packrat_unambigPackrat.smt2append) "unknown")
                                           (variable 0 "(grammars/packrat_unambigPackrat.smt2list b)"))
                                    (variable 1 "(grammars/packrat_unambigPackrat.smt2list b)")))))
 

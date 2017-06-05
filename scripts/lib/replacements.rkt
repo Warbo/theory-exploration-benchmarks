@@ -18,11 +18,10 @@
 
 (define (new-of s)
   (set-foldl (lambda (x min)
-               (if (equal? min #f)
-                   x
-                   (if (symbol<? x min)
-                       x
-                       min)))
+               (cond
+                 [(equal? min #f)  x]
+                 [(symbol<? x min) x]
+                 [else min]))
              #f
              s))
 
@@ -269,6 +268,4 @@
 
 (define/test-contract (replace f-reps x)
   (-> final-replacements? any/c any/c)
-  (hash-foldl replace-in
-              x
-              f-reps))
+  (hash-foldl replace-in x f-reps))

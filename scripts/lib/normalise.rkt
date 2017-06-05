@@ -2,6 +2,7 @@
 
 ;; Normalise TIP definitions
 
+(require racket/trace)
 (require "compare.rkt")
 (require "impure.rkt")
 (require "lists.rkt")
@@ -10,9 +11,11 @@
 (require "tip.rkt")
 (require "util.rkt")
 
-(provide decode-name encode-lower-name lowercase-benchmark-names
-         mk-final-defs-hash normed-qualified-theorem-files
-         qual-hashes-theorem-files
+(provide constructor-function-replacements decode-name decode-string
+         encode-lower-name
+         lowercase-benchmark-names
+         mk-final-defs-hash nn norm-name normalised-theorems2
+         normed-qualified-theorem-files qual-hashes-theorem-files replace-names
          replacements-closure unqualify)
 
 (module+ test
@@ -283,6 +286,15 @@
 
     [_ expr]))))
 
+(module+ test
+  (def-test-case "Norm"
+    (check-equal? '(declare-datatypes
+                    ()
+                    ((defining-type-1
+                       (normalise-constructor-2)
+                       (normalise-constructor-1
+                        (normalise-destructor-1 defining-type-1)))))
+                  (norm nat-def))))
 
 ;; Looks through EXPR for the highest sequential name, and returns the next name
 ;; in the sequence
@@ -340,22 +352,38 @@
          x
          (expression-types x)))
 
-;; Combine together the definitions from each hash table entry and prefix each
-;; name with the (suffix of) the key it came from
+;; Theorems are anonymous, so we use their path as a name, since it's stable
+;; even when we rewrite the contents (e.g. for normalising)
+(define (qualified-theorems? thms)
+  (and/c (hash/c tip-path? theorem?)))
+
+;; Prefix each name with the path of the file it came from, and combine all
+;; definitions together into one long list (ordered lexicographically by path).
+;; Theorems are also qualified, but remain independent and keyed by their path.
 (define/test-contract (qual-all-hashes given-hashes)
-  (-> tip-benchmarks? (*list/c definition?))
-  (append* (map (lambda (elem)
-                  (define pth     (car   elem))
-                  (define problem (cdr   elem))
-                  (define defs    (first problem))
-                  (qualify pth defs))
-                (sort (hash->list given-hashes) string<? #:key car))))
+  (-> tip-benchmarks? (list/c (*list/c definition?)
+                              qualified-theorems?))
+  (define entries
+    (sort (hash->list given-hashes) string>? #:key car))
+
+  (define result
+    (foldl (lambda (elem result)
+             (match (list elem result)
+               [(list (cons pth (list defs thm))
+                      (list all thms))
+                (list (cons (qualify pth defs) all)
+                      (hash-set thms pth (qualify pth thm)))]))
+           (list '() (hash))
+           entries))
+
+  (match result
+    [(list defs thms) (list (append* defs) thms)]))
 
 (module+ test
   (def-test-case "Can qualify filename/content hashes"
     (check-equal? (qual-all-hashes (hash "C/D.smt2"
                                          `((,nat-def)
-                                           (assert-not (= 1 1)))
+                                           (assert-not (= foo bar)))
 
                                          "Y/Z.smt2"
                                          '(((declare-datatypes ()
@@ -370,64 +398,74 @@
                                               (as Z Nat))
                                             (define-fun Z5 () Nat
                                               (as Z Nat)))
-                                           (assert-not (= 2 2)))))
-                  '((declare-datatypes ()
-                      ((C/D.smt2Nat-sentinel
-                         (C/D.smt2Z-sentinel)
-                         (C/D.smt2S-sentinel
-                           (C/D.smt2p-sentinel C/D.smt2Nat-sentinel)))))
-                    (declare-datatypes ()
-                                       ((Y/Z.smt2Nat-sentinel
-                                         (Y/Z.smt2Z-sentinel)
-                                         (Y/Z.smt2S-sentinel
-                                          (Y/Z.smt2p-sentinel
-                                           Y/Z.smt2Nat-sentinel)))))
-                    (define-fun Y/Z.smt2Z2-sentinel ()
-                      Y/Z.smt2Nat-sentinel
-                      (as Y/Z.smt2Z-sentinel Y/Z.smt2Nat-sentinel))
-                    (define-fun Y/Z.smt2S2-sentinel
-                      ((local-x Y/Z.smt2Nat-sentinel))
-                      Y/Z.smt2Nat-sentinel
-                      (as (Y/Z.smt2S-sentinel local-x) Y/Z.smt2Nat-sentinel))
-                    (define-fun Y/Z.smt2Z3-sentinel ()
-                      Y/Z.smt2Nat-sentinel
-                      (as Y/Z.smt2Z-sentinel Y/Z.smt2Nat-sentinel))
-                    (define-fun Y/Z.smt2Z4-sentinel ()
-                      Y/Z.smt2Nat-sentinel
-                      (as Y/Z.smt2Z-sentinel Y/Z.smt2Nat-sentinel))
-                    (define-fun Y/Z.smt2Z5-sentinel ()
-                      Y/Z.smt2Nat-sentinel
-                      (as Y/Z.smt2Z-sentinel Y/Z.smt2Nat-sentinel))))))
+                                           (assert-not
+                                            (forall ((x Nat))
+                                                    (= (foo x) baz))))))
+                  `(((declare-datatypes ()
+                       ((C/D.smt2Nat
+                         (C/D.smt2Z)
+                         (C/D.smt2S
+                          (C/D.smt2p C/D.smt2Nat)))))
+                     (declare-datatypes ()
+                       ((Y/Z.smt2Nat
+                         (Y/Z.smt2Z)
+                         (Y/Z.smt2S
+                          (Y/Z.smt2p
+                           Y/Z.smt2Nat)))))
+                     (define-fun Y/Z.smt2Z2 ()
+                       Y/Z.smt2Nat
+                       (as Y/Z.smt2Z Y/Z.smt2Nat))
+                     (define-fun Y/Z.smt2S2
+                       ((local-1 Y/Z.smt2Nat))
+                       Y/Z.smt2Nat
+                       (as (Y/Z.smt2S local-1) Y/Z.smt2Nat))
+                     (define-fun Y/Z.smt2Z3 ()
+                       Y/Z.smt2Nat
+                       (as Y/Z.smt2Z Y/Z.smt2Nat))
+                     (define-fun Y/Z.smt2Z4 ()
+                       Y/Z.smt2Nat
+                       (as Y/Z.smt2Z Y/Z.smt2Nat))
+                     (define-fun Y/Z.smt2Z5 ()
+                       Y/Z.smt2Nat
+                       (as Y/Z.smt2Z Y/Z.smt2Nat)))
+                    ,(hash "C/D.smt2" '(assert-not (= C/D.smt2foo C/D.smt2bar))
+                           "Y/Z.smt2" '(assert-not
+                                        (forall ((local-1 Y/Z.smt2Nat))
+                                                (= (Y/Z.smt2foo local-1)
+                                                   Y/Z.smt2baz))))))))
 
 ;; Read all files named in GIVEN-FILES, combine their definitions together and
 ;; remove alpha-equivalent duplicates
 (define (mk-defs-hash given-hashes)
-  (norm-defs (qual-all-hashes given-hashes)))
+  (norm-defs (first (qual-all-hashes given-hashes))))
 
 ;; Prefix all definitions in EXPR with NAME, and prefix all local variables
 (define (qualify name expr)
   (foldl (lambda (sym x)
            (replace-in sym
                        (string->symbol (string-append name
-                                                      (symbol->string sym)
-                                                      "-sentinel"))
+                                                      (symbol->string sym)))
                        x))
          (prefix-locals expr)
-         (symbols-in (append (expression-symbols expr)
+         (symbols-in expr #;(append (expression-symbols expr)
                              (expression-types   expr)))))
+
+(module+ test
+  (def-test-case "Can qualify theorems"
+    (check-equal? '(assert-not (forall
+                                ((local-1 A/B.smt2Foo))
+                                (= (A/B.smt2foo local-1)
+                                   A/B.smt2bar)))
+                  (qualify "A/B.smt2" '(assert-not (forall
+                                                    ((x Foo))
+                                                    (= (foo x) bar)))))))
 
 ;; Prefixes a local variable name
 (define (prefix-local s)
   (string->symbol (string-append "local-" (as-str s))))
 
-;; Prefix all bound local variables appearing in EXPR, including arguments of
-;; function definitions and lambda functions, let-bound variables and
-;; pattern-match cases
-(define (prefix-locals expr)
-  ;; Turn bindings like (lambda (x Int) (f x)) into
-  ;; (lambda (local-x Int) (f local-x)) to prevent conflicts between local and
-  ;; global names (e.g. if there's a destructor called x)
-  (define (locals-in expr)
+;; The local names introduced in an expression, e.g. arguments of a lambda.
+(define (locals-in expr)
     (match expr
       [(list 'define-fun-rec (list 'par p (list name args return body)))
        (symbols-in (append p (map first args) (locals-in body)))]
@@ -440,6 +478,22 @@
 
       [(list 'define-fun                        name args return body)
        (symbols-in (append   (map first args) (locals-in body)))]
+
+
+      [(list 'define-funs-rec decs defs)
+       (begin
+         (define (from-dec dec)
+           (define par  (equal? 'par (first dec)))
+           (define pars (if par
+                            (second dec)
+                            '()))
+           (define args (if par
+                            (second (third dec))
+                            (second dec)))
+           (append pars (map first args)))
+
+         (append (append-map from-dec decs)
+                 (append-map locals-in defs)))]
 
       [(list 'declare-datatypes given decs)
        (symbols-in given)]
@@ -457,46 +511,102 @@
       [(list 'let bindings body)
        (symbols-in (append (map first bindings) (locals-in body)))]
 
+      [(list 'assert-not body)
+       (locals-in body)]
+
+      [(list 'forall args body)
+       (symbols-in (append (map first args) (locals-in body)))]
+
+      [(list 'par args body)
+       (append args (locals-in body))]
+
       [(cons a b) (append (locals-in a) (locals-in b))]
 
       [_ null]))
 
-  (define (prefix-all locals expr)
-    (foldl (lambda (local expr)
-             (replace-in local (prefix-local local) expr))
-           expr
-           locals))
+(module+ test
+  (def-test-case "Can get locals"
+    (check-equal? (set 'x)
+                  (list->set (locals-in '(assert-not
+                                          (forall ((x Nat)) (= x foo)))))
+                  "Locals from theorems")
+    (check-equal? (set 'a 'f)
+                  (list->set (locals-in '(assert-not
+                                          (par (a)
+                                               (forall ((f (=> a Nat)))
+                                                       (= 1 (f 2)))))))
+                  "Parameterised theorems")))
 
-  (prefix-all (locals-in expr) expr))
+;; Prefix all bound local variables appearing in EXPR, including arguments of
+;; function definitions and lambda functions, let-bound variables and
+;; pattern-match cases
+(define (prefix-locals expr)
+  ;; Turn bindings like (lambda (x Int) (f x)) into
+  ;; (lambda (local-1 Int) (f local-1)) to prevent conflicts between local and
+  ;; global names (e.g. if there's a destructor called x)
 
+  ;; Note: expr may contain names like local-1, local-2, etc. already, since our
+  ;; output may come back around at some point. To prevent clashes, we first
+  ;; rename locals to prefixing-local-1, prefixing-local-2, etc. and then rename
+  ;; these to local-1, local-2, etc. Hopefully this should avoid clashes, since
+  ;; the prefixing-local-* names are never emitted in our output.
+  (define (do-rename prefix expr)
+    (foldl (lambda (local result)
+             (match result
+               [(list expr n)
+                (list (replace-in local
+                                  (string->symbol
+                                   (string-append prefix (number->string n)))
+                                  expr)
+                      (+ 1 n))]))
+           (list expr 1)
+           (locals-in expr)))
 
-;; Strip "-sentinel" once we've finished processing names
-(define (remove-suffix x)
-  (string->symbol
-   (string-reverse
-    (substring (string-reverse (symbol->string x))
-               9))))
+  (first (do-rename "local-" (first (do-rename "prefixing-local-" expr)))))
 
-;; Removes '-sentinel' suffices. Do this after all other string-based
-;; transformations, since the sentinels prevent us messing with, say, the
-;; symbol "plus2", when we only wanted to change the symbol "plus". Also
-;; unqualifies "custom-foo" definitions, e.g. custom->, etc.
+(module+ test
+  (def-test-case "Prefix locals"
+    (define before
+      '(define-fun-rec (par (a)
+                            (length ((local-1 (list a)))
+                                    nat
+                                    (match local-1
+                                      (case nil Z)
+                                      (case (cons y z)
+                                        (S (length z))))))))
+
+    (define after
+      '(define-fun-rec (par (local-1)
+                            (length ((local-2 (list local-1)))
+                                    nat
+                                    (match local-2
+                                      (case nil Z)
+                                      (case (cons local-3 local-4)
+                                        (S (length local-4))))))))
+
+    (check-equal? after (prefix-locals before)
+                  "Prefix locals of function definition")
+
+    (check-equal? after (prefix-locals (prefix-locals before))
+                  "Prefixing is idempotent")))
+
+;; Removes qualification from our "custom" definitions, introduced by
+;; strip-native.rkt, since they're not actually defined in any TIP file.
 (define (unqualify x)
   ;; Removes any prefix from occurrences of the given name appearing in the
   ;; given expression
   (define (unqual name expr)
     (match expr
       [(? symbol?) (if (string-suffix? (symbol->string expr)
-                                       (symbol->string name))
+                                       (string-append ".smt2"
+                                                      (symbol->string name)))
                        name
                        expr)]
       [(cons y ys) (cons (unqual name y) (unqual name ys))]
       [_           expr]))
 
   (foldl unqual
-         (read-benchmark (string-replace (format-symbols x)
-                                         "-sentinel"
-                                         ""))
+         x
          '(CustomBool CustomTrue CustomFalse
            custom-ite custom-not custom-and custom-or custom-=>
            custom-bool-converter
@@ -508,21 +618,7 @@
 
 (module+ test
   (def-test-case "Can unqualify empty"
-    (check-equal? (unqualify '()) '()))
-
-  (def-test-case "Can remove sentinels"
-    (check-equal? (unqualify '((declare-datatypes ()
-                                 ((Nat-sentinel
-                                    (Z-sentinel)
-                                    (S-sentinel (p-sentinel Nat-sentinel)))))
-                               (define-fun my-function-sentinel () Nat-sentinel
-                                 (as Z-sentinel Nat-sentinel))))
-                             '((declare-datatypes ()
-                                 ((Nat
-                                    (Z)
-                                    (S (p Nat)))))
-                               (define-fun my-function () Nat
-                                 (as Z Nat))))))
+    (check-equal? (unqualify '()) '())))
 
 ;; Look through X for constructor definitions, and for each one append to X a
 ;; new function definition which simply wraps that constructor. For example, if
@@ -543,10 +639,10 @@
             [(list name)      (if (equal? name c) (list '())  '())]
             [(cons name args) (if (equal? name c) (list args) '())]))
 
-        (concat-map arg-decs-for-con (cdr x)))
+        (append-map arg-decs-for-con (cdr x)))
 
       (match definition
-        [(list 'declare-datatypes _ decs) (concat-map arg-decs-for-ty decs)]))
+        [(list 'declare-datatypes _ decs) (append-map arg-decs-for-ty decs)]))
 
     (define arg-decs
       (map (lambda (def)
@@ -876,67 +972,99 @@
 
 (module+ test
   (def-test-case "Can 'preprepare' a list of definitions"
-    (preprepare '())))
+    (check-equal? '() (preprepare '()) "Empty")))
 
-;; Choose the smallest name out of the alternatives found in each class.
-;;
-;; Example input: '((Pair mkPair first second)
-;;                  (PairOf paired fst snd))
-;;
-;; Output (old new) pairs which replace larger names with smaller, e.g. in the
-;; above example we'd get '((PairOf Pair)
-;;                          (paired mkPair)
-;;                          (fst    first)
-;;                          (snd    second))
-(define (pick-smallest class)
-  (if (empty? class)
-      ;; Nothing to replace
-      '()
-      (if (empty? (first class))
-          ;; We've plucked all of the names out of this class
-          '()
-          (let*
-              ;; Pluck the first names from all sets in this class
-              ([these (sort (map first class) symbol<=?)]
+(define/test-contract names-to-reps
+  (-> (*list/c (and/c (non-empty-listof (non-empty-listof symbol?))
+                      (lambda (equivs)
+                        (all-of (compose (curry equal? (length (first equivs)))
+                                         length)
+                                equivs))))
+      replacements?)
+  (curry foldl
+         (lambda (equivs result)
+           ;; equivs is '((n1 n2 ...) (m1 m2 ...) ...) where n1, m1, ... are
+           ;; equivalent, n2, m2, ... are equivalent, and so on.
 
-               ;; Pluck out the smallest, which will be the canonical name
-               [new   (first these)]
+           ;; Loop once for each element in the lists (e.g. n1, n2, n3, ...).
+           ;; 'included' will be updated each iteration, and returned as result.
+           (for/fold ([included result])
+                     ([_ (first equivs)]    ;; stop when names run out
+                      [n (in-naturals 0)])  ;; names to add this iteration
 
-               ;; Define replacements for all non-canonical names
-               [replacements (map (lambda (old) (list old new))
-                                  (cdr these))])
+             ;; Get nth element of each list in equivs
+             (let ([names (map (curry nth n) equivs)])
 
-            ;; Recurse, dropping the names we just processed
-            (append replacements (pick-smallest (map cdr class)))))))
+               ;; Turn into replacement set and add to existing
+               (extend-replacements included (apply replacement names)))))
+         (replacement)))
 
 (module+ test
-  (def-test-case "Can pick smallest from available"
-    (check-equal? (list->set (pick-smallest '((A Z R) (B Y P) (C X Q))))
-                  (list->set '((B A) (C A)
-                               (Z X) (Y X)
-                               (R P) (Q P))))
-    (check-equal? (list->set (pick-smallest '((Pair   mkPair first second)
-                                              (PairOf paired fst   snd))))
-                  (list->set '((PairOf Pair)
-                               (paired mkPair)
-                               (fst    first)
-                               (snd    second))))))
+  (def-test-case "Replacement contracts match up"
+    (for-each (compose check-true replacements? names-to-reps)
+              '( (((A)))
+                 (((A) (B))))))
 
-(define (mk-output expr so-far)
-  (let* ([norm-line (norm              expr)]
-         [names     (toplevel-names-in expr)]
-         ;; Look for an existing alpha-equivalent definition
-         ;;   '(((name1 name2 ...) expr) ...)
-         [existing-pos (index-where so-far (lambda (x)
-                                             (equal? norm-line (second x))))])
-    (if (equal? #f existing-pos)
-        ;; This expr isn't redundant, associate its names with its normal form
-        (append so-far (list (list (list names) norm-line)))
+  (def-test-case "Convert lists of names to replacement sets"
+    (check-equal? '(A A (bar A C C (B bar bar C) A) bar)
+                  (replace (finalise-replacements (names-to-reps
+                                                   '(((A B C) (P Q R) (X Y Z))
+                                                     ((foo) (bar)))))
+                           '(A P (foo X Z Z (Q bar bar C) A) foo))
+                  "Replacements get smallest value from lists")))
 
-        ;; This expr is redundant, include its names in the replacement list
-        (list-update so-far existing-pos (lambda (existing)
-                                           (list (cons names (first existing))
-                                                 norm-line))))))
+(define (normalised-intermediate? x)
+  (define ((names-list? len) names)
+    (and (list? names)
+         (not (empty? names))
+         (equal? (length names) len)))
+
+  (define names-expr?
+    (match-lambda
+      [(list namess expr)
+       (and (definition? expr)
+            (list? namess)
+            (not (empty? namess))
+            (all-of (names-list? (length (first namess))) namess))]))
+
+  (define names-expr-pair?
+    (lambda (x)
+      (and (list? x)
+           (equal? 2 (length x))
+           (names-expr? x))))
+
+  (and (list? x)
+       (all-of names-expr-pair? x)))
+
+(define/test-contract (mk-output expr so-far)
+  (-> definition?
+      normalised-intermediate?
+      normalised-intermediate?)
+
+  (define/test-contract norm-line
+    definition?
+    (norm expr))
+
+  (define/test-contract names
+    (*list/c symbol?)
+    (toplevel-names-in expr))
+
+  ;; Look for an existing alpha-equivalent definition
+  ;;   '(((name1 name2 ...) expr) ...)
+  (define/test-contract existing-pos
+    (or/c integer? boolean?)
+    (index-where so-far (lambda (x)
+                          (equal? norm-line (second x)))))
+
+  (if (equal? #f existing-pos)
+      ;; This expr isn't redundant, associate its names with its normal form
+      (cons (list (list names) norm-line)
+            so-far)
+
+      ;; This expr is redundant, include its names in the replacement list
+      (list-update so-far existing-pos (lambda (existing)
+                                         (list (cons names (first existing))
+                                               norm-line)))))
 
 (module+ test
   (let ([output (mk-output constructorZ
@@ -953,17 +1081,13 @@
       (check-equal? output
                     `((((constructor-Z) (existing-Z)) ,(norm constructorZ)))))))
 
-;; Looks for alpha-equivalent definitions in RAW-EXPRS, and returns a list of
-;; name replacements '((OLD1 NEW1) (OLD2 NEW2) ...) which can be used to update
-;; references and remove redundancies. Each NEW name is the smallest,
-;; lexicographically, which makes subsequent comparisons easier.
+;; Looks for alpha-equivalent definitions in RAW-EXPRS, and returns a set of
+;; name replacements which can be used to update references and remove
+;; redundancies.
 (define/test-contract (find-redundancies raw-exprs)
   (-> (and/c (*list/c definition?) unencoded? unnormalised?)
-      (*list/c (list/c symbol? symbol?)))
-
-  ;; Make list of replacements, based on smallest element of each class
-  (concat-map pick-smallest
-              (map first (foldl mk-output null (remove-duplicates raw-exprs)))))
+      replacements?)
+  (names-to-reps (map first (foldl mk-output null raw-exprs))))
 
 (module+ test
   (def-test-case "Can find redundancies from definitions list"
@@ -973,19 +1097,23 @@
         (declare-datatypes ()
                            ((Nat2 (Z2) (S2 (p2 Nat2)))))))
 
-    (check-equal? (map (lambda (x) (list->set (first x)))
-                       (foldl mk-output null defs))
-                  (list (set '(Nat1 Z1 S1 p1)
-                             '(Nat2 Z2 S2 p2))))
+    (check-equal? (list (set '(Nat1 Z1 S1 p1)
+                             '(Nat2 Z2 S2 p2)))
+                  (map (lambda (x) (list->set (first x)))
+                       (foldl mk-output null defs)))
 
-    (check-equal? (list->set (find-redundancies defs))
-                  (list->set '((Nat2 Nat1) (Z2 Z1) (S2 S1) (p2 p1))))
+    (check-equal? (set (set 'Nat2 'Nat1)
+                       (set 'Z2   'Z1)
+                       (set 'S2   'S1)
+                       (set 'p2   'p1))
+                  (find-redundancies defs))
 
-    (check-equal? (list->set (read-benchmark
-                              (replace-strings
-                               (format-symbols    redundancies)
-                               (find-redundancies redundancies))))
-                  (list->set `(,constructorZ ,constructorS)))))
+    (check-equal? (set constructorZ constructorS)
+                  (list->set (remove-duplicates
+                              (replace
+                               (finalise-replacements
+                                (find-redundancies redundancies))
+                               redundancies))))))
 
 ;; Remove redundancies from EXPRS, leaving only alpha-distinct definitions. When
 ;; a redundancy is found, we keep the names which appear first lexicographically
@@ -1038,12 +1166,8 @@
          ('message "References to discarded duplicates are replaced"))
         (check-not-equal? (member 'min1 syms) #f)))))
 
-;; Given a list of definitions, returns the name of those which are
-;; alpha-equivalent '((DUPE1 CANON1) (DUPE2 CANON2) ...), where each DUPEi is
-;; the name of a definition that's equivalent to the definition named by CANONi.
-;;
-;; When we find a set of duplicate definitions, we choose the lexicographically-
-;; smallest name to be the canonical one.
+;; Given a list of definitions, returns a set of replacements containing which
+;; names are alpha-equivalent to which other names.
 ;;
 ;; Note that we take the *transitive closure* when equivalence-checking: for
 ;; each equivalent pair A and B that we find, we check for equivalence *given
@@ -1051,7 +1175,7 @@
 ;; more.
 (define/test-contract (replacements-closure exprs)
   (-> (*list/c definition?)
-      (*list/c (list/c symbol? symbol?)))
+      replacements?)
   (second (normed-and-replacements exprs)))
 
 (module+ test
@@ -1061,20 +1185,22 @@
   (def-test-case "Have replacements"
     (define defs '((define-fun min1 ((x Int) (y Int)) Int (ite (<= x y) x y))
                    (define-fun min2 ((a Int) (b Int)) Int (ite (<= a b) a b))))
-    (check-equal? (list->set (replacements-closure defs))
-                  (list->set '((min2 min1))))
+    (check-equal? (replacements-closure defs)
+                  (replacement 'min2 'min1))
 
     (define test-replacements
-      (replacements-closure (qual-hashes-theorem-files)))
+      (replacements-closure (first (qual-hashes-theorem-files))))
 
     (for-each (lambda (rep)
-                (check-false         (set-member?
-                                      (names-in test-benchmark-defs)
-                                      (first rep)))
+                (for-each (lambda (old)
+                            (check-false (set-member?
+                                          (names-in test-benchmark-defs)
+                                          old)))
+                          (set->list (old-of rep)))
                 (check-not-equal? #f (set-member?
                                       (names-in test-benchmark-defs)
-                                      (second rep))))
-              test-replacements)))
+                                      (new-of rep))))
+              (set->list test-replacements))))
 
 ;; Removes redundant alpha-equivalent definitions from EXPRS, resulting in a
 ;; normalised form given as the first element of the result.
@@ -1082,150 +1208,50 @@
 ;; as the second element of the result.
 (define/test-contract normed-and-replacements
   (-> (*list/c definition?)
-      (list/c (*list/c definition?)
-              (*list/c (list/c symbol? symbol?))))
+      (list/c (and/c (*list/c definition?)
+                     (lambda (defs)
+                       (equal? (names-in defs)
+                                 (remove-duplicates (names-in defs)))))
+              replacements?))
   ;; All of the hard work is done inside normed-and-replacements-inner, but that
   ;; function is recursive, so memoising it would fill the lookup table with
   ;; intermediate results.
   (memo1 (lambda (exprs)
-           (normed-and-replacements-inner exprs '()))))
+           (define result
+             (normed-and-replacements-inner (map prefix-locals exprs)
+                                            (replacement)))
+           (list (remove-duplicates (first result)) (second result)))))
 
 (define/test-contract (normed-and-replacements-inner exprs reps)
   (-> (*list/c definition?)
-      (*list/c (list/c symbol? symbol?))
-      (list/c (*list/c definition?) (*list/c (list/c symbol? symbol?))))
+      replacements?
+      (list/c (*list/c definition?) replacements?))
 
   (msg "Normalising ~a definitions\n" (length exprs))
 
   ;; Find the names of redundant definitions, and a canonical replacement
   (define/test-contract redundancies
-    (and/c (*list/c (and/c (list/c symbol? symbol?)
-                           (lambda (pair)
-                             (symbol<? (second pair) (first pair)))))
-           (lambda (redundancies)
-             (all-of (lambda (pair)
-                       (or (not (member (first pair)
-                                        (map second redundancies)))
-                           (raise-user-error
-                            'redundancies
-                            "Redundant name '~a', with canonical replacement '~a', shouldn't appear in the canonical names:\n~a"
-                            (first  pair)
-                            (second pair)
-                            (map second redundancies))))
-                     redundancies)))
-
+    replacements?
     (find-redundancies exprs))
 
-  (msg "Found ~a redundancies\n" (length redundancies))
+  (msg "~a names remain distinct\n" (set-count redundancies))
 
   ;; Switch out all of the redundant names (including in definitions)
-  (define/test-contract renamed
-    (and/c (*list/c (and/c definition?
-                           (lambda (expr)
-                             (not (any-of (lambda (name)
-                                            (member name (map first redundancies)))
-                                          (names-in expr))))))
-           (flat-contract-with-explanation
-            (lambda (renamed)
-              (or (all-of (lambda (name)
-                            (member name (names-in renamed)))
-                          (map second redundancies))
-                  (lambda (blame)
-                    (raise-blame-error
-                     blame renamed
-                     (list 'expected: "definitions including canonical names"
-                           'given:    "definitions missing canonical names"
-                           "Should have definitions for at least ~a"
-                           "Only found definitions for ~a")
-                     (map second redundancies)
-                     (names-in renamed))))))
-           (flat-contract-with-explanation
-            (lambda (renamed)
-              (or (equal? (length renamed)
-                          (length exprs))
-                  (lambda (blame)
-                    (raise-blame-error
-                     blame renamed
-                     (list 'expected: "~a definitions"
-                           'given:    "~a definitions")
-                     (length exprs)
-                     (length renamed)))))))
-
-    (replace-all redundancies exprs))
-
-  (msg "Renamed\n")
-
-  (define/test-contract (strip-acc expr seen-result)
-    (-> definition? (list/c (*list/c symbol?) (*list/c definition?))
-        (list/c (*list/c symbol?) (*list/c definition?)))
-
-    (let* ([seen      (first  seen-result)]
-           [result    (second seen-result)]
-           [def-names (names-in expr)])
-      (if (all-of (lambda (name)
-                    (member name seen))
-                  def-names)
-          (list seen result)
-          (list (append seen def-names)
-                (append result (list expr))))))
-
   (define/test-contract stripped
-    (and/c (*list/c definition?)
-           (lambda (stripped)
-             (equal? stripped (remove-duplicates stripped)))
-           (lambda (stripped)
-             (all-of (lambda (name)
-                       (member name (names-in stripped)))
-                     (map second redundancies)))
-           (lambda (stripped)
-             (not (any-of (lambda (name)
-                            (member name (map first redundancies)))
-                          (names-in stripped)))))
+    (*list/c definition?)
+    (remove-duplicates (replace (finalise-replacements redundancies)
+                                exprs)))
 
-    (second (foldl strip-acc
-                   (list '() '())
-                   renamed)))
+  (define e-len (length exprs))
+  (define s-len (length stripped))
 
-  (msg "Stripped ~a definitions containing redundancies\n"
-       (- (length exprs) (length stripped)))
+  (msg "Removed ~a redundant definitions\n" (- e-len s-len))
 
-  (define/test-contract replacement-closure
-    (and/c (*list/c (list/c symbol? symbol?))
+  (define replacements (extend-replacements reps redundancies))
 
-           (lambda (replacement-closure)
-             (all-of (lambda (pair1)
-                       (all-of (lambda (pair2)
-                                 (when (equal? (first  pair1)
-                                               (second pair2))
-                                   (error "'old' entry also appears as 'new'"
-                                          'pair1 pair1
-                                          'pair2 pair2))
-                                 #t)
-                               replacement-closure))
-                     replacement-closure))
-
-           (lambda (replacement-closure)
-             (all-of (lambda (pair)
-                       (or (symbol<? (second pair) (first pair))
-                           (error "Replacement not canonical"
-                                  'pair pair)))
-                     replacement-closure)))
-
-    (foldl (lambda (rep existing)
-             (cons rep
-                   (map (lambda (pair)
-                          ;; If rep = '(old new) and pair = '(ancient old),
-                          ;; replace pair with '(ancient new)
-                          (if (equal? (first rep) (second pair))
-                              (list (first pair) (second rep))
-                              pair))
-                        existing)))
-           reps
-           redundancies))
-
-  (if (equal? exprs stripped)
-      (list                          stripped replacement-closure)
-      (normed-and-replacements-inner stripped replacement-closure)))
+  (if (equal? e-len s-len)
+      (list                          stripped replacements)
+      (normed-and-replacements-inner stripped replacements)))
 
 (define (mk-final-defs)
   (show (mk-final-defs-hash
@@ -1284,37 +1310,36 @@
        (lowercase-names (final-benchmark-defs)))
 
 (module+ test
-  (define subset '(grammars/simp_expr_unambig1.smt2append-sentinel
-                   grammars/simp_expr_unambig1.smt2lin-sentinel
-                   grammars/simp_expr_unambig4.smt2nil-sentinel
-                   grammars/simp_expr_unambig4.smt2cons-sentinel
-                   grammars/simp_expr_unambig4.smt2C-sentinel
-                   grammars/simp_expr_unambig4.smt2D-sentinel
-                   grammars/simp_expr_unambig4.smt2X-sentinel
-                   grammars/simp_expr_unambig4.smt2Y-sentinel
-                   grammars/simp_expr_unambig4.smt2Pl-sentinel
-                   grammars/simp_expr_unambig4.smt2Plus-sentinel
-                   grammars/simp_expr_unambig4.smt2EX-sentinel
-                   grammars/simp_expr_unambig4.smt2EY-sentinel
-                   grammars/simp_expr_unambig4.smt2head-sentinel
-                   grammars/simp_expr_unambig4.smt2tail-sentinel
-                   grammars/simp_expr_unambig4.smt2Plus_0-sentinel
-                   grammars/simp_expr_unambig4.smt2Plus_1-sentinel
-                   grammars/simp_expr_unambig4.smt2append-sentinel
-                   grammars/simp_expr_unambig4.smt2linTerm-sentinel
-                   grammars/simp_expr_unambig4.smt2lin-sentinel
-                   tip2015/sort_StoogeSort2IsSort.smt2nil-sentinel
-                   tip2015/sort_StoogeSort2IsSort.smt2cons-sentinel
-                   tip2015/sort_StoogeSort2IsSort.smt2sort2-sentinel
-                   tip2015/sort_StoogeSort2IsSort.smt2insert2-sentinel
-                   tip2015/sort_StoogeSort2IsSort.smt2zsplitAt-sentinel
-                   tip2015/sort_StoogeSort2IsSort.smt2ztake-sentinel
-                   tip2015/sort_StoogeSort2IsSort.smt2stooge2sort2-sentinel))
+  (define subset
+    (replace-names '(grammars/simp_expr_unambig1.smt2append
+                     grammars/simp_expr_unambig1.smt2lin
+                     grammars/simp_expr_unambig4.smt2nil
+                     grammars/simp_expr_unambig4.smt2cons
+                     grammars/simp_expr_unambig4.smt2C
+                     grammars/simp_expr_unambig4.smt2D
+                     grammars/simp_expr_unambig4.smt2X
+                     grammars/simp_expr_unambig4.smt2Y
+                     grammars/simp_expr_unambig4.smt2Pl
+                     grammars/simp_expr_unambig4.smt2Plus
+                     grammars/simp_expr_unambig4.smt2EX
+                     grammars/simp_expr_unambig4.smt2EY
+                     grammars/simp_expr_unambig4.smt2head
+                     grammars/simp_expr_unambig4.smt2tail
+                     grammars/simp_expr_unambig4.smt2Plus_0
+                     grammars/simp_expr_unambig4.smt2Plus_1
+                     grammars/simp_expr_unambig4.smt2append
+                     grammars/simp_expr_unambig4.smt2linTerm
+                     grammars/simp_expr_unambig4.smt2lin
+                     tip2015/sort_StoogeSort2IsSort.smt2nil
+                     tip2015/sort_StoogeSort2IsSort.smt2cons
+                     tip2015/sort_StoogeSort2IsSort.smt2sort2
+                     tip2015/sort_StoogeSort2IsSort.smt2insert2
+                     tip2015/sort_StoogeSort2IsSort.smt2zsplitAt
+                     tip2015/sort_StoogeSort2IsSort.smt2ztake
+                     tip2015/sort_StoogeSort2IsSort.smt2stooge2sort2)))
 
   (define test-hashes
     (files-to-hashes test-files))
-
-  (define qual (format-symbols (qual-all-hashes test-hashes)))
 
   (define test-defs
     (mk-defs-hash test-hashes))
@@ -1333,8 +1358,28 @@
                      (check-equal? norms (list norm)))))
                 normalised)))
 
+  (define qual (first (qual-all-hashes test-hashes)))
+
+  (let ([syms (names-in qual)])
+
+    (for-each (lambda (sym)
+                (with-check-info
+                  (('sym     sym)
+                   ('message "Native symbol was stripped"))
+                  (check-false (member sym syms))))
+              '(true false ite or))
+
+    (for-each (lambda (sym)
+                (with-check-info
+                  (('sym     sym)
+                   ('syms    syms)
+                   ('message "Found symbol"))
+                  (check-not-equal? (member sym syms)
+                                    #f)))
+              subset))
+
   (for-each (lambda (sym)
-    (define def (get-def-s sym (read-benchmark qual)))
+    (define def (get-def-s sym qual))
 
     (let ([count (length def)])
       (with-check-info
@@ -1391,7 +1436,7 @@
                              "tip2015/list_PairUnpair.smt2"))))
 
     (define hashes    (files-to-hashes files))
-    (define raw       (qual-all-hashes hashes))
+    (define raw       (first (qual-all-hashes hashes)))
     (define raw-names (names-in raw))
 
     ;; Remove redundancies
@@ -1414,7 +1459,7 @@
                   (norm raw-def))
 
                 (define raw-def-names
-                  (map remove-suffix (set->list (names-in raw-def))))
+                  (set->list (names-in raw-def)))
 
                 ;; Compare to all normalised names
                 (for-each (lambda (normal-name-enc)
@@ -1465,40 +1510,39 @@
                           normal-names))
               raw-names)
 
-    (check-equal? (list->set
-                   (find-redundancies
-                    '((declare-datatypes
-                       (local-a local-b)
-                       ((isaplanner/prop_58.smt2Pair-sentinel
-                         (isaplanner/prop_58.smt2Pair2-sentinel
-                          (isaplanner/prop_58.smt2first-sentinel local-a)
-                          (isaplanner/prop_58.smt2second-sentinel local-b)))))
-                      (declare-datatypes
-                       (local-a local-b)
-                       ((tip2015/sort_StoogeSort2IsSort.smt2Pair
-                         (tip2015/sort_StoogeSort2IsSort.smt2Pair2
-                          (tip2015/sort_StoogeSort2IsSort.smt2first local-a)
-                          (tip2015/sort_StoogeSort2IsSort.smt2second local-b))))))))
-                  (list->set
-                   '((tip2015/sort_StoogeSort2IsSort.smt2Pair
-                      isaplanner/prop_58.smt2Pair-sentinel)
-                     (tip2015/sort_StoogeSort2IsSort.smt2Pair2
-                      isaplanner/prop_58.smt2Pair2-sentinel)
-                     (tip2015/sort_StoogeSort2IsSort.smt2first
-                      isaplanner/prop_58.smt2first-sentinel)
-                     (tip2015/sort_StoogeSort2IsSort.smt2second
-                      isaplanner/prop_58.smt2second-sentinel)))))
+    (check-equal? (extend-replacements
+                   (replacement 'tip2015/sort_StoogeSort2IsSort.smt2Pair
+                                'isaplanner/prop_58.smt2Pair)
+                   (replacement 'tip2015/sort_StoogeSort2IsSort.smt2Pair2
+                                'isaplanner/prop_58.smt2Pair2)
+                   (replacement 'tip2015/sort_StoogeSort2IsSort.smt2first
+                                'isaplanner/prop_58.smt2first)
+                   (replacement 'tip2015/sort_StoogeSort2IsSort.smt2second
+                                'isaplanner/prop_58.smt2second))
+                  (find-redundancies
+                   '((declare-datatypes
+                      (local-a local-b)
+                      ((isaplanner/prop_58.smt2Pair
+                        (isaplanner/prop_58.smt2Pair2
+                         (isaplanner/prop_58.smt2first local-a)
+                         (isaplanner/prop_58.smt2second local-b)))))
+                     (declare-datatypes
+                      (local-a local-b)
+                      ((tip2015/sort_StoogeSort2IsSort.smt2Pair
+                        (tip2015/sort_StoogeSort2IsSort.smt2Pair2
+                         (tip2015/sort_StoogeSort2IsSort.smt2first local-a)
+                         (tip2015/sort_StoogeSort2IsSort.smt2second local-b)))))))))
 
     (define qualified-example
     '((define-fun (par (a b)
-                       (foo.smt2baz-sentinel ((x Nat)) Nat
+                       (foo.smt2baz ((x Nat)) Nat
                                              X)))
 
       (define-fun
-        foo.smt2quux-sentinel () Bool (hello world))
+        foo.smt2quux () Bool (hello world))
 
       (define-fun-rec (par (a)
-                           (bar.smt2quux-sentinel () Foo
+                           (bar.smt2quux () Foo
                                                   (foo bar))))))
 
   (check-equal? (unqualify qualified-example)
@@ -1528,25 +1572,24 @@
                   (check-sat)))
 
   (def-test-case "Find redundancies"
-    ;; Check known expression
-    (check-equal? (list->set (find-redundancies redundancies))
-                  (list->set '((redundantZ1 constructor-Z)
-                               (redundantZ2 constructor-Z)
-                               (redundantZ3 constructor-Z))))
+    (check-equal? (find-redundancies redundancies)
+                  (extend-replacements
+                   (replacement 'constructor-S)
+                   (replacement 'redundantZ1 'constructor-Z)
+                   (replacement 'redundantZ2 'constructor-Z)
+                   (replacement 'redundantZ3 'constructor-Z))
+                  "Check known expression")
 
-    ;; Ensure we keep the lexicographically-smallest name
-    (check-equal? (list->set (find-redundancies
-                              '((declare-datatypes () ((TB (C1A) (C2C (D1B TB)))))
-                                (declare-datatypes () ((TC (C1C) (C2B (D1A TC)))))
-                                (declare-datatypes () ((TA (C1B) (C2A (D1C TA))))))))
-                  (list->set '((TB  TA)
-                               (TC  TA)
-                               (C1B C1A)
-                               (C1C C1A)
-                               (C2B C2A)
-                               (C2C C2A)
-                               (D1B D1A)
-                               (D1C D1A)))))
+    (check-equal? (find-redundancies
+                   '((declare-datatypes () ((TB (C1A) (C2C (D1B TB)))))
+                     (declare-datatypes () ((TC (C1C) (C2B (D1A TC)))))
+                     (declare-datatypes () ((TA (C1B) (C2A (D1C TA)))))))
+                  (extend-replacements
+                   (replacement 'TA  'TB  'TC)
+                   (replacement 'C1A 'C1B 'C1C)
+                   (replacement 'C2A 'C2B 'C2C)
+                   (replacement 'D1A 'D1B 'D1C))
+                  "Ensure we keep the lexicographically-smallest name"))
 
   (def-test-case "Normalise"
     (define (check-normal kind def expected)
@@ -1688,8 +1731,6 @@
       (check-not-equal? #f
                         (member 'declare-datatypes (flatten prepared)))))
 
-
-
   (def-test-case "Mutual recursion"
     (define prepared (prepare mut))
 
@@ -1712,7 +1753,7 @@
   ;(define f (benchmark-file "grammars/simp_expr_unambig3.smt2"))
 
   (define one-liners
-    (qual-all-hashes (files-to-hashes (string-split f "\n"))))
+    (first (qual-all-hashes (files-to-hashes (string-split f "\n")))))
 
   (define result
     (filter non-empty?
@@ -1733,16 +1774,17 @@
   (let* ([file "tip2015/sort_StoogeSort2IsSort.smt2"]
          [defs (mk-defs-hash (files-to-hashes (list (benchmark-file file))))])
     (for-each (lambda (data)
-                (define def
-                  (toplevel-function-defs-of (string-append file (first data) "-sentinel")
-                                             defs))
+                (define name      (first data))
+                (define qualified (string-append file name))
+                (define def       (toplevel-function-defs-of qualified defs))
 
                 (with-check-info
-                 (('defs    defs)
-                  ('def     def )
-                  ('name    (first  data))
-                  ('kind    (second data))
-                  ('message "Can get function definition"))
+                 (('def       def )
+                  ('name      name)
+                  ('kind      (second data))
+                  ('qualified qualified)
+                  ('message   "Can get function definition")
+                  ('defs      defs))
                  (check-equal? (length def) 1)))
               '(("sort2"        "plain")
                 ("insert2"      "recursive")
@@ -1759,38 +1801,20 @@
                                   "tip2015/propositional_AndIdempotent.smt2"
                                   "tip2015/propositional_AndImplication.smt2")))
     (define hashes (files-to-hashes fs))
-    (define q (qual-all-hashes hashes))
+    (define q (first (qual-all-hashes hashes)))
     (define s (names-in q))
 
-    (check-true (string-contains? (~a s) "or2-sentinel")
+    (check-true (string-contains? (~a s) "or2")
                 "Found an or2 symbol")
 
-    (check-false (member 'or2-sentinel s)
+    (check-false (member 'or2 s)
                  "or2 symbol is qualified")
 
     (check-true (string-contains? (format-symbols
                                    (names-in
                                     (mk-defs-hash hashes)))
-                                  "or2-sentinel")
+                                  "or2")
                 "Found 'or2' symbol"))
-
-    (let ([syms (names-in (read-benchmark qual))])
-
-      (for-each (lambda (sym)
-                  (with-check-info
-                    (('sym     sym)
-                     ('message "Native symbol was stripped"))
-                    (check-false (member sym syms))))
-                '(true-sentinel false-sentinel ite-sentinel or-sentinel))
-
-      (for-each (lambda (sym)
-                  (with-check-info
-                    (('sym     sym)
-                     ('syms    syms)
-                     ('message "Found symbol"))
-                    (check-not-equal? (member sym syms)
-                                      #f)))
-                subset))
 
     (let ([syms (names-in test-defs)])
       (for-each (lambda (sym)
@@ -1799,25 +1823,18 @@
                      ('test-defs test-defs)
                      ('message   "Symbol is qualified"))
                     (check-true (string-contains? (symbol->string sym)
-                                                  ".smt2")))
-
-                  (with-check-info
-                    (('sym       sym)
-                     ('test-defs test-defs)
-                     ('message   "Symbol has suffix"))
-                    (check-true (string-contains? (symbol->string sym)
-                                                  "-sentinel"))))
+                                                  ".smt2"))))
                 syms)))
 
 (memo0 normed-qualified-theorem-files
-       (preprepare (norm-defs (qual-hashes-theorem-files))))
+       (preprepare (norm-defs (first (qual-hashes-theorem-files)))))
 
 (define/test-contract (constructor-function-replacements hashes)
-  (-> tip-benchmark?
+  (-> tip-benchmarks?
       replacements?)
 
   (define qualified
-    (qual-all-hashes hashes))
+    (first (qual-all-hashes hashes)))
 
   (define replacements
     (replacements-closure qualified))
@@ -1825,23 +1842,100 @@
   (define all-constructors
     (expression-constructors qualified))
 
-  (list->set
-   (map (lambda (constructor)
-          (unqualify (list constructor
-                           (prefix-name
-                            (match (filter (lambda (rep)
-                                             (equal? (first rep) constructor))
-                                           replacements)
-                              [(cons (list _ replacement) _) replacement]
-                              ['()                           constructor])
-                            "constructor-"))))
-        all-constructors)))
+  (apply extend-replacements
+         (map (lambda (constructor)
+                (replacement constructor
+                             (prefix-name (unqualify (norm-name constructor))
+                                          "constructor-")))
+              all-constructors)))
 
 (module+ test
   (def-test-case "Constructor function name replacements"
-    (check-equal? (constructor-function-replacements
-                   (hash "foo/bar.smt2"
+    (check-equal? (extend-replacements
+                   (replacement 'prod/prop_35.smt2Z
+                                (prefix-name (nn 'prod/prop_35.smt2Z)
+                                             "constructor-"))
+                   (replacement 'prod/prop_35.smt2S
+                                (prefix-name (nn 'prod/prop_35.smt2S)
+                                             "constructor-")))
+                  (constructor-function-replacements
+                   (hash "prod/prop_35.smt2"
                          `((,nat-def)
-                           (assert-not (= 1 1)))))
-                  (set '(foo/bar.smt2Z constructor-foo/bar.smt2Z)
-                       '(foo/bar.smt2S constructor-foo/bar.smt2S)))))
+                           (assert-not (= 1 1))))))))
+
+(memo0 name-replacements
+       (foldl (lambda (x h)
+                (hash-set h x x))
+              (finalise-replacements
+               (replacements-closure (first (qual-hashes-theorem-files))))
+              '(CustomInt CustomNeg CustomZero CustomPos
+                CustomNat CustomZ CustomS
+                CustomBool CustomTrue CustomFalse
+                custom-bool-converter)))
+
+(define (norm-name x)
+  (cond
+    ;; custom* and Custom* can be left unchanged
+    [(string-prefix? (string-downcase (symbol->string x)) "custom")
+     x]
+
+    ;; Leave constructor functions as-is
+    [(string-prefix? (symbol->string x) "constructor-") x]
+
+    ;; Names appearing in name-replacements are looked up (which may yield
+    ;; themselves
+    [(hash-has-key? (name-replacements) x)
+     (hash-ref (name-replacements) x)]
+
+    [else
+     (raise-arguments-error 'norm-name
+                            "Name not found"
+                            "given" x
+                            "available" (hash-keys (name-replacements)))]))
+
+;; Shorthand, since it's used to often
+(define nn norm-name)
+
+(define (replace-names x)
+  (replace (name-replacements) x))
+
+(memo0 qualified-theorems
+       (second (qual-hashes-theorem-files)))
+
+(module+ test
+  (def-test-case "Theorems are qualified"
+    (hash-for-each (qualified-theorems)
+                   (lambda (pth thm)
+                     (for-each (lambda (sym)
+                                 (define str (symbol->string sym))
+
+                                 (unless (string-contains? str "ustom")
+                                   (with-check-info
+                                     (('sym sym)
+                                      ('thm thm))
+                                     (check-true (string-contains? str ".smt2")
+                                                 "Symbol is qualified"))))
+                               (symbols-in thm))))))
+
+(memo0 normalised-theorems2
+       (hash-foldl (lambda (pth thm result)
+                     (hash-set result pth (replace-names thm)))
+                   (hash)
+                   (qualified-theorems)))
+
+(module+ test
+  (def-test-case "Normalised theorem names"
+    (hash-for-each (normalised-theorems2)
+                   (lambda (pth thm)
+                     (for-each (lambda (sym)
+                                 (define s (unqualify sym))
+
+                                 (unless (or (member s native-symbols)
+                                             (member s (locals-in thm)))
+                                   (with-check-info
+                                     (('sym sym)
+                                      ('pth pth)
+                                      ('thm thm))
+                                     (check-equal? s (norm-name s)
+                                                   "Symbol is normalised"))))
+                               (flatten thm))))))
