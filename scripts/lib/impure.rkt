@@ -4,7 +4,8 @@
 (require "memo.rkt")
 (require "util.rkt")
 
-(provide benchmark-dir in-temp-dir msg parameterize-env pipe quiet
+(provide benchmark-file benchmark-files benchmark-dir in-temp-dir msg
+         parameterize-env pipe quiet
          set-theorem-files! theorem-files temp-file-prefix)
 
 (module+ test
@@ -103,3 +104,9 @@
 (define (set-theorem-files! proc)
   (set! theorem-files (lambda ()
                         (sort (proc) string<=?))))
+
+(define benchmark-file
+  (curry string-append benchmark-dir "/"))
+
+(define benchmark-files
+  (curry map benchmark-file))

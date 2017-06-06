@@ -5,7 +5,7 @@
 (require rackunit)
 (require "impure.rkt")
 
-(provide benchmark-file benchmark-files check-equal? check-exn check-false
+(provide check-equal? check-exn check-false
          check-not-equal? check-pred check-true constructorS constructorZ
          custom-bool custom-int custom-ite custom-nat def-test-case form
          form-with-deps mut nat-def redundancies test-data test-files
@@ -37,12 +37,6 @@
 ;; be bypassed by setting the DEBUG env var, but it's suggested to also set the
 ;; PLT_TEST_REGEX env var so you only get output from specific tests.
 (quiet)
-
-(define benchmark-file
-  (curry string-append benchmark-dir "/"))
-
-(define benchmark-files
-  (curry map benchmark-file))
 
 ;; For testing, we default to only using a subset of the benchmarks, which we
 ;; accomplish by overriding theorem-files; this acts as a sanity check, and is
