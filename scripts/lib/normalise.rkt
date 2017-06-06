@@ -2,6 +2,7 @@
 
 ;; Normalise TIP definitions
 
+(require data/heap)
 (require racket/trace)
 (require "compare.rkt")
 (require "impure.rkt")
@@ -974,30 +975,33 @@
   (def-test-case "Can 'preprepare' a list of definitions"
     (check-equal? '() (preprepare '()) "Empty")))
 
-(define/test-contract names-to-reps
+(define/test-contract (names-to-reps names)
   (-> (*list/c (and/c (non-empty-listof (non-empty-listof symbol?))
                       (lambda (equivs)
                         (all-of (compose (curry equal? (length (first equivs)))
                                          length)
                                 equivs))))
       replacements?)
-  (curry foldl
-         (lambda (equivs result)
-           ;; equivs is '((n1 n2 ...) (m1 m2 ...) ...) where n1, m1, ... are
-           ;; equivalent, n2, m2, ... are equivalent, and so on.
+  ;; Combine all accumulated replacement sets
+  (apply extend-replacements
+         (foldl
+          (lambda (equivs result)
+            ;; equivs is '((n1 n2 ...) (m1 m2 ...) ...) where n1, m1, ... are
+            ;; equivalent, n2, m2, ... are equivalent, and so on.
 
-           ;; Loop once for each element in the lists (e.g. n1, n2, n3, ...).
-           ;; 'included' will be updated each iteration, and returned as result.
-           (for/fold ([included result])
-                     ([_ (first equivs)]    ;; stop when names run out
-                      [n (in-naturals 0)])  ;; names to add this iteration
+            ;; Loop once for each element in the lists (e.g. n1, n2, n3, ...).
+            ;; 'included' will be updated each iteration, and returned as result
+            (for/fold ([included result])
+                      ([_ (first equivs)] ;; stop when names run out
+                       [n (in-naturals 0)]) ;; names to add this iteration
 
-             ;; Get nth element of each list in equivs
-             (let ([names (map (curry nth n) equivs)])
+              ;; Get nth element of each list in equivs
+              (let ([nths (map (curry nth n) equivs)])
 
-               ;; Turn into replacement set and add to existing
-               (extend-replacements included (apply replacement names)))))
-         (replacement)))
+                ;; Turn into replacement set and accumulate
+                (cons (apply replacement nths) included))))
+          '()
+          names)))
 
 (module+ test
   (def-test-case "Replacement contracts match up"
@@ -1102,10 +1106,11 @@
                   (map (lambda (x) (list->set (first x)))
                        (foldl mk-output null defs)))
 
-    (check-equal? (set (set 'Nat2 'Nat1)
-                       (set 'Z2   'Z1)
-                       (set 'S2   'S1)
-                       (set 'p2   'p1))
+    (check-equal? (extend-replacements
+                   (replacement 'Nat2 'Nat1)
+                   (replacement 'Z2   'Z1)
+                   (replacement 'S2   'S1)
+                   (replacement 'p2   'p1))
                   (find-redundancies defs))
 
     (check-equal? (set constructorZ constructorS)
@@ -1196,11 +1201,11 @@
                             (check-false (set-member?
                                           (names-in test-benchmark-defs)
                                           old)))
-                          (set->list (old-of rep)))
+                          (in-heap (old-of rep)))
                 (check-not-equal? #f (set-member?
                                       (names-in test-benchmark-defs)
                                       (new-of rep))))
-              (set->list test-replacements))))
+              (in-heap test-replacements))))
 
 ;; Removes redundant alpha-equivalent definitions from EXPRS, resulting in a
 ;; normalised form given as the first element of the result.
@@ -1219,8 +1224,9 @@
   (memo1 (lambda (exprs)
            (define result
              (normed-and-replacements-inner (map prefix-locals exprs)
-                                            (replacement)))
-           (list (remove-duplicates (first result)) (second result)))))
+                                            '()))
+           (list (first result)
+                 (apply extend-replacements (second result))))))
 
 (define/test-contract (normed-and-replacements-inner exprs reps)
   (-> (*list/c definition?)
@@ -1234,7 +1240,7 @@
     replacements?
     (find-redundancies exprs))
 
-  (msg "~a names remain distinct\n" (set-count redundancies))
+  (msg "~a names remain distinct\n" (count-replacements redundancies))
 
   ;; Switch out all of the redundant names (including in definitions)
   (define/test-contract stripped
@@ -1247,7 +1253,7 @@
 
   (msg "Removed ~a redundant definitions\n" (- e-len s-len))
 
-  (define replacements (extend-replacements reps redundancies))
+  (define replacements (cons redundancies reps))
 
   (if (equal? e-len s-len)
       (list                          stripped replacements)
