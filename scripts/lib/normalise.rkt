@@ -1202,7 +1202,7 @@
                             (check-false (set-member?
                                           (names-in test-benchmark-defs)
                                           old)))
-                          (in-heap (old-of rep)))
+                          (vector->list (heap->vector (old-of rep))))
                 (check-not-equal? #f (set-member?
                                       (names-in test-benchmark-defs)
                                       (new-of rep))))
