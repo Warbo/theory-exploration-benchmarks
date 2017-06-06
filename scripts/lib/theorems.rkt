@@ -169,7 +169,10 @@
                                                 (path-end f))
                                                thm))))))))
       ;; Otherwise return cached version
-      (read (file->string (getenv "BENCHMARKS_NORMALISED_THEOREMS")))))
+      (let* ([f (open-input-file (getenv "BENCHMARKS_NORMALISED_THEOREMS"))]
+             [result (read f)])
+        (close-input-port f)
+        result)))
 
 (module+ test
   (def-test-case "Theorem names get normalised"
