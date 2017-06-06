@@ -276,10 +276,7 @@ rec {
     # Allow testing to be skipped, as it can take a few minutes
     doCheck    = getEnv "SKIP_TESTS" == "";
     checkPhase = ''
-      for F in ./lib/*.rkt
-      do
-        raco test "$F" || exit 1
-      done
+      raco test test.rkt || exit 1
     '';
 
     # Sets up the environment for the scripts and tests, and informs the user
@@ -295,7 +292,7 @@ rec {
         echo "NOTE: We don't check Racket contracts because it's slow."
         echo "To enable contract checking, set PLT_TR_CONTRACTS to 1"
 
-        echo "You can run tests with e.g. 'raco test scripts/lib/defs.rkt'"
+        echo "You can run tests with e.g. 'raco test scripts/test.rkt'"
         echo "Use PLT_TEST_REGEX env var to limit which test cases are run."
 
         echo "Log messages are suppressed during tests. Set DEBUG to see them."
@@ -306,15 +303,12 @@ rec {
   # Runs tests against all TIP benchmarks, rather than the sub-set used in tools
   tests = stdenv.mkDerivation {
     name         = "tip-tools-tests";
-    src          = ./scripts/lib;
+    src          = ./scripts;
 
     # Include tools as a dependency, so we run its fast tests first
     buildInputs  = [ env tools ];
     buildCommand = ''
-      for F in "$src/"*.rkt
-      do
-        raco test "$F" || exit 1
-      done
+      raco test "$src/test.rkt" || exit 1
       echo "pass" > "$out"
     '';
 

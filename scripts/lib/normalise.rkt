@@ -1106,12 +1106,13 @@
                   (map (lambda (x) (list->set (first x)))
                        (foldl mk-output null defs)))
 
-    (check-equal? (extend-replacements
-                   (replacement 'Nat2 'Nat1)
-                   (replacement 'Z2   'Z1)
-                   (replacement 'S2   'S1)
-                   (replacement 'p2   'p1))
-                  (find-redundancies defs))
+    (check-equal? (finalise-replacements
+                   (extend-replacements
+                    (replacement 'Nat2 'Nat1)
+                    (replacement 'Z2   'Z1)
+                    (replacement 'S2   'S1)
+                    (replacement 'p2   'p1)))
+                  (finalise-replacements (find-redundancies defs)))
 
     (check-equal? (set constructorZ constructorS)
                   (list->set (remove-duplicates
@@ -1190,8 +1191,8 @@
   (def-test-case "Have replacements"
     (define defs '((define-fun min1 ((x Int) (y Int)) Int (ite (<= x y) x y))
                    (define-fun min2 ((a Int) (b Int)) Int (ite (<= a b) a b))))
-    (check-equal? (replacements-closure defs)
-                  (replacement 'min2 'min1))
+    (check-equal? (finalise-replacements (replacements-closure defs))
+                  (finalise-replacements (replacement 'min2 'min1)))
 
     (define test-replacements
       (replacements-closure (first (qual-hashes-theorem-files))))
@@ -1205,7 +1206,7 @@
                 (check-not-equal? #f (set-member?
                                       (names-in test-benchmark-defs)
                                       (new-of rep))))
-              (in-heap test-replacements))))
+              (vector->list (heap->vector test-replacements)))))
 
 ;; Removes redundant alpha-equivalent definitions from EXPRS, resulting in a
 ;; normalised form given as the first element of the result.
@@ -1516,28 +1517,30 @@
                           normal-names))
               raw-names)
 
-    (check-equal? (extend-replacements
-                   (replacement 'tip2015/sort_StoogeSort2IsSort.smt2Pair
-                                'isaplanner/prop_58.smt2Pair)
-                   (replacement 'tip2015/sort_StoogeSort2IsSort.smt2Pair2
-                                'isaplanner/prop_58.smt2Pair2)
-                   (replacement 'tip2015/sort_StoogeSort2IsSort.smt2first
-                                'isaplanner/prop_58.smt2first)
-                   (replacement 'tip2015/sort_StoogeSort2IsSort.smt2second
-                                'isaplanner/prop_58.smt2second))
-                  (find-redundancies
-                   '((declare-datatypes
-                      (local-a local-b)
-                      ((isaplanner/prop_58.smt2Pair
-                        (isaplanner/prop_58.smt2Pair2
-                         (isaplanner/prop_58.smt2first local-a)
-                         (isaplanner/prop_58.smt2second local-b)))))
-                     (declare-datatypes
-                      (local-a local-b)
-                      ((tip2015/sort_StoogeSort2IsSort.smt2Pair
-                        (tip2015/sort_StoogeSort2IsSort.smt2Pair2
-                         (tip2015/sort_StoogeSort2IsSort.smt2first local-a)
-                         (tip2015/sort_StoogeSort2IsSort.smt2second local-b)))))))))
+    (check-equal? (finalise-replacements
+                   (extend-replacements
+                    (replacement 'tip2015/sort_StoogeSort2IsSort.smt2Pair
+                                 'isaplanner/prop_58.smt2Pair)
+                    (replacement 'tip2015/sort_StoogeSort2IsSort.smt2Pair2
+                                 'isaplanner/prop_58.smt2Pair2)
+                    (replacement 'tip2015/sort_StoogeSort2IsSort.smt2first
+                                 'isaplanner/prop_58.smt2first)
+                    (replacement 'tip2015/sort_StoogeSort2IsSort.smt2second
+                                 'isaplanner/prop_58.smt2second)))
+                  (finalise-replacements
+                   (find-redundancies
+                    '((declare-datatypes
+                       (local-a local-b)
+                       ((isaplanner/prop_58.smt2Pair
+                         (isaplanner/prop_58.smt2Pair2
+                          (isaplanner/prop_58.smt2first local-a)
+                          (isaplanner/prop_58.smt2second local-b)))))
+                      (declare-datatypes
+                       (local-a local-b)
+                       ((tip2015/sort_StoogeSort2IsSort.smt2Pair
+                         (tip2015/sort_StoogeSort2IsSort.smt2Pair2
+                          (tip2015/sort_StoogeSort2IsSort.smt2first local-a)
+                          (tip2015/sort_StoogeSort2IsSort.smt2second local-b))))))))))
 
     (define qualified-example
     '((define-fun (par (a b)
@@ -1578,23 +1581,26 @@
                   (check-sat)))
 
   (def-test-case "Find redundancies"
-    (check-equal? (find-redundancies redundancies)
-                  (extend-replacements
-                   (replacement 'constructor-S)
-                   (replacement 'redundantZ1 'constructor-Z)
-                   (replacement 'redundantZ2 'constructor-Z)
-                   (replacement 'redundantZ3 'constructor-Z))
+    (check-equal? (finalise-replacements (find-redundancies redundancies))
+                  (finalise-replacements
+                   (extend-replacements
+                    (replacement 'constructor-S)
+                    (replacement 'redundantZ1 'constructor-Z)
+                    (replacement 'redundantZ2 'constructor-Z)
+                    (replacement 'redundantZ3 'constructor-Z)))
                   "Check known expression")
 
-    (check-equal? (find-redundancies
-                   '((declare-datatypes () ((TB (C1A) (C2C (D1B TB)))))
-                     (declare-datatypes () ((TC (C1C) (C2B (D1A TC)))))
-                     (declare-datatypes () ((TA (C1B) (C2A (D1C TA)))))))
-                  (extend-replacements
-                   (replacement 'TA  'TB  'TC)
-                   (replacement 'C1A 'C1B 'C1C)
-                   (replacement 'C2A 'C2B 'C2C)
-                   (replacement 'D1A 'D1B 'D1C))
+    (check-equal? (finalise-replacements
+                   (find-redundancies
+                    '((declare-datatypes () ((TB (C1A) (C2C (D1B TB)))))
+                      (declare-datatypes () ((TC (C1C) (C2B (D1A TC)))))
+                      (declare-datatypes () ((TA (C1B) (C2A (D1C TA))))))))
+                  (finalise-replacements
+                   (extend-replacements
+                    (replacement 'TA  'TB  'TC)
+                    (replacement 'C1A 'C1B 'C1C)
+                    (replacement 'C2A 'C2B 'C2C)
+                    (replacement 'D1A 'D1B 'D1C)))
                   "Ensure we keep the lexicographically-smallest name"))
 
   (def-test-case "Normalise"
@@ -1857,17 +1863,19 @@
 
 (module+ test
   (def-test-case "Constructor function name replacements"
-    (check-equal? (extend-replacements
-                   (replacement 'prod/prop_35.smt2Z
-                                (prefix-name (nn 'prod/prop_35.smt2Z)
-                                             "constructor-"))
-                   (replacement 'prod/prop_35.smt2S
-                                (prefix-name (nn 'prod/prop_35.smt2S)
-                                             "constructor-")))
-                  (constructor-function-replacements
-                   (hash "prod/prop_35.smt2"
-                         `((,nat-def)
-                           (assert-not (= 1 1))))))))
+    (check-equal? (finalise-replacements
+                   (extend-replacements
+                    (replacement 'prod/prop_35.smt2Z
+                                 (prefix-name (nn 'prod/prop_35.smt2Z)
+                                              "constructor-"))
+                    (replacement 'prod/prop_35.smt2S
+                                 (prefix-name (nn 'prod/prop_35.smt2S)
+                                              "constructor-"))))
+                  (finalise-replacements
+                   (constructor-function-replacements
+                    (hash "prod/prop_35.smt2"
+                          `((,nat-def)
+                            (assert-not (= 1 1)))))))))
 
 (memo0 name-replacements
        (foldl (lambda (x h)
