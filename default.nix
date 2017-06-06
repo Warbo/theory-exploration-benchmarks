@@ -221,24 +221,40 @@ rec {
     installPhase = ''cp -r ./transformed "$out"'';
   };
 
-  tools = stdenv.mkDerivation (rec {
+  cache = rec {
+    BENCHMARKS_FALLBACK = tip-benchmarks;
+
+    BENCHMARKS_CACHE = runCommand "benchmarks-cache"
+      {
+        inherit BENCHMARKS_FALLBACK;
+        src         = ./scripts;
+        buildInputs = [ env ];
+      }
+      ''
+        "$src/make_sampling_data.rkt" > "$out"
+      '';
+
+    BENCHMARKS_NORMALISED_THEOREMS = runCommand "normalised-theorems"
+      {
+        inherit BENCHMARKS_CACHE BENCHMARKS_FALLBACK;
+        src         = ./scripts;
+        buildInputs = [ env ];
+      }
+      ''
+        "$src/make_normalised_theorems.rkt" > "$out"
+      '';
+  };
+
+  tools = stdenv.mkDerivation (cache // rec {
     name = "te-benchmark";
     src  = ./scripts;
 
     buildInputs = [ env makeWrapper ];
 
-    buildPhase = ''
-      echo "Generating cache" 1>&2
-      ./make_sampling_data.rkt > benchmarks_cache
-    '';
-
     installPhase = ''
       # Install Racket scripts
       mkdir "$out"
       cp -r . "$out/scripts"
-
-      # Install cache
-      cp benchmarks_cache "$out/benchmarks_cache"
 
       # Compile Racket to bytecode for speed
       raco make "$out/scripts/"*.rkt "$out/scripts/lib/"*.rkt
@@ -257,12 +273,13 @@ rec {
 
         # Wrap the one-liner so we can provide an appropriate environment.
         # Set PLT_COMPILED_FILE_CHECK to avoid checking bytecode timestamps.
-        wrapProgram "$out/bin/$NAME"                            \
-          --prefix PATH : "${env}/bin"                          \
-          --set PWD                     "$out/scripts"          \
-          --set PLT_COMPILED_FILE_CHECK exists                  \
-          --set BENCHMARKS_CACHE        "$out/benchmarks_cache" \
-          --set BENCHMARKS_FALLBACK     "${tip-benchmarks}"
+        wrapProgram "$out/bin/$NAME"                                             \
+          --prefix PATH : "${env}/bin"                                           \
+          --set PWD                            "$out/scripts"                    \
+          --set PLT_COMPILED_FILE_CHECK        exists                            \
+          --set BENCHMARKS_CACHE               "$BENCHMARKS_CACHE"               \
+          --set BENCHMARKS_NORMALISED_THEOREMS "$BENCHMARKS_NORMALISED_THEOREMS" \
+          --set BENCHMARKS_FALLBACK            "$BENCHMARKS_FALLBACK"
       done
     '';
 
