@@ -119,6 +119,16 @@ with rec {
     '';
   };
 
+  tip-repo = fetchFromGitHub {
+    owner  = "tip-org";
+    repo   = "benchmarks";
+    rev    = "fae25da";
+    sha256 = "08zm9a8dlwqm6bnd5z8714j5365pklwh4lkgcnhq0ns1lq0njp3l";
+  };
+};
+rec {
+  inherit patchedHaskellPackages;
+
   env = buildEnv {
     name  = "tip-bench-env";
     paths = [
@@ -136,16 +146,6 @@ with rec {
       ]))
     ];
   };
-
-  tip-repo = fetchFromGitHub {
-    owner  = "tip-org";
-    repo   = "benchmarks";
-    rev    = "fae25da";
-    sha256 = "08zm9a8dlwqm6bnd5z8714j5365pklwh4lkgcnhq0ns1lq0njp3l";
-  };
-};
-rec {
-  inherit patchedHaskellPackages;
 
   # Take benchmarks from git, but transform them to replace "built-in"
   # definitions like "Bool" and "<" with explicitly defined versions.
@@ -222,6 +222,8 @@ rec {
   };
 
   cache = rec {
+    # This tells the tests where to find the benchmarks. Only a subset of files
+    # will be tested, to make things faster.
     BENCHMARKS_FALLBACK = tip-benchmarks;
 
     BENCHMARKS_CACHE = runCommand "benchmarks-cache"
@@ -245,7 +247,61 @@ rec {
       '';
   };
 
+  # Standalone to allow separate testing and to avoid requiring expensive caches
+  quickToolTest = stdenv.mkDerivation (rec {
+    # BENCHMARKS_FALLBACK is necessary for everything except strip_native.rkt
+    inherit (cache) BENCHMARKS_FALLBACK;
+
+    name = "te-benchmark-quick-tool-test";
+    src  = ./scripts;
+
+    buildInputs = [ env makeWrapper ];
+
+    installPhase = ''
+      echo "${if doCheck then "passed" else "skipped"}" > "$out"
+    '';
+
+    # Includes e.g. example inputs
+    TEST_DATA = "${./test-data}";
+
+    # Allow testing to be skipped, as it can take a few minutes
+    doCheck    = getEnv "SKIP_TESTS" == "";
+    checkPhase = ''
+      raco test test.rkt || exit 1
+    '';
+  });
+
+  # Standalone since it's too slow to use as a dependency of tools
+  fullToolTest = stdenv.mkDerivation {
+    inherit quickToolTest;
+
+    name         = "te-benchmark-full-tool-test";
+    src          = ./scripts;
+
+    # Include tools as a dependency, so we run its fast tests first
+    buildInputs  = [ env tools ];
+    buildCommand = ''
+      raco test "$src/test.rkt" || exit 1
+      echo "pass" > "$out"
+    '';
+
+    # Setting BENCHMARKS during tests overrides BENCHMARKS_FALLBACK, and also
+    # causes all files to be tested rather than a subset.
+    BENCHMARKS          = tip-benchmarks;
+    BENCHMARKS_FALLBACK = tip-benchmarks;
+
+    # Check contracts while testing; it's disabled by default for being too slow
+    PLT_TR_CONTRACTS    = "1";
+    TEST_DATA           = "${./test-data}";
+  };
+
+  # Installs tools for translating, sampling, etc. the benchmark. These tools
+  # get cached data baked into them, which makes them slow to install but fast
+  # to run.
   tools = stdenv.mkDerivation (cache // rec {
+    # Require (quick) tests to pass before attempting to install
+    inherit quickToolTest;
+
     name = "te-benchmark";
     src  = ./scripts;
 
@@ -282,62 +338,7 @@ rec {
           --set BENCHMARKS_FALLBACK            "$BENCHMARKS_FALLBACK"
       done
     '';
-
-    # This tells the tests where to find the benchmarks. Only a subset of files
-    # will be tested, to make things faster.
-    BENCHMARKS_FALLBACK = "${tip-benchmarks}";
-
-    # Tells the tests where to find data, like example inputs.
-    TEST_DATA = "${./test-data}";
-
-    # Allow testing to be skipped, as it can take a few minutes
-    doCheck    = getEnv "SKIP_TESTS" == "";
-    checkPhase = ''
-      raco test test.rkt || exit 1
-    '';
-
-    # Sets up the environment for the scripts and tests, and informs the user
-    shellHook = ''
-      {
-        echo "Setting BENCHMARKS_FALLBACK to ${tip-benchmarks}"
-        echo "To use a different set of benchmarks, you can set BENCHMARKS"
-        export BENCHMARKS_FALLBACK="${tip-benchmarks}"
-
-        echo "Setting TEST_DATA to ${./test-data}"
-        export TEST_DATA="${./test-data}"
-
-        echo "NOTE: We don't check Racket contracts because it's slow."
-        echo "To enable contract checking, set PLT_TR_CONTRACTS to 1"
-
-        echo "You can run tests with e.g. 'raco test scripts/test.rkt'"
-        echo "Use PLT_TEST_REGEX env var to limit which test cases are run."
-
-        echo "Log messages are suppressed during tests. Set DEBUG to see them."
-      } 1>&2
-    '';
   });
-
-  # Runs tests against all TIP benchmarks, rather than the sub-set used in tools
-  tests = stdenv.mkDerivation {
-    name         = "tip-tools-tests";
-    src          = ./scripts;
-
-    # Include tools as a dependency, so we run its fast tests first
-    buildInputs  = [ env tools ];
-    buildCommand = ''
-      raco test "$src/test.rkt" || exit 1
-      echo "pass" > "$out"
-    '';
-
-    # Setting BENCHMARKS during tests overrides BENCHMARKS_FALLBACK, and also
-    # causes all files to be tested rather than a subset.
-    BENCHMARKS          = tip-benchmarks;
-    BENCHMARKS_FALLBACK = tip-benchmarks;
-
-    # Check contracts while testing; it's disabled by default for being too slow
-    PLT_TR_CONTRACTS    = "1";
-    TEST_DATA           = "${./test-data}";
-  };
 
   tip-benchmark-smtlib = stdenv.mkDerivation {
     name         = "tip-benchmark-smtlib";
