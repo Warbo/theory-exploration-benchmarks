@@ -1,7 +1,8 @@
 #!/usr/bin/env racket
 #lang racket
 
-(require "lib/defs.rkt")
+(require "lib/impure.rkt")
+(require "lib/sampling.rkt")
 
 (define (usage)
   (msg "Usage: choose_sample <N> <M>\nWhere N and M are natural numbers.\nN \

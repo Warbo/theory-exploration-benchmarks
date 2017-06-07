@@ -1,5 +1,5 @@
 #!/usr/bin/env racket
 #lang racket
-(require "lib/defs.rkt")
+(require "lib/tip.rkt")
 
 (types-from-defs)

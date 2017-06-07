@@ -1,6 +1,6 @@
 #!/usr/bin/env racket
 #lang racket
 
-(require "lib/defs.rkt")
+(require "lib/conjectures.rkt")
 
 (conjectures-for-sample-wrapper)

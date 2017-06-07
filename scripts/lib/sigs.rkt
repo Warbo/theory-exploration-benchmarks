@@ -7,6 +7,8 @@
 (require "tip.rkt")
 (require "util.rkt")
 
+(provide full-haskell-package mk-signature)
+
 (module+ test
   (require "testing.rkt"))
 

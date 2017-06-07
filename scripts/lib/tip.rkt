@@ -13,7 +13,8 @@
          expression-types files-to-hashes get-def-s lowercase-names names-in
          native-symbols path-end symbols-in theorem? theorem-files
          theorem-hashes tip-benchmarks? tip-path?
-         toplevel-function-defs-of toplevel-names-in uppercase-names)
+         toplevel-function-defs-of toplevel-names-in types-from-defs
+         uppercase-names)
 
 (module+ test
   (require "testing.rkt"))

@@ -14,7 +14,7 @@
 
 (provide constructor-function-replacements decode-name decode-string
          encode-lower-name
-         lowercase-benchmark-names
+         lowercase-benchmark-names mk-final-defs
          mk-final-defs-hash nn norm-name normalised-theorems2
          normed-qualified-theorem-files qual-hashes-theorem-files replace-names
          replacements-closure unqualify)

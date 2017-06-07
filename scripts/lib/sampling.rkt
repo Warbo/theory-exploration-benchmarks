@@ -8,7 +8,7 @@
 (require "lists.rkt")
 (require "util.rkt")
 
-(provide get-sampling-data make-sampling-data)
+(provide get-sampling-data make-sampling-data sample-from-benchmarks)
 
 (module+ test
   (require "testing.rkt"))
