@@ -9,7 +9,8 @@
 (require "tip.rkt")
 (require "util.rkt")
 
-(provide conjectures-for-sample-wrapper eqs-to-json-wrapper
+(provide conjectures-admitted-by-sample-wrapper
+         conjectures-for-sample-wrapper eqs-to-json-wrapper
          precision-recall-eqs-wrapper)
 
 (module+ test
