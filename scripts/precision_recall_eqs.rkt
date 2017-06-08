@@ -1,6 +1,7 @@
 #!/usr/bin/env racket
 #lang racket
 
+(require json)
 (require "lib/conjectures.rkt")
 
 (write-json
