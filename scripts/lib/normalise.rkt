@@ -70,11 +70,11 @@
   (define (norm-params ps def)
     (if (empty? ps)
         (match def
-          [           (list name        args        return body)
-                      (let* ([fun (norm-func args body)])
-                        (list ps (list norm-func-1 (first fun) return (replace-in name
-                                                                                  norm-func-1
-                                                                                  (second fun)))))]
+          [(list name        args        return body)
+           (let ([fun (norm-func args body)])
+             (list ps
+                   (list norm-func-1 (first fun) return
+                         (replace-in name norm-func-1  (second fun)))))]
           [_ (error "Unexpected parameterised function definition" def)])
         (let* ([p   (car ps)]
                [rec (norm-params (cdr ps) def)]
@@ -1231,7 +1231,7 @@
 
 (define/test-contract (normed-and-replacements-inner exprs reps)
   (-> (*list/c definition?)
-      replacements?
+      (*list/c replacements?)
       (list/c (*list/c definition?) replacements?))
 
   (msg "Normalising ~a definitions\n" (length exprs))
