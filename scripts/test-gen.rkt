@@ -1,3 +1,4 @@
+#!/usr/bin/env racket
 #lang racket
 
 ;; Test generating a smaller version of the benchmark. Useful for profiling.
