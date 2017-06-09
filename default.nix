@@ -323,7 +323,7 @@ rec {
 
         # Write a one-liner to invoke this script, since shebangs don't seem to
         # use the bytecode
-        printf '#!/usr/bin/env bash\nexec racket "$F" "$@"' \
+        printf '#!/usr/bin/env bash\nexec racket "%s" "$@"' \
                "$F" > "$out/bin/$NAME"
         chmod +x "$out/bin/$NAME"
 
