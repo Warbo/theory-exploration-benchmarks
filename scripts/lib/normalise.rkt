@@ -1232,7 +1232,7 @@
 (define/test-contract (normed-and-replacements-inner exprs reps)
   (-> (*list/c definition?)
       (*list/c replacements?)
-      (list/c (*list/c definition?) replacements?))
+      (list/c (*list/c definition?) (*list/c replacements?)))
 
   (msg "Normalising ~a definitions\n" (length exprs))
 
