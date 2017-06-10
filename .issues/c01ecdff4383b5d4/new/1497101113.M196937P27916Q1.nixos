@@ -1,0 +1,7 @@
+From: Chris Warburton
+Date: Sat, 10 Jun 2017 14:24:34 +0100
+State: new
+Subject: precision-recall-eqs-wrapper file reading
+Message-Id: <c01ecdff4383b5d4-0-artemis@nixos>
+
+Make it take strings instead, and read the files in during the scripts/ file.

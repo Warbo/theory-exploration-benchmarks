@@ -1,0 +1,9 @@
+From: Chris Warburton
+Date: Sat, 10 Jun 2017 14:26:19 +0100
+State: new
+Subject: Fine-grained caching
+Message-Id: <abef7d975f2a5e93-0-artemis@nixos>
+
+Expensive functions can each look for their own BENCHMARKS_... env var, and read
+it in if found. Each gets a corresponding 'generate' function, and script for
+calling it. Use Nix to run these scripts and set these env vars.

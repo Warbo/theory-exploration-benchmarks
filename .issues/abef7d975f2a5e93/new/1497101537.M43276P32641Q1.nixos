@@ -1,0 +1,16 @@
+From: Chris Warburton
+Date: Sat, 10 Jun 2017 14:29:37 +0100
+Subject: Re: Fine-grained caching
+Message-Id: <abef7d975f2a5e93-c5d9c3fe10cb80d4-artemis@nixos>
+References: <abef7d975f2a5e93-0-artemis@nixos>
+In-Reply-To: <abef7d975f2a5e93-0-artemis@nixos>
+
+As a first step, we can separate the cache-reading from the result-calculating:
+
+ - The generate functions are the only place where we calculate the results.
+ - The generate functions are only called from their scripts (and tests).
+ - The normal function checks for a cache file, like now, but aborts if not
+   found.
+
+This way, we can force the expensive calculations to only be run once, while
+generating the cache, and for everything else to use the cache.

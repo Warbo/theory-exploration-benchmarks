@@ -1,0 +1,7 @@
+From: Chris Warburton
+Date: Sat, 10 Jun 2017 14:25:21 +0100
+State: new
+Subject: Reduce file usage in tests
+Message-Id: <e2c54b134aa70324-0-artemis@nixos>
+
+Push files-to-hashes as early as possible, don't read files using anything else.
