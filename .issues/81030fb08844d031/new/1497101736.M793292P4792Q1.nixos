@@ -1,0 +1,10 @@
+From: Chris Warburton
+Date: Sat, 10 Jun 2017 14:34:19 +0100
+State: new
+Subject: Take temp dir (for testing sigs) from environment
+Message-Id: <81030fb08844d031-0-artemis@nixos>
+
+We shouldn't be hard-coding /tmp etc. in our racket. We should supply our build
+environments during Nix builds instead.
+
+Maybe we should just work in the current dir?

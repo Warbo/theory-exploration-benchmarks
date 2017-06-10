@@ -1,0 +1,7 @@
+From: Chris Warburton
+Date: Sat, 10 Jun 2017 14:33:40 +0100
+State: new
+Subject: Handle mutually-recursive functions
+Message-Id: <8088309b5c435751-0-artemis@nixos>
+
+Some functions in tip.rkt are missing cases for define-funs-rec.
