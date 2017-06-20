@@ -1,3 +1,5 @@
 *.log
+*.pyc
 shell.drv
-result*
+result
+.asv/env

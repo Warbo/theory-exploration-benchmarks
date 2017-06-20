@@ -1,0 +1,91 @@
+{
+    // The version of the config file format.  Do not change, unless
+    // you know what you are doing.
+    "version": 1,
+
+    // The name of the project being benchmarked
+    "project": "te-benchmark",
+
+    // The project's homepage
+    "project_url": "http://chriswarbo.net/projects/theory-exploration",
+
+    // The URL or local path of the source code repository for the
+    // project being benchmarked
+    "repo": ".",
+
+    // List of branches to benchmark
+    "branches": ["master"],
+
+    "dvcs": "git",
+
+    // Uses Nix to build and manage environments
+    "plugins": [ "asv_nix" ],
+
+    // The tool to use to create environments. Requires the asv_nix plugin, e.g.
+    // from http://chriswarbo.net/projects/repos/asv-nix.html
+    "environment_type": "nix",
+
+    // timeout in seconds for installing any dependencies in environment
+    "install_timeout": 600,
+
+    // Nix functions to fetch and build any required dependencies. Each key is a
+    // name, which is used in the "matrix" option. Values are strings containing
+    // a Nix expression; that expression should be a function, which will be
+    // given a 'version' as an argument. It's up to you what a 'version' means;
+    // for example, you might accept a git revision/sha256 pair as argument, and
+    // have your function build that revision of a repo. You might use the
+    // version to select between different implementations of some dependency
+    // (e.g. CPython vs PyPy). Alternatively, you might accept an argument but
+    // ignore it.
+    "builders": {
+        // Required for running the benchmark script; default to nixpkgs version
+        "python": "_: (import <nixpkgs> {}).python",
+    },
+
+    // The matrix of dependency versions to test.  Since we're using the Nix
+    // plugin, keys should be "nix+" followed by a key from the "builders"
+    // option. The value should be a list of "versions" to use for that builder,
+    // for example different git revision/sha256sum pairs. Each "version" should
+    // be a string containing valid Nix code, but other than that the value you
+    // should use depends on what builder it will be given to. Note that at
+    // least one of these should provide a "python" binary, for running the
+    // benchmarking scripts.
+    "matrix": {
+        "nix+python": [ "null" ],
+    },
+
+    "benchmark_dir": "asv",
+
+    // Where (relative to the current directory) to cache environments
+    "env_dir": ".asv/env",
+
+    // Where (relative to the current directory) to store raw benchmark results
+    "results_dir": ".asv/results",
+
+    // Where (relative to the current directory) to write HTML output
+    "html_dir": ".asv/html",
+
+    // The commits after which the regression search in `asv publish`
+    // should start looking for regressions. Dictionary whose keys are
+    // regexps matching to benchmark names, and values corresponding to
+    // the commit (exclusive) after which to start looking for
+    // regressions.  The default is to start from the first commit
+    // with results. If the commit is `null`, regression detection is
+    // skipped for the matching benchmark.
+    //
+    // "regressions_first_commits": {
+    //    "some_benchmark": "352cdf",  // Consider regressions only after this commit
+    //    "another_benchmark": null,   // Skip regression detection altogether
+    // }
+
+    // The thresholds for relative change in results, after which `asv
+    // publish` starts reporting regressions. Dictionary of the same
+    // form as in ``regressions_first_commits``, with values
+    // indicating the thresholds.  If multiple entries match, the
+    // maximum is taken. If no entry matches, the default is 5%.
+    //
+    // "regressions_thresholds": {
+    //    "some_benchmark": 0.01,     // Threshold of 1%
+    //    "another_benchmark": 0.5,   // Threshold of 50%
+    // }
+}
