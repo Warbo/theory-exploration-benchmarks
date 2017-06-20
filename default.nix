@@ -19,8 +19,8 @@ with rec {
     with rec {
       nix-config-src-default = fetchgit {
         url    = "http://chriswarbo.net/git/nix-config.git";
-        rev    = "c67a368";
-        sha256 = "0zwma75bscac761r6n0wsyb4fz546i33yiwj7x28fcfn3f8vvf7z";
+        rev    = "8c8cf81";
+        sha256 = "150q2mz40vwbhzsrjhs6r2mvhvrnak4391bv5gqwrvfx7cpfsyis";
       };
 
       config-src = if nix-config-src == null
@@ -227,6 +227,9 @@ rec {
 
     installPhase = ''cp -r ./transformed "$out"'';
   };
+
+  # Used for benchmarking the benchmark generation (yo dawg)
+  asv = nix-config.asv-nix;
 
   cache = rec {
     # This tells the tests where to find the benchmarks. Only a subset of files

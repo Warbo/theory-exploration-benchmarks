@@ -1,0 +1,11 @@
+From: Chris Warburton
+Date: Tue, 20 Jun 2017 12:35:02 +0100
+Subject: Re: Benchmark (yo dawg)
+Message-Id: <e96a31e883b88046-baba482f78d79985-artemis@nixos>
+References: <e96a31e883b88046-0-artemis@nixos>
+In-Reply-To: <e96a31e883b88046-0-artemis@nixos>
+
+Added placeholder benchmark suite. Also written an asv plugin which uses
+Nix to build dependencies, etc.
+
+Next job is to write a basic convert-a-few-files benchmark.

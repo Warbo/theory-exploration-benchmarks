@@ -3,3 +3,4 @@
 shell.drv
 result
 .asv/env
+.asv/html
