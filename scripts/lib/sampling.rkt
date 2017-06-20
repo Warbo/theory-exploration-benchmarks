@@ -275,21 +275,7 @@
 
 (define/test-contract (get-sampling-data)
   (-> sampling-data?)
-
-  ;; Check if we have cached data, if so then we return that. If not, we run
-  ;; the thunk MAKE-SAMPLING-DATA.
-  (define cache-path
-    (getenv "BENCHMARKS_CACHE"))
-
-  (if (and cache-path (file-exists? cache-path))
-      (let ()
-        (define in   (open-input-file cache-path))
-        (define data (read in))
-        (close-input-port in)
-        data)
-      (let ()
-        (msg "No cached data found, calculating from scratch\n")
-        (make-sampling-data))))
+  (read-from-cache! "BENCHMARKS_CACHE" make-sampling-data))
 
 ;; Sample using the names and theorems from BENCHMARKS
 (define (sample-from-benchmarks size rep)

@@ -63,10 +63,11 @@ If you don't want to use Nix, you'll need `racket` in your `PATH`, with the
 If you want to generate Haskell code you'll need the `tip` command, from the
 `tip-lib` Haskell package.
 
-You can invoke the test suite using `raco test scripts/lib/defs.rkt` or by using
-the facilities in DrRacket; the tests also need the `cabal` command, and a
-Haskell environment with the `QuickSpec`, `QuickCheck`, `tip-lib` and
-`testing-feat` packages available.
+You can invoke the test suite using `scripts/test.sh`, or by using the
+`scripts/test.rkt` module either with `raco test` or using DrRacket; ensure you
+set the `IN_TEST` env var when calling the Racket module directly. The tests
+also need the `cabal` command, and a Haskell environment with the `QuickSpec`,
+`QuickCheck`, `tip-lib` and `testing-feat` packages available.
 
 The preferred way to use these tools is from Nix, by `import`ing the definitions
 from `default.nix` and adding them to your own project's dependencies.
@@ -82,9 +83,10 @@ available in `PATH`.
 ## Testing ##
 
 Tests can also be run in many ways, e.g. via Dr Racket, but the simplest is to
-use Racket's `raco` command:
+call the provided `scripts/test.sh` script. Alternatively, use Racket's `raco`
+command and set the `IN_TEST` env var:
 
-    raco test scripts/test.rkt
+    IN_TEST=1 raco test scripts/test.rkt
 
 Tests will be run automatically during installation, which can be skipped by
 setting the `SKIP_TESTS` environment variable to `1`.

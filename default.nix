@@ -245,6 +245,15 @@ rec {
       ''
         "$src/make_normalised_theorems.rkt" > "$out"
       '';
+
+    BENCHMARKS_NORMALISED_DEFINITIONS = runCommand "normalised-definitions"
+      {
+        src = ./scripts;
+        buildInputs = [ env ];
+      }
+      ''
+        "$src/make_normalised_definitions.rkt" > "$out"
+      '';
   };
 
   # Standalone to allow separate testing and to avoid requiring expensive caches
@@ -289,6 +298,7 @@ rec {
     # causes all files to be tested rather than a subset.
     BENCHMARKS          = tip-benchmarks;
     BENCHMARKS_FALLBACK = tip-benchmarks;
+    BENCHMARKS_TEST_ALL = "1";
 
     # Check contracts while testing; it's disabled by default for being too slow
     PLT_TR_CONTRACTS    = "1";

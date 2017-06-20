@@ -1208,6 +1208,17 @@
                                       (new-of rep))))
               (vector->list (heap->vector test-replacements)))))
 
+;; Do the actual normalisation, to populate the cache
+(define (gen-normed-and-replacements exprs)
+  (when (getenv "BENCHMARKS_NORMALISED_DEFINITIONS")
+    (error (string-append "Shouldn't call gen-normed-and-replacements "
+                          "when BENCHMARK_NORMALISED_DEFINITIONS is set")))
+  (define result
+    (normed-and-replacements-inner (map prefix-locals exprs)
+                                   '()))
+  (list (first result)
+        (apply extend-replacements (second result))))
+
 ;; Removes redundant alpha-equivalent definitions from EXPRS, resulting in a
 ;; normalised form given as the first element of the result.
 ;; Also keeps track of the replacements it's made in the process, returning them
@@ -1223,11 +1234,9 @@
   ;; function is recursive, so memoising it would fill the lookup table with
   ;; intermediate results.
   (memo1 (lambda (exprs)
-           (define result
-             (normed-and-replacements-inner (map prefix-locals exprs)
-                                            '()))
-           (list (first result)
-                 (apply extend-replacements (second result))))))
+           (read-from-cache! "BENCHMARKS_NORMALISED_DEFINITIONS"
+                             (lambda ()
+                               (gen-normed-and-replacements exprs))))))
 
 (define/test-contract (normed-and-replacements-inner exprs reps)
   (-> (*list/c definition?)

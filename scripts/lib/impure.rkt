@@ -5,7 +5,7 @@
 (require "util.rkt")
 
 (provide benchmark-file benchmark-files benchmark-dir in-temp-dir msg
-         parameterize-env pipe quiet
+         parameterize-env pipe quiet read-from-cache!
          set-theorem-files! theorem-files temp-file-prefix)
 
 (module+ test
@@ -48,7 +48,6 @@
   "tebenchmarktemp")
 
 (define (in-temp-dir f)
-  (eprintf "FIXME: Take temp dir from env\n")
   (let* ([dir    (make-temporary-file (string-append temp-file-prefix "~a")
                                       'directory)]
          [result (f dir)])
@@ -110,3 +109,18 @@
 
 (define benchmark-files
   (curry map benchmark-file))
+
+(define (read-from-cache! cache fallback)
+  (if (and (getenv "IN_TEST")
+           (not (getenv "BENCHMARKS_TEST_ALL")))
+      (fallback)
+      (let ()
+        (define cache-path (getenv cache))
+
+        (if (and cache-path (file-exists? cache-path))
+            (let ()
+              (define in   (open-input-file cache-path))
+              (define data (read in))
+              (close-input-port in)
+              data)
+            (error (string-append "No " cache " given"))))))

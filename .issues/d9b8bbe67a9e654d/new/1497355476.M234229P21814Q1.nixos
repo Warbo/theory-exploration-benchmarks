@@ -1,0 +1,18 @@
+From: Chris Warburton
+Date: Tue, 13 Jun 2017 13:00:20 +0100
+State: new
+Subject: Only expose final results
+Message-Id: <d9b8bbe67a9e654d-0-artemis@nixos>
+
+Currently, we have a bunch of modules which intermingle utility
+functions and data (i.e. memoised thunks).
+
+Split these up, so we have some modules which provide (mostly pure)
+utilities, which can be tested with dummy inputs, and others which
+provide data, generated using those utilities.
+
+Anything that's only required in order to generate the data, should only
+be accessible from within that data-generating module. That way, a
+"downstream" module like e.g. conjectures, will only have access to the
+actual data, and some helper functions for acting on it, rather than a
+bunch of needlessly-exposed data-generating functions.
