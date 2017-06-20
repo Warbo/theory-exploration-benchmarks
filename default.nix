@@ -6,6 +6,29 @@ with builtins;
 with pkgs;
 with lib;
 with rec {
+  # Known-good version of nixpkgs
+  nixpkgs1609 = import (fetchFromGitHub {
+    owner  = "NixOS";
+    repo   = "nixpkgs";
+    rev    = "f22817d";
+    sha256 = "1cx5cfsp4iiwq8921c15chn1mhjgzydvhdcmrvjmqzinxyz71bzh";
+  }) {};
+
+  # Custom packages, overrides, etc.
+  nix-config =
+    with rec {
+      nix-config-src-default = fetchgit {
+        url    = "http://chriswarbo.net/git/nix-config.git";
+        rev    = "c67a368";
+        sha256 = "0zwma75bscac761r6n0wsyb4fz546i33yiwj7x28fcfn3f8vvf7z";
+      };
+
+      config-src = if nix-config-src == null
+                      then nix-config-src-default
+                      else nix-config-src;
+    };
+    import <nixpkgs> { config = import "${config-src}/config.nix"; };
+
   # Take the given Haskell packages, but override some things which are known
   # to be broken on Hackage. TODO: Get upstream to upload non-broken packages!
   patchedHaskellPackages =
@@ -19,105 +42,89 @@ with rec {
                  (name: self.callPackage (overriddenHaskell name) {});
 
       overriddenHaskell = name: nix-config.haskellPackages."${name}".src;
-
-      # We take (hopefully!) working versions from nix-config
-      nix-config-src-default = fetchgit {
-        url    = "http://chriswarbo.net/git/nix-config.git";
-        rev    = "c67a368";
-        sha256 = "0zwma75bscac761r6n0wsyb4fz546i33yiwj7x28fcfn3f8vvf7z";
-      };
-
-      config-src = if nix-config-src == null
-                      then nix-config-src-default
-                      else nix-config-src;
-
-      nix-config = import <nixpkgs> {
-        config = import "${config-src}/config.nix";
-      };
     };
     hsPkgs.override { inherit overrides; };
 
-  # Racket may be disabled (e.g. https://github.com/NixOS/nixpkgs/pull/23542 )
-  nixpkgs1609 = import (fetchFromGitHub {
-    owner  = "NixOS";
-    repo   = "nixpkgs";
-    rev    = "f22817d";
-    sha256 = "1cx5cfsp4iiwq8921c15chn1mhjgzydvhdcmrvjmqzinxyz71bzh";
-  }) {};
+  racketWithPkgs =
+    with rec {
+      # Racket may be disabled ( https://github.com/NixOS/nixpkgs/pull/23542 )
+      racket = with (tryEval pkgs.racket);
+               if success
+                  then value
+                  else trace "WARNING: Broken 'racket'; falling back to 16.09"
+                             nixpkgs1609.racket;
 
-  racket = with (tryEval pkgs.racket);
-           if success
-              then value
-              else trace "WARNING: Broken 'racket'; falling back to 16.09"
-                         nixpkgs1609.racket;
+      racketWithDeps = deps: stdenv.mkDerivation {
+        name = "racket-with-deps";
 
-  shellPipeline = fetchFromGitHub {
-    owner  = "willghatch";
-    repo   = "racket-shell-pipeline";
-    rev    = "7ed9a75";
-    sha256 = "06z5bhmvpdhy4bakh30fzha4s0xp2arjq8h9cyi65b1y18cd148x";
-  };
+        buildInputs = [ makeWrapper racket ];
 
-  # Dependency of grommet
-  grip =  fetchFromGitHub {
-    owner  = "RayRacine";
-    repo   = "grip";
-    rev    = "ec498f6";
-    sha256 = "06ax30r70sz2hq0dzyassczcdkpmcd4p62zx0jwgc2zp3v0wl89l";
-  };
+        inherit deps;
+          buildCommand = ''
+          # raco writes to HOME, so make sure that's included
+          export HOME="$out/etc"
+          mkdir -p "$HOME"
 
-  grommet = fetchFromGitHub {
-    owner  = "RayRacine";
-    repo   = "grommet";
-    rev    = "50f1b6a";
-    sha256 = "1rb7i8jx7gg2rm5flnql0hja4ph11p7i38ryxd04yqw50l0xj59v";
-  };
+          # Each PKG should be a directory (e.g. pulled from git) containing
+          # "collections" as sub-directories. For example if PKG should allow
+          # (require utils/printing), it should contain PKG/utils/printing.rkt
 
-  racketWithDeps = deps: stdenv.mkDerivation {
-    name = "racket-with-deps";
+          # Collect up all packages
+          mkdir -p "$out/share/pkgs"
+          for PKG in $deps
+          do
+            cp -r "$PKG" "$out/share/pkgs/"
+          done
 
-    buildInputs = [ makeWrapper racket ];
+          # Make our copies mutable, so we can compile them in-place
+          chmod +w -R  "$out/share/pkgs"
 
-    inherit deps;
-    buildCommand = ''
-      # raco writes to HOME, so make sure that's included
-      export HOME="$out/etc"
-      mkdir -p "$HOME"
+          # Register packages with raco
+          for PKG in "$out/share/pkgs/"*
+          do
+            # raco is Racket's package manager, -D says "treat as a directory of
+            # collections", which is how git repos seem to be arranged.
+            raco link --user -D "$PKG"
+          done
 
-      # Each PKG should be a directory (e.g. pulled from git) containing
-      # "collections" as sub-directories. For example if PKG should allow
-      # (require utils/printing), it should contain PKG/utils/printing.rkt
+          # Compile registered packages
+          raco setup --avoid-main -x -D
 
-      # Collect up all packages
-      mkdir -p "$out/share/pkgs"
-      for PKG in $deps
-      do
-        cp -r "$PKG" "$out/share/pkgs/"
-      done
+          # Provide Racket binaries patched to use our modified HOME
+          mkdir -p "$out/bin"
+          for PROG in "${racket}"/bin/*
+          do
+            NAME=$(basename "$PROG")
+            makeWrapper "$PROG" "$out/bin/$NAME" --set HOME "$out/etc"
+          done
+        '';
+      };
+    };
+    racketWithDeps [
+      # Dependency of grommet
+      (fetchFromGitHub {
+        owner  = "RayRacine";
+        repo   = "grip";
+        rev    = "ec498f6";
+        sha256 = "06ax30r70sz2hq0dzyassczcdkpmcd4p62zx0jwgc2zp3v0wl89l";
+      })
 
-      # Make our copies mutable, so we can compile them in-place
-      chmod +w -R  "$out/share/pkgs"
+      # Hashing
+      (fetchFromGitHub {
+        owner  = "RayRacine";
+        repo   = "grommet";
+        rev    = "50f1b6a";
+        sha256 = "1rb7i8jx7gg2rm5flnql0hja4ph11p7i38ryxd04yqw50l0xj59v";
+      })
 
-      # Register packages with raco
-      for PKG in "$out/share/pkgs/"*
-      do
-        # raco is Racket's package manager, -D says "treat as a directory of
-        # collections", which is how git repos seem to be arranged.
-        raco link --user -D "$PKG"
-      done
-
-      # Compile registered packages
-      raco setup --avoid-main -x -D
-
-      # Provide Racket binaries patched to use our modified HOME
-      mkdir -p "$out/bin"
-      for PROG in "${racket}"/bin/*
-      do
-        NAME=$(basename "$PROG")
-        makeWrapper "$PROG" "$out/bin/$NAME" --set HOME "$out/etc"
-      done
-    '';
-  };
+      # Shell commands
+      (fetchFromGitHub {
+        owner  = "willghatch";
+        repo   = "racket-shell-pipeline";
+        rev    = "7ed9a75";
+        sha256 = "06z5bhmvpdhy4bakh30fzha4s0xp2arjq8h9cyi65b1y18cd148x";
+      })
+    ];
 
   tip-repo = fetchFromGitHub {
     owner  = "tip-org";
@@ -134,7 +141,7 @@ rec {
     paths = [
       bash
       patchedHaskellPackages.cabal-install
-      (racketWithDeps [ grip grommet shellPipeline ])
+      racketWithPkgs
       (patchedHaskellPackages.ghcWithPackages (hs: [
         hs.tip-lib
         hs.geniplate
@@ -248,6 +255,7 @@ rec {
 
     BENCHMARKS_NORMALISED_DEFINITIONS = runCommand "normalised-definitions"
       {
+        inherit BENCHMARKS_FALLBACK;
         src = ./scripts;
         buildInputs = [ env ];
       }
