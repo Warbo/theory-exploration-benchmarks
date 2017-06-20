@@ -140,19 +140,15 @@
   (if (member (getenv "BENCHMARKS_NORMALISED_THEOREMS") '(#f ""))
       ;; No cache given, generate
       (let ()
-        (define all-qualified (qual-hashes-theorem-files))
-
-        (define qualified (first all-qualified))
-
         ;; First get replacements used in definitions
         (define replacements
-          (replacements-closure qualified))
+          (all-replacements-closure))
 
         ;; Also replace constructors with constructor functions, skipping
         ;; constructors which are redundant
 
         (define constructor-replacements
-          (constructor-function-replacements (theorem-hashes)))
+          (all-constructor-function-replacements))
 
         (define final-replacements
           (finalise-replacements

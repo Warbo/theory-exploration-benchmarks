@@ -12,12 +12,13 @@
 (require "tip.rkt")
 (require "util.rkt")
 
-(provide constructor-function-replacements decode-name decode-string
-         encode-lower-name
+(provide all-constructor-function-replacements all-replacements-closure
+         decode-name
+         decode-string encode-lower-name gen-normed-and-replacements
          lowercase-benchmark-names mk-final-defs
          mk-final-defs-hash nn norm-name normalised-theorems2
          normed-qualified-theorem-files qual-hashes-theorem-files replace-names
-         replacements-closure unqualify)
+         unqualify)
 
 (module+ test
   (require "testing.rkt"))
@@ -1563,31 +1564,33 @@
                            (bar.smt2quux () Foo
                                                   (foo bar))))))
 
-  (check-equal? (unqualify qualified-example)
-                '((define-fun (par (a b)
-                                   (foo.smt2baz  ((x Nat)) Nat
-                                                 X)))
-                  (define-fun
-                    foo.smt2quux ()        Bool
-                    (hello world))
-                  (define-fun-rec (par (a)
-                                       (bar.smt2quux ()        Foo
-                                                     (foo bar))))))
+  (def-test-case "Check unqualify"
+    (check-equal? (unqualify qualified-example)
+                  '((define-fun (par (a b)
+                                     (foo.smt2baz  ((x Nat)) Nat
+                                                   X)))
+                    (define-fun
+                      foo.smt2quux ()        Bool
+                      (hello world))
+                    (define-fun-rec (par (a)
+                                         (bar.smt2quux ()        Foo
+                                                       (foo bar)))))))
 
-  (check-equal? (prepare qualified-example)
-                `((define-fun (par (a b)
-                                   (,(encode-lower-name 'foo.smt2baz)
-                                    ((x Nat)) Nat
-                                    X)))
-                  (define-fun
-                    ,(encode-lower-name 'foo.smt2quux)
-                    () Bool
-                    (hello world))
-                  (define-fun-rec (par (a)
-                                       (,(encode-lower-name 'bar.smt2quux)
-                                        () Foo
-                                        (foo bar))))
-                  (check-sat)))
+  (def-test-case "Check prepare"
+    (check-equal? (prepare qualified-example)
+                  `((define-fun (par (a b)
+                                     (,(encode-lower-name 'foo.smt2baz)
+                                      ((x Nat)) Nat
+                                      X)))
+                    (define-fun
+                      ,(encode-lower-name 'foo.smt2quux)
+                      () Bool
+                      (hello world))
+                    (define-fun-rec (par (a)
+                                         (,(encode-lower-name 'bar.smt2quux)
+                                          () Foo
+                                          (foo bar))))
+                    (check-sat))))
 
   (def-test-case "Find redundancies"
     (check-equal? (finalise-replacements (find-redundancies redundancies))
@@ -1850,15 +1853,8 @@
 (memo0 normed-qualified-theorem-files
        (preprepare (norm-defs (first (qual-hashes-theorem-files)))))
 
-(define/test-contract (constructor-function-replacements hashes)
-  (-> tip-benchmarks?
-      replacements?)
-
-  (define qualified
-    (first (qual-all-hashes hashes)))
-
-  (define replacements
-    (replacements-closure qualified))
+(define/test-contract (constructor-function-replacements qualified replacements)
+  (-> (*list/c definition?) replacements? replacements?)
 
   (define all-constructors
     (expression-constructors qualified))
@@ -1870,7 +1866,23 @@
                                           "constructor-")))
               all-constructors)))
 
+(define (all-constructor-function-replacements)
+  (constructor-function-replacements (first (qual-hashes-theorem-files))
+                                     (all-replacements-closure)))
+
 (module+ test
+  (define/test-contract (constructor-function-replacements-from-hashes hashes)
+    (-> tip-benchmarks?
+        replacements?)
+
+    (define qualified
+      (first (qual-all-hashes hashes)))
+
+    (define replacements
+      (replacements-closure qualified))
+
+    (constructor-function-replacements qualified replacements))
+
   (def-test-case "Constructor function name replacements"
     (check-equal? (finalise-replacements
                    (extend-replacements
@@ -1881,16 +1893,18 @@
                                  (prefix-name (nn 'prod/prop_35.smt2S)
                                               "constructor-"))))
                   (finalise-replacements
-                   (constructor-function-replacements
+                   (constructor-function-replacements-from-hashes
                     (hash "prod/prop_35.smt2"
                           `((,nat-def)
                             (assert-not (= 1 1)))))))))
 
+(define (all-replacements-closure)
+  (replacements-closure (first (qual-hashes-theorem-files))))
+
 (memo0 name-replacements
        (foldl (lambda (x h)
                 (hash-set h x x))
-              (finalise-replacements
-               (replacements-closure (first (qual-hashes-theorem-files))))
+              (finalise-replacements (all-replacements-closure))
               '(CustomInt CustomNeg CustomZero CustomPos
                 CustomNat CustomZ CustomS
                 CustomBool CustomTrue CustomFalse

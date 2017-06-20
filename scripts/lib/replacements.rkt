@@ -4,6 +4,7 @@
 
 (require data/heap)
 (require racket/trace)
+(require (only-in srfi/43 vector-binary-search))
 (require "compare.rkt")
 (require "lists.rkt")
 (require "sets.rkt")
@@ -18,48 +19,45 @@
 ;; A replacement is a set of symbols. The smallest value in the set is the one
 ;; we'll use (the "new"), all the rest will be replaced (the "old").
 
+;; Remove duplicate elements. Since we know the list is sorted, we can do this
+;; in linear rather than quadratic time.
+(define skip-dupes
+  (letrec ([go (lambda (prev lst)
+                 (match lst
+                   [(list)      (list)]
+                   [(cons x xs) (if (equal? x prev)
+                                    (go prev xs)
+                                    (cons x (go x xs)))]))])
+    (match-lambda
+      [(list)      (list)]
+      [(cons x xs) (cons x (go x xs))])))
+
 (define (mk-rep . syms)
-  (vector->heap symbol<=? (apply vector syms)))
+  (sort syms symbol<=?))
 
 (define new-of
-  heap-min
-  #;(set-foldl (lambda (x min)
-               (cond
-                 [(equal? min #f)  x]
-                 [(symbol<? x min) x]
-                 [else min]))
-             #f
-             s))
+  car)
 
-(define (pop-until-distinct new s)
-  (if (or (equal? (heap-count s) 0)
-          (not (equal? (new-of s) new)))
-      s
-      (pop-until-distinct new (heap-pop s))))
-
-(define (heap-pop h)
-  (define result (heap-copy h))
-  (heap-remove-min! result)
-  result)
-
-(define (old-of s)
-  ;; We allow a replacement? heap to contain duplicate values, since it keeps
-  ;; the implementation simple and doesn't affect the eventual replace. However,
-  ;; we do require that old-of and new-of have distinct outputs, so we use a
-  ;; loop here to remove all copies of new-of, to account for possible dupes.
-  (pop-until-distinct (new-of s) (heap-copy s))
-  #;(set-remove s (new-of s)))
+(define (old-of rep)
+  (define new (new-of rep))
+  (define go (match-lambda
+               [(list)      (list)]
+               [(cons x xs) (if (equal? x new)
+                                (go xs)
+                                (cons x xs))]))
+  (go (cdr rep)))
 
 (define (render-rep rep)
   (map heap->vector (vector->list (heap->vector rep))))
 
+(define (sorted-symbols-list? x)
+  (and (list? x)
+       (all-of symbol? x)
+       (equal? x (sort x symbol<=?))))
+
 (define (replacement? rep)
-  (and (heap? rep)
-       (not (equal? 0 (heap-count rep)))
-       (all-of symbol? (vector->list (heap->vector rep))))
-  #;(and (set?   rep)
-       (not (set-empty? rep))
-       (all-of symbol? (set->list rep))))
+  (and (sorted-symbols-list? rep)
+       (not (equal? 0 (length rep)))))
 
 (module+ test
   (define (compose-info f g)
@@ -74,90 +72,64 @@
      (list (mk-rep 'A 'B)
            (mk-rep 'A 'B 'C 'D)
            (mk-rep 'foo 'bar)
-           (mk-rep 'some/path.smt2A-Name 'other/file.smt2Different))
-     #;
-     (list (set 'A 'B)
-           (set 'A 'B 'C 'D)
-           (set 'foo 'bar)
-           (set 'some/path.smt2A-Name 'other/file.smt2Different)))
+           (mk-rep 'some/path.smt2A-Name 'other/file.smt2Different)))
     (for-each
      (compose-info check-false replacement?)
      (list #t
            #f
            'A
-           (make-heap symbol<=?))
-     #;
-     (list #t
-           #f
-           'A
-           (set)
-           (set "A" 'B)
-           (set 'A "B")))))
+           (list)))))
 
-(define/test-contract (disjoint? x y)
-  (-> replacement? replacement? boolean?)
-  (set-empty? (set-intersect x y)))
+(define/test-contract (disjoint? x-in y-in)
+  (-> sorted-symbols-list? sorted-symbols-list? boolean?)
+  (match* (x-in y-in)
+    [(_           (list))      #t]
+    [((list)      _)           #t]
+    [((cons x xs) (cons y ys)) (cond
+                                 [(equal?   x y) #f]
+                                 [(symbol<? x y) (disjoint? xs   y-in)]
+                                 [(symbol<? y x) (disjoint? x-in ys)])]))
 
 (define/test-contract (overlap? x y)
-  (-> replacement? replacement? boolean?)
+  (-> sorted-symbols-list? sorted-symbols-list? boolean?)
   (not (disjoint? x y)))
+
+(define/test-contract (merge x y)
+  (-> sorted-symbols-list? sorted-symbols-list? sorted-symbols-list?)
+  (match* (x y)
+    [((list)      _)           y]
+    [(_           (list))      x]
+    [((cons a as) (cons b bs)) (if (symbol<? a b)
+                                   (cons a (merge as y))
+                                   (cons b (merge x  bs)))]))
+
+;; Sorted lists let us bail out early
+(define/test-contract (in? lst x)
+  (-> sorted-symbols-list? symbol? boolean?)
+  (match lst
+    [(list) #f]
+    [(cons y ys) (if (equal? x y)
+                     #t
+                     (if (symbol<? x y)
+                         #f
+                         (in? x ys)))]))
 
 ;; A set of replacements, satisfying a few consistency properties
 (define (replacements? reps)
-  (and (heap? reps)
-       (all-of replacement? (vector->list (heap->vector reps)))
+  (and (list? reps)
+       (all-of replacement? reps)
 
        ;; No value should appear in multiple sets
        (let ([ok    #t]
              [found '()])
-         (for/list ([rep (in-heap reps)])
+         (for/list ([rep reps])
            (when ok
-             (when (any-of (lambda (x) (member x found))
-                           (vector->list (heap->vector rep)))
-               (set! ok #f)))
-           (set! found (append found (vector->list (heap->vector rep)))))
-         ok)
-       #;
-       (first (set-foldl (lambda (rep result)
-                           (match result
-                             [(list ok found)
-                              ;; Short-circuit if a problem was already found
-                              (if ok
-                                  ;; Check if anything in rep was already found
-                                  (list (or (set-empty? found)
-                                            (disjoint? found rep))
-                                        ;; Extend found with the elements of rep
-                                        (set-union found rep))
-                                  ;; Pass along existing problem
-                                  result)]))
-                         (list #t (set)) ;; Starts OK with nothing found yet
-                         reps)))
-  #;
-  (and (set? reps)
-       (all-of replacement? (set->list reps))
-
-       ;; No value should appear in multiple sets
-       (first (set-foldl (lambda (rep result)
-                           (match result
-                             [(list ok found)
-                              ;; Short-circuit if a problem was already found
-                              (if ok
-                                  ;; Check if anything in rep was already found
-                                  (list (or (set-empty? found)
-                                            (disjoint? found rep))
-                                        ;; Extend found with the elements of rep
-                                        (set-union found rep))
-                                  ;; Pass along existing problem
-                                  result)]))
-                         (list #t (set)) ;; Starts OK with nothing found yet
-                         reps))))
-
-;; Comparison for rep sets. Not strictly needed, but lets us use heaps or heaps.
-(define (rep<=? x y)
-  (symbol<=? (new-of x) (new-of y)))
+             (set! ok (and ok (disjoint? rep found)))
+             (set! found (merge found rep))))
+         ok)))
 
 (define (mk-reps . xs)
-  (vector->heap rep<=? (list->vector xs)))
+  (sort xs (lambda (x y) (symbol<=? (new-of x) (new-of y)))))
 
 (module+ test
   (def-test-case "Replacements"
@@ -173,6 +145,21 @@
      (list (mk-rep 'A 'B)                        ;; Not a set of replacements
            (mk-reps (mk-rep 'B 'A) (mk-rep 'B 'C))))))  ;; Duplicate values not allowed
 
+(define/test-contract (any->bool x)
+  (-> any/c boolean?)
+  (not (not x)))
+
+(define/test-contract (vec-contains? v x)
+  (-> (vectorof symbol?)
+      symbol?
+      boolean?)
+  (any->bool (vector-binary-search v x (lambda (a b)
+                                         (if (symbol<? a b)
+                                             -1
+                                             (if (symbol<? b a)
+                                                 1
+                                                 0))))))
+
 ;; Merge the given rep into an overlapping member of reps (returns 'merged and
 ;; the new set) or do nothing if none overlap (returns 'unmerged and the
 ;; existing set). NOTE: Only merges into one member; the result may be an
@@ -180,54 +167,27 @@
 (define/test-contract (merge-if-overlap rep reps)
   (-> replacement? replacements? (list/c symbol? replacements?))
 
-  (define found    #f)
-  (define result   (heap-copy reps))
-  (define rep-list (vector->list (heap->vector rep)))
-
-  (for/list ([this-rep (in-heap reps)])
-    (define this-list
-      (vector->list (heap->vector this-rep)))
-
-    (unless found
-      (when (any-of (lambda (elem)
-                      (member elem this-list))
-                    rep-list)
-        (set! found #t)
-
-        ;; Combine this-rep and rep together
-
-        (define new (mk-rep))
-        (heap-add-all! new this-rep)
-        (heap-add-all! new rep)
-
-        ;; Replace this-rep in result with our new merged value
-
-        (heap-remove! result this-rep)
-        (heap-add!    result new))))
-  (list (if found 'merged 'unmerged) result)
-  #;
-  (set-foldl (lambda (existing-rep result)
-               (if (or (equal? (first result) 'merged) ;; Already merged
-                       (disjoint? existing-rep rep))   ;; Unmergeable
-                   ;; Add as-is
-                   (list (first result) (set-add (second result) existing-rep))
-
-                   ;; Merge in
-                   (list 'merged (set-add (second result)
-                                          (set-union existing-rep rep)))))
-             (list 'unmerged (set))
-             reps))
+  (match/values (for/fold ([found  #f]
+                           [result (list)])
+                          ([this-rep reps])
+                  (if found
+                      (values found (cons this-rep result))
+                      (let ([overlapping (overlap? this-rep rep)])
+                        (values overlapping
+                                (cons (if overlapping
+                                          (merge this-rep rep)
+                                          this-rep)
+                                      result)))))
+    [(found result) (list (if found 'merged 'unmerged) result)]))
 
 (define (rep-equal? x y)
-  (equal? (heap->vector x) (heap->vector y)))
+  (equal? x y))
 
 (define (reps-equal? x y)
-  (define different #f)
-  (for ([x2 (in-heap x)]
-        [y2 (in-heap y)])
-    (unless (rep-equal? x2 y2)
-      (set! different #t)))
-  (not different))
+  (define (rep<=? a b)
+    (symbol<=? (new-of a) (new-of b)))
+
+  (equal? (sort x rep<=?) (sort y rep<=?)))
 
 (module+ test
   (def-test-case "Merge overlapping replacements"
@@ -235,13 +195,14 @@
     (check-equal? (first empty) 'unmerged
                   "Empty unmerged")
 
-    (check-true (reps-equal? (second empty) (mk-reps))
+    (check-equal? (second empty) (mk-reps)
                 "Empty still empty")
 
-    (check-true (reps-equal? (mk-reps (mk-rep 'C 'D) (mk-rep 'E 'F))
-                             (second (merge-if-overlap
-                                      (mk-rep 'A 'B) (mk-reps (mk-rep 'C 'D)
-                                                              (mk-rep 'E 'F)))))
+    (check-equal? (reps-equal?
+                   (mk-reps (mk-rep 'C 'D) (mk-rep 'E 'F))
+                   (second (merge-if-overlap
+                            (mk-rep 'A 'B) (mk-reps (mk-rep 'C 'D)
+                                                    (mk-rep 'E 'F)))))
                 "Disjoint don't merge")
 
     (let ()
