@@ -80,6 +80,9 @@
            'A
            (list)))))
 
+(define (rep<? x y)
+  (symbol<? (new-of x) (new-of y)))
+
 (define/test-contract (disjoint? x-in y-in)
   (-> sorted-symbols-list? sorted-symbols-list? boolean?)
   (match* (x-in y-in)
@@ -102,6 +105,16 @@
     [((cons a as) (cons b bs)) (if (symbol<? a b)
                                    (cons a (merge as y))
                                    (cons b (merge x  bs)))]))
+
+(define/test-contract (insert f x xs)
+  (-> any/c (*list/c any/c) (*list/c any/c))
+  (match xs
+    [(list) (list x)]
+    [(cons y ys) (if (f x y)
+                     (cons x xs)
+                     (cons y (insert f x ys)))]))
+
+(define insert-rep (curry insert rep<?))
 
 ;; Sorted lists let us bail out early
 (define/test-contract (in? lst x)
@@ -129,7 +142,7 @@
          ok)))
 
 (define (mk-reps . xs)
-  (sort xs (lambda (x y) (symbol<=? (new-of x) (new-of y)))))
+  (sort xs rep<=?))
 
 (module+ test
   (def-test-case "Replacements"
@@ -183,10 +196,10 @@
 (define (rep-equal? x y)
   (equal? x y))
 
-(define (reps-equal? x y)
-  (define (rep<=? a b)
-    (symbol<=? (new-of a) (new-of b)))
+(define (rep<=? a b)
+  (symbol<=? (new-of a) (new-of b)))
 
+(define (reps-equal? x y)
   (equal? (sort x rep<=?) (sort y rep<=?)))
 
 (module+ test
@@ -226,10 +239,20 @@
   (heap-add! result x)
   result)
 
-(define (heap-union x y)
-  (define result (heap-copy x))
-  (heap-add-all! result y)
-  result)
+(define (reps-insert-rep-acc acc rep reps)
+  (match reps
+    [(list)      (cons rep acc)]
+    [(cons r rs) (if (disjoint? r rep)
+                     ;; Accumulate r and recurse over the tail
+                     (reps-insert-rep-acc (cons r acc) rep rs)
+                     ;; Merge r into reps, and start again
+                     (reps-insert-rep-acc (mk-reps) (merge r rep)
+                                          (append rs acc)))]))
+
+(define (reps-insert-rep rep reps)
+  (sort (reps-insert-rep-acc (mk-reps) rep reps) rep<=?))
+
+(define reps-union (curry foldl reps-insert-rep))
 
 ;; Merge overlapping replacements in the given set, returning 'merged and the
 ;; new set. If no overlaps were found, returns 'unmerged and the original set.
@@ -254,24 +277,13 @@
 ;; Takes in a possibly-malformed set of replacements: symbols are allowed to
 ;; appear in multiple sets. We merge such overlapping sets to output a valid
 ;; set of replacements.
-(define/test-contract (merge-replacements reps)
-  (-> (and/c heap?
-             (lambda (reps)
-               (all-of (lambda (rep)
-                         (and (heap? rep)
-                              (all-of symbol?
-                                      (vector->list (heap->vector rep)))))
-                       (vector->list (heap->vector reps)))))
-      replacements?)
-  (match (partial-merge reps)
-    [(list 'merged   reps) (merge-replacements reps)]
-    [(list 'unmerged reps) reps]))
+(define merge-replacements (curry reps-union (mk-reps)))
 
 (define/test-contract (extend-replacements . repss)
   (-> replacements? ... replacements?)
 
   ;; Combine all sets, then sort out internal consistency
-  (merge-replacements (foldl heap-union (mk-reps) repss)))
+  (merge-replacements (foldl reps-union (mk-reps) repss)))
 
 (module+ test
   (def-test-case "Extend one set of replacements with another"
@@ -292,11 +304,11 @@
 (define/test-contract (finalise-replacements reps)
   (-> replacements? final-replacements?)
   (for/fold ([result (hash)])
-            ([rep    (in-heap reps)])
+            ([rep    reps])
     (define new (new-of rep))
 
     (for/fold ([output (hash-set result new new)])
-              ([old    (in-heap (old-of rep))])
+              ([old    (old-of rep)])
       (hash-set output old new))))
 
 (define/test-contract (replacement . xs)
@@ -340,5 +352,4 @@
   (-> final-replacements? any/c any/c)
   (hash-foldl replace-in x f-reps))
 
-(define (count-replacements x)
-  (heap-count x))
+(define count-replacements length)
