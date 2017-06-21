@@ -1,0 +1,9 @@
+From: Chris Warburton
+Date: Wed, 21 Jun 2017 16:22:47 +0100
+Subject: Re: Benchmark (yo dawg)
+Message-Id: <e96a31e883b88046-8dc57d984d7bc6fc-artemis@nixos>
+References: <e96a31e883b88046-0-artemis@nixos>
+In-Reply-To: <e96a31e883b88046-0-artemis@nixos>
+
+Fiddled with benchmarking, environment, etc. and now we have a working
+benchmark which runs make_normalised_definitions.rkt
