@@ -134,7 +134,7 @@ with rec {
   };
 };
 rec {
-  inherit patchedHaskellPackages;
+  inherit patchedHaskellPackages racketWithPkgs;
 
   env = buildEnv {
     name  = "tip-bench-env";
@@ -230,6 +230,32 @@ rec {
 
   # Used for benchmarking the benchmark generation (yo dawg)
   asv = nix-config.asv-nix;
+
+  # A few benchmark files, useful for e.g. profiling
+  profileDeps = runCommand "profile-deps"
+    {
+      inherit python;
+      buildInputs = [ makeWrapper ];
+      few = runCommand "few" { ORIG = tip-benchmarks; } ''
+        pushd "$ORIG"
+        while read -r F
+        do
+          DIR=$(dirname "$out/$F")
+          mkdir -p "$DIR"
+          cp -v "$F" "$DIR"/
+        done < <(find . -name "*.smt2" | sort | head -n20)
+      '';
+      rkt = racketWithPkgs;
+    }
+    ''
+      mkdir -p "$out/bin"
+      for F in "$rkt"/bin/* "$python"/bin/*
+      do
+        NAME=$(basename "$F")
+        makeWrapper "$F" "$out/bin/$NAME" \
+          --set BENCHMARKS_FALLBACK "$few"
+      done
+    '';
 
   cache = rec {
     # This tells the tests where to find the benchmarks. Only a subset of files

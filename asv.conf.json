@@ -38,8 +38,8 @@
     // (e.g. CPython vs PyPy). Alternatively, you might accept an argument but
     // ignore it.
     "builders": {
-        // Required for running the benchmark script; default to nixpkgs version
-        "python": "_: (import <nixpkgs> {}).python",
+        // General dependencies (Racket, Python, benchmark files, etc.)
+        "deps": "d: _: (import d {}).profileDeps",
     },
 
     // The matrix of dependency versions to test.  Since we're using the Nix
@@ -51,7 +51,7 @@
     // least one of these should provide a "python" binary, for running the
     // benchmarking scripts.
     "matrix": {
-        "nix+python": [ "null" ],
+        "nix+deps": [ "null" ],
     },
 
     "benchmark_dir": "asv",
