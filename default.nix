@@ -232,12 +232,41 @@ rec {
   asv = nix-config.asv-nix;
 
   # A few benchmark files, useful for e.g. profiling
-  profileDeps = runCommand "profile-deps"
-    {
-      inherit python;
-      buildInputs = [ makeWrapper ];
-      few = runCommand "few" { ORIG = tip-benchmarks; } ''
-        pushd "$ORIG"
+  profileDeps = with nix-config;
+    attrsToDirs {
+      bin = {
+        run_tests = wrap {
+          vars   = {
+            inherit (cache) BENCHMARKS_FALLBACK;
+            TEST_DATA = "${./test-data}";
+          };
+          paths  = [ env ];
+          script = ''
+           #!/usr/bin/env bash
+           exec "${./scripts}/test.sh"
+          '';
+        };
+
+        mk_defs = wrap {
+          vars   = { BENCHMARKS_FALLBACK = cache.BENCHMARKS_FEW; };
+          paths  = [ env ];
+          script = ''
+            #!/usr/bin/env bash
+            exec "${./scripts}/make_normalised_definitions.rkt" > /dev/null
+          '';
+        };
+      };
+    };
+
+  cache = rec {
+    # This tells the tests where to find the benchmarks. Only a subset of files
+    # will be tested, to make things faster.
+    BENCHMARKS_FALLBACK = tip-benchmarks;
+
+    # A small selection of benchmarks, useful for profiling, etc.
+    BENCHMARKS_FEW = runCommand "few" { inherit BENCHMARKS_FALLBACK; }
+      ''
+        pushd "$BENCHMARKS_FALLBACK"
         while read -r F
         do
           DIR=$(dirname "$out/$F")
@@ -245,22 +274,6 @@ rec {
           cp -v "$F" "$DIR"/
         done < <(find . -name "*.smt2" | sort | head -n20)
       '';
-      rkt = racketWithPkgs;
-    }
-    ''
-      mkdir -p "$out/bin"
-      for F in "$rkt"/bin/* "$python"/bin/*
-      do
-        NAME=$(basename "$F")
-        makeWrapper "$F" "$out/bin/$NAME" \
-          --set BENCHMARKS_FALLBACK "$few"
-      done
-    '';
-
-  cache = rec {
-    # This tells the tests where to find the benchmarks. Only a subset of files
-    # will be tested, to make things faster.
-    BENCHMARKS_FALLBACK = tip-benchmarks;
 
     BENCHMARKS_CACHE = runCommand "benchmarks-cache"
       {

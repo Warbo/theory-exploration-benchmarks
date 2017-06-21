@@ -38,6 +38,9 @@
     // (e.g. CPython vs PyPy). Alternatively, you might accept an argument but
     // ignore it.
     "builders": {
+        // Needed for the benchmark runner
+        "python": "_: _: (import <nixpkgs> {}).python",
+
         // General dependencies (Racket, Python, benchmark files, etc.)
         "deps": "d: _: (import d {}).profileDeps",
     },
@@ -51,7 +54,8 @@
     // least one of these should provide a "python" binary, for running the
     // benchmarking scripts.
     "matrix": {
-        "nix+deps": [ "null" ],
+        "nix+python": [ "null" ],
+        "nix+deps":   [ "null" ],
     },
 
     "benchmark_dir": "asv",

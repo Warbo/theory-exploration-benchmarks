@@ -1,0 +1,8 @@
+From: Chris Warburton
+Date: Wed, 21 Jun 2017 16:32:57 +0100
+State: new
+Subject: Benchmark test time
+Message-Id: <d36e5b79325fcf90-0-artemis@nixos>
+
+Running tests should be fast; keep an eye on how long they take using a
+benchmark.
