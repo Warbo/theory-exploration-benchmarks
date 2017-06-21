@@ -2,9 +2,6 @@
 
 ;; Sets of replacements to make, due to definitions being alpha-equivalent.
 
-(require data/heap)
-(require racket/trace)
-(require (only-in srfi/43 vector-binary-search))
 (require "compare.rkt")
 (require "lists.rkt")
 (require "sets.rkt")
@@ -46,9 +43,6 @@
                                 (go xs)
                                 (cons x xs))]))
   (go (cdr rep)))
-
-(define (render-rep rep)
-  (map heap->vector (vector->list (heap->vector rep))))
 
 (define (sorted-symbols-list? x)
   (and (list? x)
@@ -162,37 +156,6 @@
   (-> any/c boolean?)
   (not (not x)))
 
-(define/test-contract (vec-contains? v x)
-  (-> (vectorof symbol?)
-      symbol?
-      boolean?)
-  (any->bool (vector-binary-search v x (lambda (a b)
-                                         (if (symbol<? a b)
-                                             -1
-                                             (if (symbol<? b a)
-                                                 1
-                                                 0))))))
-
-;; Merge the given rep into an overlapping member of reps (returns 'merged and
-;; the new set) or do nothing if none overlap (returns 'unmerged and the
-;; existing set). NOTE: Only merges into one member; the result may be an
-;; invalid set of replacements, e.g. if rep overlaps two members of reps.
-(define/test-contract (merge-if-overlap rep reps)
-  (-> replacement? replacements? (list/c symbol? replacements?))
-
-  (match/values (for/fold ([found  #f]
-                           [result (list)])
-                          ([this-rep reps])
-                  (if found
-                      (values found (cons this-rep result))
-                      (let ([overlapping (overlap? this-rep rep)])
-                        (values overlapping
-                                (cons (if overlapping
-                                          (merge this-rep rep)
-                                          this-rep)
-                                      result)))))
-    [(found result) (list (if found 'merged 'unmerged) result)]))
-
 (define (rep-equal? x y)
   (equal? x y))
 
@@ -201,43 +164,6 @@
 
 (define (reps-equal? x y)
   (equal? (sort x rep<=?) (sort y rep<=?)))
-
-(module+ test
-  (def-test-case "Merge overlapping replacements"
-    (define empty (merge-if-overlap (mk-rep 'A 'B) (mk-reps)))
-    (check-equal? (first empty) 'unmerged
-                  "Empty unmerged")
-
-    (check-equal? (second empty) (mk-reps)
-                "Empty still empty")
-
-    (check-equal? (reps-equal?
-                   (mk-reps (mk-rep 'C 'D) (mk-rep 'E 'F))
-                   (second (merge-if-overlap
-                            (mk-rep 'A 'B) (mk-reps (mk-rep 'C 'D)
-                                                    (mk-rep 'E 'F)))))
-                "Disjoint don't merge")
-
-    (let ()
-      (define expected
-        (mk-reps (mk-rep 'C 'D) (mk-rep 'A 'B 'E)))
-
-      (define actual
-        (merge-if-overlap
-         (mk-rep 'A 'B) (mk-reps (mk-rep 'C 'D)
-                                 (mk-rep 'E 'B))))
-
-      (with-check-info
-        (('actual   (render-rep (second actual)))
-         ('expected (render-rep expected)))
-        (check-equal? (finalise-replacements expected)
-                      (finalise-replacements (second actual))
-                      "Single overlap merges")))))
-
-(define (heap-add h x)
-  (define result (heap-copy h))
-  (heap-add! result x)
-  result)
 
 (define (reps-insert-rep-acc acc rep reps)
   (match reps
@@ -253,26 +179,6 @@
   (sort (reps-insert-rep-acc (mk-reps) rep reps) rep<=?))
 
 (define reps-union (curry foldl reps-insert-rep))
-
-;; Merge overlapping replacements in the given set, returning 'merged and the
-;; new set. If no overlaps were found, returns 'unmerged and the original set.
-;; If 'merged is returned, there may still be more overlaps to find (hence the
-;; name partial).
-(define (partial-merge reps)
-  (for/fold ([result (list 'unmerged (mk-reps))])
-            ([rep    (in-heap reps)])
-    (match (merge-if-overlap rep (second result))
-      [(list 'merged   reps) (list 'merged        reps)]
-      [(list 'unmerged reps) (list (first result) (heap-add reps rep))])))
-
-(module+ test
-  (def-test-case "Partial merge"
-    (check-equal? (finalise-replacements  (mk-reps (mk-rep 'A 'B)
-                                                   (mk-rep 'C 'D)))
-                  (finalise-replacements
-                   (second (partial-merge (mk-reps (mk-rep 'A 'B)
-                                                   (mk-rep 'C 'D)))))
-                  "Disjoint don't partially merge")))
 
 ;; Takes in a possibly-malformed set of replacements: symbols are allowed to
 ;; appear in multiple sets. We merge such overlapping sets to output a valid

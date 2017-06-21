@@ -2,7 +2,6 @@
 
 ;; Normalise TIP definitions
 
-(require data/heap)
 (require racket/trace)
 (require "compare.rkt")
 (require "impure.rkt")
@@ -1203,11 +1202,11 @@
                             (check-false (set-member?
                                           (names-in test-benchmark-defs)
                                           old)))
-                          (vector->list (heap->vector (old-of rep))))
+                          (old-of rep))
                 (check-not-equal? #f (set-member?
                                       (names-in test-benchmark-defs)
                                       (new-of rep))))
-              (vector->list (heap->vector test-replacements)))))
+              test-replacements)))
 
 ;; Do the actual normalisation, to populate the cache
 (define (gen-normed-and-replacements exprs)
