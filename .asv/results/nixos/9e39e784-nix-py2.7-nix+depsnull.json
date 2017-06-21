@@ -1,0 +1,29 @@
+{
+    "commit_hash": "9e39e784c1d166f36f108348da8c0c1c8963aef6", 
+    "date": 1497945193000, 
+    "ended_at": {
+        "benchmarks.time_mk_defs": 1498057625000
+    }, 
+    "env_name": "nix-py2.7-nix+depsnull", 
+    "params": {
+        "arch": "i686", 
+        "cpu": "Genuine Intel(R) CPU           L2400  @ 1.66GHz", 
+        "machine": "nixos", 
+        "nix+deps": "null", 
+        "os": "Linux 4.4.52", 
+        "python": "2.7", 
+        "ram": "3093764"
+    }, 
+    "profiles": {}, 
+    "python": "2.7", 
+    "requirements": {
+        "nix+deps": "null"
+    }, 
+    "results": {
+        "benchmarks.time_mk_defs": 10.95182490348816
+    }, 
+    "started_at": {
+        "benchmarks.time_mk_defs": 1498057608000
+    }, 
+    "version": 1
+}

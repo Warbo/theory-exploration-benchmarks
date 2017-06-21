@@ -1,0 +1,17 @@
+{
+    "benchmarks.time_mk_defs": {
+        "code": "def time_mk_defs():\n    args = [\n        path.join(path.dirname(__file__), '..', 'scripts',\n                  'make_normalised_definitions.rkt')\n    ]\n    stderr.write(repr(args))\n    check_call(args)\n", 
+        "goal_time": 0.1, 
+        "name": "benchmarks.time_mk_defs", 
+        "number": 0, 
+        "param_names": [], 
+        "params": [], 
+        "pretty_name": "benchmarks.time_mk_defs", 
+        "repeat": 0, 
+        "timeout": 60.0, 
+        "type": "time", 
+        "unit": "seconds", 
+        "warmup_time": -1
+    }, 
+    "version": 1
+}

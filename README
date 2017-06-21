@@ -57,8 +57,8 @@ using the included `default.nix` file. This provides the following attributes:
 These definitions are parameterised by the package repository and set of Haskell
 packages to use, which allows easy overriding and aids reproducibility.
 
-If you don't want to use Nix, you'll need `racket` in your `PATH`, with the
-`shell-pipeline` and `grommet` packages available.
+If you don't want to use Nix, you'll need (at least) `racket` in your `PATH`,
+with the `shell-pipeline` and `grommet` packages available.
 
 If you want to generate Haskell code you'll need the `tip` command, from the
 `tip-lib` Haskell package.
@@ -96,6 +96,21 @@ of functions. These slow down the tools considerably (a factor of 5 has been
 observed), so they are disabled by default. To force contract checking, set the
 environment variable `PLT_TR_CONTRACTS` to `1`. A separate test derivation is
 provided in default.nix, which tests all benchmark files with contracts enabled.
+
+## Benchmarking ##
+
+Converting TIP into a theory exploration benchmark can be frustratingly slow. To
+try to keep them as fast as possible we include a set of benchmark scripts (yes,
+it's very meta!). These make use of `asv` ("Airspeed Velocity"), which lets us
+track performance across revisions, separate results from different machines,
+generate pretty HTML reports, etc.
+
+To fetch `asv`, along with our custom plugins, use:
+
+    nix-shell asv.nix
+
+This will drop you into a shell with `asv` available, and show instructions for
+invoking it, what to do with the results, etc.
 
 ## Usage ##
 

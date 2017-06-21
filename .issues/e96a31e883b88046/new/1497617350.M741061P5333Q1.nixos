@@ -1,8 +1,9 @@
 From: Chris Warburton
 Date: Fri, 16 Jun 2017 13:46:21 +0100
-State: new
+State: resolved
 Subject: Benchmark (yo dawg)
 Message-Id: <e96a31e883b88046-0-artemis@nixos>
+resolution: fixed
 
 It's taking a stupid amount of time to do this conversion. We've also
 made several attempts at speeding it up.
