@@ -1,10 +1,10 @@
 # Useful for `nix-shell asv.nix`
 with import ./. {};
-with { pkgs = import <nixpkgs> {}; };
+with nix-config;
 
-pkgs.stdenv.mkDerivation {
+stdenv.mkDerivation {
   name         = "te-benchmark-asv";
-  buildInputs  = [ ((import <nixpkgs> {}).callPackage /home/chris/Programming/Python/asv-nix {}) /*asv*/ ];
+  buildInputs  = [ asv-nix ];
   buildCommand = "exit 1";
 
   shellHook    = ''

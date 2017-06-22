@@ -42,7 +42,7 @@
         "python": "_: _: (import <nixpkgs> {}).python",
 
         // General dependencies (Racket, Python, benchmark files, etc.)
-        "deps": "d: _: (import d {}).profileDeps",
+        "deps": "d: _: import (d + \"/asv/benchmarks.nix\")",
     },
 
     // The matrix of dependency versions to test.  Since we're using the Nix
