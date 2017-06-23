@@ -1,0 +1,27 @@
+From: Chris Warburton
+Date: Fri, 23 Jun 2017 00:36:51 +0100
+Subject: Re: Parameterise benchmarks
+Message-Id: <a8cbaf8118838840-f77b4d210db877a4-artemis@nixos>
+References: <a8cbaf8118838840-0-artemis@nixos>
+In-Reply-To: <a8cbaf8118838840-0-artemis@nixos>
+
+asv-nix has been modified so that:
+
+ - The project being benchmarked is now checked out from git and
+   incorporated into the building of the benchmark environment.
+ - Benchmark environments are built first using nix-build, then the
+   benchmarks are invoked using that environment's bin/python. This
+   should be *much* faster than calling nix-shell for every run.
+ - Benchmark environments are now split into three parts:
+  - Each dependency has a name, a "builder" and a list of "versions":
+   - The "matrix" setting maps each name to a list of versions.
+   - The "builders" setting maps each name to a builder.
+   - A version is an arbitrary Nix expression, which is given as an
+     argument to the builder.
+   - A builder is a Nix expression, for a function accepting a version
+     and a benchmarks directory.
+  - The "installer" is a Nix expression, for a function accepting the
+    results of the builders and a directory to be benchmarked.
+
+We need to alter our benchmarks to reflect these changes, but it gives
+us exactly the flexibility we needed.

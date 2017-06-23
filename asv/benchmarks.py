@@ -1,11 +1,9 @@
 #!/usr/bin/env python
-from os         import environ, path
-from subprocess import check_call
+from subprocess import check_call, check_output
 from timeit     import default_timer
-from sys        import stderr
 
 def time_mk_defs():
-    check_call(['mk_defs'])
+    check_output(['mk_defs'])
 time_mk_defs.timer = default_timer
 
 def time_tests():

@@ -28,6 +28,9 @@
     // timeout in seconds for installing any dependencies in environment
     "install_timeout": 600,
 
+    // Builds an environment in which the benchmarks will run
+    "installer": "args: import (args.dir + ''/asv/benchmarks.nix'') args",
+
     // Nix functions to fetch and build any required dependencies. Each key is a
     // name, which is used in the "matrix" option. Values are strings containing
     // a Nix expression; that expression should be a function, which will be
@@ -38,25 +41,14 @@
     // (e.g. CPython vs PyPy). Alternatively, you might accept an argument but
     // ignore it.
     "builders": {
-        // Needed for the benchmark runner
-        "python": "_: _: (import <nixpkgs> {}).python",
-
-        // General dependencies (Racket, Python, benchmark files, etc.)
-        "deps": "d: _: import (d + \"/asv/benchmarks.nix\")",
+        // Just pass on the current directory to the installer
+        "dir": "{ dir, version }: dir",
     },
 
-    // The matrix of dependency versions to test.  Since we're using the Nix
-    // plugin, keys should be "nix+" followed by a key from the "builders"
-    // option. The value should be a list of "versions" to use for that builder,
-    // for example different git revision/sha256sum pairs. Each "version" should
-    // be a string containing valid Nix code, but other than that the value you
-    // should use depends on what builder it will be given to. Note that at
-    // least one of these should provide a "python" binary, for running the
-    // benchmarking scripts.
-    "matrix": {
-        "nix+python": [ "null" ],
-        "nix+deps":   [ "null" ],
-    },
+    // The matrix of dependency versions to test. Keys should match those of the
+    // "builders" option. Each value should be a list of "versions" to use for
+    // that builder, which are strings containing arbitrary Nix expressions.
+    "matrix": { "dir": [ "null" ], },
 
     "benchmark_dir": "asv",
 
