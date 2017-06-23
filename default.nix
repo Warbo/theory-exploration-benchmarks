@@ -383,9 +383,8 @@ rec {
     name         = "tip-benchmarks-haskell";
     buildInputs  = [ tools ];
     buildCommand = ''
-      export OUT_DIR="$out"
-      mkdir "$OUT_DIR"
-      full_haskell_package < "${tip-benchmark-smtlib}"
+      mkdir "$out"
+      OUT_DIR="$out" tip_haskell_package
     '';
   };
 }

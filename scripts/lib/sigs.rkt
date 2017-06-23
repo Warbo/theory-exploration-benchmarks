@@ -7,10 +7,14 @@
 (require "tip.rkt")
 (require "util.rkt")
 
-(provide full-haskell-package)
+(provide full-haskell-package tip-haskell-package)
 
 (module+ test
   (require "testing.rkt")
+
+  (define (defs-to-sig x)
+    (mk-signature-s (format-symbols (mk-final-defs-hash
+                                     (files-to-hashes x)))))
 
   (define (string-to-haskell vals)
     ;; mk-final-defs takes in filenames, so it can qualify names. This makes
@@ -252,8 +256,7 @@ library
                            [#"HOME"    ,(string->bytes/utf-8
                                          (path->string out-dir))])
          (lambda ()
-           (full-haskell-package-s (format-symbols (mk-final-defs-hash (theorem-hashes)))
-                                   (path->string out-dir))
+           (tip-haskell-package-s (path->string out-dir))
 
            (parameterize ([current-directory out-dir])
 
@@ -280,6 +283,12 @@ library
 (define (full-haskell-package)
   (full-haskell-package-s (port->string (current-input-port))
                           (getenv "OUT_DIR")))
+
+(define (tip-haskell-package-s out-dir)
+  (full-haskell-package-s (format-symbols (final-benchmark-defs)) out-dir))
+
+(define (tip-haskell-package)
+  (tip-haskell-package-s (getenv "OUT_DIR")))
 
 (module+ test
   (define sig (string-to-haskell mut))
@@ -310,10 +319,6 @@ library
        ('message   "Function defined in signature"))
       (check-true def-found)))
    (list "models" "models2" "models5")))
-
-(define (defs-to-sig x)
-  (mk-signature-s (format-symbols (mk-final-defs-hash
-                                   (files-to-hashes x)))))
 
 (module+ test
   (def-test-case "Single files"

@@ -13,7 +13,8 @@
 
 (provide all-constructor-function-replacements all-replacements-closure
          decode-name
-         decode-string encode-lower-name gen-normed-and-replacements
+         decode-string encode-lower-name final-benchmark-defs
+         gen-normed-and-replacements
          lowercase-benchmark-names mk-final-defs
          mk-final-defs-hash nn norm-name normalised-theorems2
          normed-qualified-theorem-files qual-hashes-theorem-files replace-names
