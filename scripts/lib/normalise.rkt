@@ -1271,8 +1271,7 @@
       (normed-and-replacements-inner stripped replacements)))
 
 (define (mk-final-defs)
-  (show (mk-final-defs-hash
-         (files-to-hashes (port->lines (current-input-port))))))
+  (show (final-benchmark-defs)))
 
 ;; Takes a hashmap of filename->content and returns a combined, normalised TIP
 ;; benchmark

@@ -375,7 +375,7 @@ rec {
     name         = "tip-benchmark-smtlib";
     buildInputs  = [ tools ];
     buildCommand = ''
-      find "${tip-benchmarks}" -name "*.smt2" | mk_final_defs > "$out"
+      mk_final_defs > "$out"
     '';
   };
 
