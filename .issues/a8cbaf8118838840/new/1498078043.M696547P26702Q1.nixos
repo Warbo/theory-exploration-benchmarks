@@ -1,8 +1,9 @@
 From: Chris Warburton
 Date: Wed, 21 Jun 2017 21:17:45 +0100
-State: new
+State: resolved
 Subject: Parameterise benchmarks
 Message-Id: <a8cbaf8118838840-0-artemis@nixos>
+resolution: fixed
 
 Benchmarks need to work across multiple commits. We should parameterise
 them, such that:

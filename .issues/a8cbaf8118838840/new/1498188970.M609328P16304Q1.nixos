@@ -1,0 +1,9 @@
+From: Chris Warburton
+Date: Fri, 23 Jun 2017 04:35:27 +0100
+Subject: Re: Parameterise benchmarks
+Message-Id: <a8cbaf8118838840-a437996202fd1a7d-artemis@nixos>
+References: <a8cbaf8118838840-0-artemis@nixos>
+In-Reply-To: <a8cbaf8118838840-0-artemis@nixos>
+
+Benchmark dependencies are now taken from `dir` (the working tree),
+whilst the scripts are taken from `root` (the commit under test).
