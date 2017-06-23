@@ -20,7 +20,7 @@ with rec {
       nix-config-src-default = fetchgit {
         url    = "http://chriswarbo.net/git/nix-config.git";
         rev    = "83b4add";
-        sha256 = "150q2mz40vwbhzsrjhs6r2mvhvrnak4391bv5gqwrvfx7cpfsyis";
+        sha256 = "1zvlr804pkm8pfn7idaygw5japzq0ggk30h2wjq9hj8jb5fkf96g";
       };
 
       config-src = if nix-config-src == null
