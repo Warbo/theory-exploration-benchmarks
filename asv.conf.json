@@ -29,7 +29,7 @@
     "install_timeout": 600,
 
     // Builds an environment in which the benchmarks will run
-    "installer": "args: import (args.root + ''/asv/benchmarks.nix'') args",
+    "installer": "args: import (args.dir + ''/asv/benchmarks.nix'') args",
 
     // Nix functions to fetch and build any required dependencies. Each key is a
     // name, which is used in the "matrix" option. Values are strings containing
