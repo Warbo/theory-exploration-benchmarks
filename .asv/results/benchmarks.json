@@ -1,6 +1,6 @@
 {
     "benchmarks.time_mk_defs": {
-        "code": "def time_mk_defs():\n    check_call(['mk_defs'])\n", 
+        "code": "def time_mk_defs():\n    check_output(['mk_defs'])\n", 
         "goal_time": 0.1, 
         "name": "benchmarks.time_mk_defs", 
         "number": 0, 
@@ -13,16 +13,30 @@
         "unit": "seconds", 
         "warmup_time": -1
     }, 
-    "benchmarks.time_tests": {
-        "code": "def time_tests():\n    check_call(['run_tests'])\n", 
+    "benchmarks.time_mk_sdata": {
+        "code": "def time_mk_sdata():\n    check_output(['mk_sdata'])\n", 
         "goal_time": 0.1, 
-        "name": "benchmarks.time_tests", 
+        "name": "benchmarks.time_mk_sdata", 
         "number": 0, 
         "param_names": [], 
         "params": [], 
-        "pretty_name": "benchmarks.time_tests", 
+        "pretty_name": "benchmarks.time_mk_sdata", 
         "repeat": 0, 
-        "timeout": 300, 
+        "timeout": 60.0, 
+        "type": "time", 
+        "unit": "seconds", 
+        "warmup_time": -1
+    }, 
+    "benchmarks.time_mk_thms": {
+        "code": "def time_mk_thms():\n    check_output(['mk_thms'])\n", 
+        "goal_time": 0.1, 
+        "name": "benchmarks.time_mk_thms", 
+        "number": 0, 
+        "param_names": [], 
+        "params": [], 
+        "pretty_name": "benchmarks.time_mk_thms", 
+        "repeat": 0, 
+        "timeout": 60.0, 
         "type": "time", 
         "unit": "seconds", 
         "warmup_time": -1

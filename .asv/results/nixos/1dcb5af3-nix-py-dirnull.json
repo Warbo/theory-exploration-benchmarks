@@ -2,7 +2,10 @@
     "commit_hash": "1dcb5af32d2d80d1c50105137459e7b1792a2c9a", 
     "date": 1498059040000, 
     "ended_at": {
-        "benchmarks.time_mk_defs": 1498185241000, 
+        "benchmarks.time_mk_defs": 1498263467000, 
+        "benchmarks.time_mk_sdata": 1498263487000, 
+        "benchmarks.time_mk_thms": 1498263500000, 
+        "benchmarks.time_run_tests": 1498261833000, 
         "benchmarks.time_tests": 1498185779000
     }, 
     "env_name": "nix-py-dirnull", 
@@ -21,11 +24,17 @@
         "dir": "null"
     }, 
     "results": {
-        "benchmarks.time_mk_defs": 21.442716121673584, 
+        "benchmarks.time_mk_defs": 17.530611991882324, 
+        "benchmarks.time_mk_sdata": 18.192230939865112, 
+        "benchmarks.time_mk_thms": 12.294430017471313, 
+        "benchmarks.time_run_tests": null, 
         "benchmarks.time_tests": 525.9063420295715
     }, 
     "started_at": {
-        "benchmarks.time_mk_defs": 1498185219000, 
+        "benchmarks.time_mk_defs": 1498263449000, 
+        "benchmarks.time_mk_sdata": 1498263467000, 
+        "benchmarks.time_mk_thms": 1498263487000, 
+        "benchmarks.time_run_tests": 1498261357000, 
         "benchmarks.time_tests": 1498185252000
     }, 
     "version": 1

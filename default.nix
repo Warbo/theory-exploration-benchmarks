@@ -231,22 +231,12 @@ rec {
   # Used for benchmarking the benchmark generation (yo dawg)
   asv = nix-config.asv-nix;
 
-  cache = rec {
-    # This tells the tests where to find the benchmarks. Only a subset of files
-    # will be tested, to make things faster.
-    BENCHMARKS_FALLBACK = tip-benchmarks;
+  # Uses all benchmarks, for our actual results
+  cache = mkCache tip-benchmarks;
 
-    # A small selection of benchmarks, useful for profiling, etc.
-    BENCHMARKS_FEW = runCommand "few" { inherit BENCHMARKS_FALLBACK; }
-      ''
-        pushd "$BENCHMARKS_FALLBACK"
-        while read -r F
-        do
-          DIR=$(dirname "$out/$F")
-          mkdir -p "$DIR"
-          cp -v "$F" "$DIR"/
-        done < <(find . -name "*.smt2" | sort | head -n20)
-      '';
+  # Generates all the intermediate steps of the transformation
+  mkCache = BENCHMARKS_FALLBACK: rec {
+    inherit BENCHMARKS_FALLBACK;
 
     TEST_DATA = "${./test-data}";
 
@@ -273,11 +263,21 @@ rec {
     BENCHMARKS_NORMALISED_DEFINITIONS = runCommand "normalised-definitions"
       {
         inherit BENCHMARKS_FALLBACK;
-        src = ./scripts;
+        src         = ./scripts;
         buildInputs = [ env ];
       }
       ''
         "$src/make_normalised_definitions.rkt" > "$out"
+      '';
+
+    BENCHMARKS_FINAL_BENCHMARK_DEFS = runCommand "final-defs"
+      {
+        inherit BENCHMARKS_FALLBACK BENCHMARKS_NORMALISED_DEFINITIONS;
+        src         = ./scripts;
+        buildInputs = [ env ];
+      }
+      ''
+        "$src/gen_final_benchmark_defs.rkt" > "$out"
       '';
   };
 

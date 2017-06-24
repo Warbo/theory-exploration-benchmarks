@@ -6,6 +6,17 @@
 with import dir {};
 with nix-config;
 with rec {
+  # Uses a small selection of benchmarks, useful for profiling, etc.
+  fewCache = mkCache (runCommand "few" { ALL = tip-benchmarks; } ''
+    pushd "$ALL"
+    while read -r F
+    do
+      DIR=$(dirname "$out/$F")
+      mkdir -p "$DIR"
+      cp -v "$F" "$DIR"/
+    done < <(find . -name "*.smt2" | sort | head -n20)
+  '');
+
   # Take these from root so we can measure performance across revisions
   scripts = root + "/scripts";
 
@@ -14,19 +25,29 @@ with rec {
     exec "${cmd}" "$@"
   '';
 
+  profileWith = vars: script: wrap {
+    inherit vars;
+    paths = [ env ];
+    script = runner "${scripts}/${script}";
+  };
+
   deps = attrsToDirs {
     bin = {
-      run_tests = wrap {
-        vars   = { inherit (cache) BENCHMARKS_FALLBACK TEST_DATA; };
-        paths  = [ env ];
-        script = runner "${scripts}/test.sh";
-      };
+      run_tests = profileWith { inherit (cache) BENCHMARKS_FALLBACK TEST_DATA; }
+                              "test.sh";
 
-      mk_defs = wrap {
-        vars   = { BENCHMARKS_FALLBACK = cache.BENCHMARKS_FEW; };
-        paths  = [ env ];
-        script = runner "${scripts}/make_normalised_definitions.rkt";
-      };
+      mk_defs   = profileWith { inherit (fewCache) BENCHMARKS_FALLBACK; }
+                              "make_normalised_definitions.rkt";
+
+      mk_thms   = profileWith { inherit (fewCache)
+                                  BENCHMARKS_FALLBACK
+                                  BENCHMARKS_NORMALISED_DEFINITIONS; }
+                              "make_normalised_theorems.rkt";
+
+      mk_sdata  = profileWith { inherit (fewCache)
+                                  BENCHMARKS_FALLBACK
+                                  BENCHMARKS_NORMALISED_DEFINITIONS; }
+                              "make_sampling_data.rkt";
     };
   };
 };

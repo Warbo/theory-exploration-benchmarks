@@ -14,7 +14,7 @@
 (provide all-constructor-function-replacements all-replacements-closure
          decode-name
          decode-string encode-lower-name final-benchmark-defs
-         gen-normed-and-replacements
+         gen-normed-and-replacements gen-final-benchmark-defs
          lowercase-benchmark-names mk-final-defs
          mk-final-defs-hash nn norm-name normalised-theorems2
          normed-qualified-theorem-files qual-hashes-theorem-files replace-names
@@ -1318,7 +1318,13 @@
 
 ;; Normalised benchmark from given BENCHMARKS
 (memo0 final-benchmark-defs
-       (mk-final-defs-hash (theorem-hashes)))
+       (read-from-cache! "BENCHMARKS_FINAL_BENCHMARK_DEFS"
+                         gen-final-benchmark-defs))
+
+(define (gen-final-benchmark-defs)
+  (if (getenv "BENCHMARKS_FINAL_BENCHMARK_DEFS")
+      (error "BENCHMARKS_FINAL_BENCHMARK_DEFS already set, aborting")
+      (mk-final-defs-hash (theorem-hashes))))
 
 ;; All function names defined in given BENCHMARKS. NOTE: These will be
 ;; hex-encoded.
