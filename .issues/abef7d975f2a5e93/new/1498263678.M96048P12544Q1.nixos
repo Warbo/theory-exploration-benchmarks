@@ -1,0 +1,9 @@
+From: Chris Warburton
+Date: Sat, 24 Jun 2017 01:20:50 +0100
+Subject: Re: Fine-grained caching
+Message-Id: <abef7d975f2a5e93-dc65f14553f91e65-artemis@nixos>
+References: <abef7d975f2a5e93-0-artemis@nixos>
+In-Reply-To: <abef7d975f2a5e93-0-artemis@nixos>
+
+We're now caching in between steps, and benchmarking those cache
+generators.

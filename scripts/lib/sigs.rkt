@@ -7,32 +7,36 @@
 (require "tip.rkt")
 (require "util.rkt")
 
-(provide full-haskell-package mk-signature)
+(provide full-haskell-package tip-haskell-package)
 
 (module+ test
-  (require "testing.rkt"))
+  (require "testing.rkt")
 
-(define (string-to-haskell vals)
-      ;; mk-final-defs takes in filenames, so it can qualify names. This makes
-      ;; and cleans up temporary files for testing.
+  (define (defs-to-sig x)
+    (mk-signature-s (format-symbols (mk-final-defs-hash
+                                     (files-to-hashes x)))))
 
-      ;; Note: We make a file in a directory, to avoid problems if tmpdir begins
-      ;; with a number (e.g. '/var/run/user/1000'); otherwise qualified variable
-      ;; names would be invalid
-      (in-temp-dir (lambda (dir)
-                     (define temp-file (string-append (path->string dir)
-                                                      "/test.smt2"))
+  (define (string-to-haskell vals)
+    ;; mk-final-defs takes in filenames, so it can qualify names. This makes
+    ;; and cleans up temporary files for testing.
 
-                     (for-each (lambda (val)
-                                 (display-to-file val  temp-file
-                                                  #:exists 'append)
-                                 (display-to-file "\n" temp-file
-                                                  #:exists 'append))
-                               vals)
+    ;; Note: We make a file in a directory, to avoid problems if tmpdir begins
+    ;; with a number (e.g. '/var/run/user/1000'); otherwise qualified variable
+    ;; names would be invalid
+    (in-temp-dir (lambda (dir)
+                   (define temp-file (string-append (path->string dir)
+                                                    "/test.smt2"))
 
-                     (let* ([result (defs-to-sig (list temp-file))])
-                       (delete-file temp-file)
-                       result))))
+                   (for-each (lambda (val)
+                               (display-to-file val  temp-file
+                                                #:exists 'append)
+                               (display-to-file "\n" temp-file
+                                                #:exists 'append))
+                             vals)
+
+                   (let* ([result (defs-to-sig (list temp-file))])
+                     (delete-file temp-file)
+                     result)))))
 
 ;; Sends a string INPUT through the `tip` program for conversion to Haskell +
 ;; QuickSpec
@@ -78,10 +82,6 @@
                                       (match x
                                         (case (Cons y zs) y)))))
                      (check-sat))))))))
-
-;; A wrapper around `tip`
-(define (mk-signature)
-  (display (mk-signature-s (port->string (current-input-port)))))
 
 ;; Create a Haskell package in directory DIR containing rendered benchmark
 ;; definition STR
@@ -256,8 +256,7 @@ library
                            [#"HOME"    ,(string->bytes/utf-8
                                          (path->string out-dir))])
          (lambda ()
-           (full-haskell-package-s (format-symbols (mk-final-defs-hash (theorem-hashes)))
-                                   (path->string out-dir))
+           (tip-haskell-package-s (path->string out-dir))
 
            (parameterize ([current-directory out-dir])
 
@@ -284,6 +283,12 @@ library
 (define (full-haskell-package)
   (full-haskell-package-s (port->string (current-input-port))
                           (getenv "OUT_DIR")))
+
+(define (tip-haskell-package-s out-dir)
+  (full-haskell-package-s (format-symbols (final-benchmark-defs)) out-dir))
+
+(define (tip-haskell-package)
+  (tip-haskell-package-s (getenv "OUT_DIR")))
 
 (module+ test
   (define sig (string-to-haskell mut))
@@ -315,25 +320,11 @@ library
       (check-true def-found)))
    (list "models" "models2" "models5")))
 
-(define (defs-to-sig x)
-  (mk-signature-s (format-symbols (mk-final-defs-hash
-                                   (files-to-hashes x)))))
-
 (module+ test
   (def-test-case "Single files"
     (define files (map (lambda (suf)
                          (benchmark-file suf))
-                       '(;"isaplanner/prop_54.smt2"
-                         ;"tip2015/propositional_AndIdempotent.smt2"
-                         ;"tip2015/propositional_AndCommutative.smt2"
-                         ;"tip2015/mccarthy91_M2.smt2"
-                         ;"isaplanner/prop_36.smt2"
-                         ;"tip2015/sort_MSortTDPermutes.smt2"
-                         "tip2015/tree_sort_SortPermutes'.smt2"
-                         ;"tip2015/sort_StoogeSort2Permutes.smt2"
-                         ;"tip2015/sort_StoogeSortPermutes.smt2"
-                         ;"tip2015/polyrec_seq_index.smt2"
-                         #;"tip2015/sort_QSortPermutes.smt2")))
+                       '("tip2015/tree_sort_SortPermutes'.smt2")))
 
     (for-each (lambda (f)
                 (define sig

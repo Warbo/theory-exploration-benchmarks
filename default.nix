@@ -19,8 +19,8 @@ with rec {
     with rec {
       nix-config-src-default = fetchgit {
         url    = "http://chriswarbo.net/git/nix-config.git";
-        rev    = "8c8cf81";
-        sha256 = "150q2mz40vwbhzsrjhs6r2mvhvrnak4391bv5gqwrvfx7cpfsyis";
+        rev    = "83b4add";
+        sha256 = "1zvlr804pkm8pfn7idaygw5japzq0ggk30h2wjq9hj8jb5fkf96g";
       };
 
       config-src = if nix-config-src == null
@@ -134,7 +134,7 @@ with rec {
   };
 };
 rec {
-  inherit patchedHaskellPackages racketWithPkgs;
+  inherit patchedHaskellPackages nix-config;
 
   env = buildEnv {
     name  = "tip-bench-env";
@@ -231,36 +231,14 @@ rec {
   # Used for benchmarking the benchmark generation (yo dawg)
   asv = nix-config.asv-nix;
 
-  # A few benchmark files, useful for e.g. profiling
-  profileDeps = runCommand "profile-deps"
-    {
-      inherit python;
-      buildInputs = [ makeWrapper ];
-      few = runCommand "few" { ORIG = tip-benchmarks; } ''
-        pushd "$ORIG"
-        while read -r F
-        do
-          DIR=$(dirname "$out/$F")
-          mkdir -p "$DIR"
-          cp -v "$F" "$DIR"/
-        done < <(find . -name "*.smt2" | sort | head -n20)
-      '';
-      rkt = racketWithPkgs;
-    }
-    ''
-      mkdir -p "$out/bin"
-      for F in "$rkt"/bin/* "$python"/bin/*
-      do
-        NAME=$(basename "$F")
-        makeWrapper "$F" "$out/bin/$NAME" \
-          --set BENCHMARKS_FALLBACK "$few"
-      done
-    '';
+  # Uses all benchmarks, for our actual results
+  cache = mkCache tip-benchmarks;
 
-  cache = rec {
-    # This tells the tests where to find the benchmarks. Only a subset of files
-    # will be tested, to make things faster.
-    BENCHMARKS_FALLBACK = tip-benchmarks;
+  # Generates all the intermediate steps of the transformation
+  mkCache = BENCHMARKS_FALLBACK: rec {
+    inherit BENCHMARKS_FALLBACK;
+
+    TEST_DATA = "${./test-data}";
 
     BENCHMARKS_CACHE = runCommand "benchmarks-cache"
       {
@@ -285,18 +263,28 @@ rec {
     BENCHMARKS_NORMALISED_DEFINITIONS = runCommand "normalised-definitions"
       {
         inherit BENCHMARKS_FALLBACK;
-        src = ./scripts;
+        src         = ./scripts;
         buildInputs = [ env ];
       }
       ''
         "$src/make_normalised_definitions.rkt" > "$out"
+      '';
+
+    BENCHMARKS_FINAL_BENCHMARK_DEFS = runCommand "final-defs"
+      {
+        inherit BENCHMARKS_FALLBACK BENCHMARKS_NORMALISED_DEFINITIONS;
+        src         = ./scripts;
+        buildInputs = [ env ];
+      }
+      ''
+        "$src/gen_final_benchmark_defs.rkt" > "$out"
       '';
   };
 
   # Standalone to allow separate testing and to avoid requiring expensive caches
   quickToolTest = stdenv.mkDerivation (rec {
     # BENCHMARKS_FALLBACK is necessary for everything except strip_native.rkt
-    inherit (cache) BENCHMARKS_FALLBACK;
+    inherit (cache) BENCHMARKS_FALLBACK TEST_DATA;
 
     name = "te-benchmark-quick-tool-test";
     src  = ./scripts;
@@ -307,9 +295,6 @@ rec {
       echo "${if doCheck then "passed" else "skipped"}" > "$out"
     '';
 
-    # Includes e.g. example inputs
-    TEST_DATA = "${./test-data}";
-
     # Allow testing to be skipped, as it can take a few minutes
     doCheck    = getEnv "SKIP_TESTS" == "";
     checkPhase = ''
@@ -319,10 +304,11 @@ rec {
 
   # Standalone since it's too slow to use as a dependency of tools
   fullToolTest = stdenv.mkDerivation {
+    inherit (cache) BENCHMARKS_FALLBACK TEST_DATA;
     inherit quickToolTest;
 
-    name         = "te-benchmark-full-tool-test";
-    src          = ./scripts;
+    name = "te-benchmark-full-tool-test";
+    src  = ./scripts;
 
     # Include tools as a dependency, so we run its fast tests first
     buildInputs  = [ env tools ];
@@ -334,12 +320,10 @@ rec {
     # Setting BENCHMARKS during tests overrides BENCHMARKS_FALLBACK, and also
     # causes all files to be tested rather than a subset.
     BENCHMARKS          = tip-benchmarks;
-    BENCHMARKS_FALLBACK = tip-benchmarks;
     BENCHMARKS_TEST_ALL = "1";
 
     # Check contracts while testing; it's disabled by default for being too slow
     PLT_TR_CONTRACTS    = "1";
-    TEST_DATA           = "${./test-data}";
   };
 
   # Installs tools for translating, sampling, etc. the benchmark. These tools
@@ -391,7 +375,7 @@ rec {
     name         = "tip-benchmark-smtlib";
     buildInputs  = [ tools ];
     buildCommand = ''
-      find "${tip-benchmarks}" -name "*.smt2" | mk_final_defs > "$out"
+      mk_final_defs > "$out"
     '';
   };
 
@@ -399,9 +383,8 @@ rec {
     name         = "tip-benchmarks-haskell";
     buildInputs  = [ tools ];
     buildCommand = ''
-      export OUT_DIR="$out"
-      mkdir "$OUT_DIR"
-      full_haskell_package < "${tip-benchmark-smtlib}"
+      mkdir "$out"
+      OUT_DIR="$out" tip_haskell_package
     '';
   };
 }

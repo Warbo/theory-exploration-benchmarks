@@ -13,7 +13,8 @@
 
 (provide all-constructor-function-replacements all-replacements-closure
          decode-name
-         decode-string encode-lower-name gen-normed-and-replacements
+         decode-string encode-lower-name final-benchmark-defs
+         gen-normed-and-replacements gen-final-benchmark-defs
          lowercase-benchmark-names mk-final-defs
          mk-final-defs-hash nn norm-name normalised-theorems2
          normed-qualified-theorem-files qual-hashes-theorem-files replace-names
@@ -1270,8 +1271,7 @@
       (normed-and-replacements-inner stripped replacements)))
 
 (define (mk-final-defs)
-  (show (mk-final-defs-hash
-         (files-to-hashes (port->lines (current-input-port))))))
+  (show (final-benchmark-defs)))
 
 ;; Takes a hashmap of filename->content and returns a combined, normalised TIP
 ;; benchmark
@@ -1318,7 +1318,13 @@
 
 ;; Normalised benchmark from given BENCHMARKS
 (memo0 final-benchmark-defs
-       (mk-final-defs-hash (theorem-hashes)))
+       (read-from-cache! "BENCHMARKS_FINAL_BENCHMARK_DEFS"
+                         gen-final-benchmark-defs))
+
+(define (gen-final-benchmark-defs)
+  (if (getenv "BENCHMARKS_FINAL_BENCHMARK_DEFS")
+      (error "BENCHMARKS_FINAL_BENCHMARK_DEFS already set, aborting")
+      (mk-final-defs-hash (theorem-hashes))))
 
 ;; All function names defined in given BENCHMARKS. NOTE: These will be
 ;; hex-encoded.

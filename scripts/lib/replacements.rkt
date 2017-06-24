@@ -176,7 +176,7 @@
                                           (append rs acc)))]))
 
 (define (reps-insert-rep rep reps)
-  (sort (reps-insert-rep-acc (mk-reps) rep reps) rep<=?))
+  (reps-insert-rep-acc (mk-reps) rep reps))
 
 (define reps-union (curry foldl reps-insert-rep))
 

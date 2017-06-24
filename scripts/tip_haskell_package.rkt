@@ -2,4 +2,4 @@
 #lang racket
 
 (require "lib/sigs.rkt")
-(mk-signature)
+(tip-haskell-package)

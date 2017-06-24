@@ -1,0 +1,27 @@
+From: Chris Warburton
+Date: Wed, 21 Jun 2017 21:17:45 +0100
+State: resolved
+Subject: Parameterise benchmarks
+Message-Id: <a8cbaf8118838840-0-artemis@nixos>
+resolution: fixed
+
+Benchmarks need to work across multiple commits. We should parameterise
+them, such that:
+
+ - Environment variables (cached definitions, cached theorems, etc.) are
+   built once, from the current source tree, and used by all scripts.
+ - Benchmark scripts are built once, from the current source tree, and
+   used by all scripts.
+ - Racket code used in a benchmarking script can be swapped out, so we
+   can compare different commits.
+
+asv's environment mechanism should allow us to do this. Currently, we
+have the following setup:
+
+ - Benchmarks are defined in asv/benchmarks.py. These run programs.
+ - Those programs are defined in asv/benchmarks.nix. They set env vars
+   and hard-code file paths in scripts/
+
+We should alter this so that scripts/ is looked up dynamically. The
+install/uninstall methods of NixEnvironment should be altered to allow
+this.

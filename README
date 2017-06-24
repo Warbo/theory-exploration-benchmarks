@@ -114,9 +114,8 @@ invoking it, what to do with the results, etc.
 
 ## Usage ##
 
-To combine some TIP benchmarks into one theory, pipe their filenames into
-`mk_final_defs`, one per line. This will print the resulting benchmark, in TIP
-format, to stdout.
+To combine the TIP benchmarks into one theory, run `mk_final_defs`. This will
+print the resulting benchmark, in TIP format, to stdout.
 
 To generate a Haskell package from a benchmark, pipe the benchmark into
 `full_haskell_package`. Make sure to set the `OUT_DIR` environment variable
