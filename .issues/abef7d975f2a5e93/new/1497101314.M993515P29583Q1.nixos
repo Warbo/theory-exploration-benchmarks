@@ -1,8 +1,9 @@
 From: Chris Warburton
 Date: Sat, 10 Jun 2017 14:26:19 +0100
-State: new
+State: resolved
 Subject: Fine-grained caching
 Message-Id: <abef7d975f2a5e93-0-artemis@nixos>
+resolution: fixed
 
 Expensive functions can each look for their own BENCHMARKS_... env var, and read
 it in if found. Each gets a corresponding 'generate' function, and script for
