@@ -1276,7 +1276,7 @@
 (define (mk-final-defs-hash given-hashes)
   (prepare (norm-defs (first (qual-all-hashes given-hashes)))))
 
-(memo0 theorem-def-hashes (norm-defs (first (qual-all-hashes (theorem-hashes)))))
+(memo0 theorem-def-hashes (norm-defs (first (qual-hashes-theorem-files))))
 (memo0 final-theorem-defs (prepare (theorem-def-hashes)))
 
 (module+ test
