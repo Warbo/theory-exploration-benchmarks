@@ -1188,7 +1188,7 @@
                   (finalise-replacements (replacement 'min2 'min1)))
 
     (define test-replacements
-      (replacements-closure (first (qual-hashes-theorem-files))))
+      (all-replacements-closure))
 
     (for-each (lambda (rep)
                 (for-each (lambda (old)
