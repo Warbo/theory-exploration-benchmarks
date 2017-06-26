@@ -36,15 +36,15 @@ with rec {
       run_tests = profileWith { inherit (cache) BENCHMARKS_FALLBACK TEST_DATA; }
                               "test.sh";
 
-      mk_defs   = profileWith { inherit (fewCache) BENCHMARKS_FALLBACK; }
+      mk_defs   = profileWith { inherit (testCache) BENCHMARKS_FALLBACK; }
                               "make_normalised_definitions.rkt";
 
-      mk_thms   = profileWith { inherit (fewCache)
+      mk_thms   = profileWith { inherit (testCache)
                                   BENCHMARKS_FALLBACK
                                   BENCHMARKS_NORMALISED_DEFINITIONS; }
                               "make_normalised_theorems.rkt";
 
-      mk_sdata  = profileWith { inherit (fewCache)
+      mk_sdata  = profileWith { inherit (testCache)
                                   BENCHMARKS_FALLBACK
                                   BENCHMARKS_NORMALISED_DEFINITIONS; }
                               "make_sampling_data.rkt";

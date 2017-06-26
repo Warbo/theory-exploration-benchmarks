@@ -234,6 +234,26 @@ rec {
   # Uses all benchmarks, for our actual results
   cache = mkCache tip-benchmarks;
 
+  testCache =
+    with rec {
+      testFiles = import ./test-data/test-files.nix;
+
+      testDir = runCommand "test-dir"
+        {
+          inherit testFiles;
+          base = tip-benchmarks;
+        }
+        ''
+          for F in $testFiles
+          do
+            GO="$out/$F"
+            mkdir -p "$(dirname "$GO")"
+            ln -s "$base/$F" "$GO"
+          done
+        '';
+    };
+    mkCache testDir;
+
   # Generates all the intermediate steps of the transformation
   mkCache = BENCHMARKS_FALLBACK: rec {
     inherit BENCHMARKS_FALLBACK;
@@ -242,7 +262,8 @@ rec {
 
     BENCHMARKS_CACHE = runCommand "benchmarks-cache"
       {
-        inherit BENCHMARKS_FALLBACK;
+        inherit BENCHMARKS_FALLBACK BENCHMARKS_FINAL_BENCHMARK_DEFS
+                BENCHMARKS_NORMALISED_DEFINITIONS;
         src         = ./scripts;
         buildInputs = [ env ];
       }
@@ -252,7 +273,8 @@ rec {
 
     BENCHMARKS_NORMALISED_THEOREMS = runCommand "normalised-theorems"
       {
-        inherit BENCHMARKS_CACHE BENCHMARKS_FALLBACK;
+        inherit BENCHMARKS_CACHE BENCHMARKS_FALLBACK
+                BENCHMARKS_NORMALISED_DEFINITIONS;
         src         = ./scripts;
         buildInputs = [ env ];
       }
@@ -281,26 +303,29 @@ rec {
       '';
   };
 
+  testScript = nix-config.wrap {
+    paths  = [ env ];
+    vars   = testCache;
+    script = ''
+      #!/usr/bin/env bash
+      raco test "${./scripts}/test.rkt" || exit 1
+    '';
+  };
+
   # Standalone to allow separate testing and to avoid requiring expensive caches
-  quickToolTest = stdenv.mkDerivation (rec {
-    # BENCHMARKS_FALLBACK is necessary for everything except strip_native.rkt
-    inherit (cache) BENCHMARKS_FALLBACK TEST_DATA;
-
-    name = "te-benchmark-quick-tool-test";
-    src  = ./scripts;
-
-    buildInputs = [ env makeWrapper ];
-
-    installPhase = ''
-      echo "${if doCheck then "passed" else "skipped"}" > "$out"
+  quickToolTest = runCommand "quick-test"
+    {
+      # Allow testing to be skipped, as it can take a few minutes
+      doCheck = if getEnv "SKIP_TESTS" == "" then "true" else "false";
+    }
+    ''
+      if $doCheck
+      then
+        "${testScript}" || exit 1
+        echo "passed" > "$out"
+      fi
+      echo "skipped" > "$out"
     '';
-
-    # Allow testing to be skipped, as it can take a few minutes
-    doCheck    = getEnv "SKIP_TESTS" == "";
-    checkPhase = ''
-      raco test test.rkt || exit 1
-    '';
-  });
 
   # Standalone since it's too slow to use as a dependency of tools
   fullToolTest = stdenv.mkDerivation {
