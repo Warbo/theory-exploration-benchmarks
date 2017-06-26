@@ -13,7 +13,7 @@
 
 (provide all-constructor-function-replacements all-replacements-closure
          decode-name
-         decode-string encode-lower-name final-benchmark-defs final-theorem-defs
+         decode-string encode-lower-name final-benchmark-defs
          gen-normed-and-replacements
          lowercase-benchmark-names mk-final-defs
          mk-final-defs-hash nn norm-name
@@ -1183,7 +1183,7 @@
 
 (module+ test
   (define test-benchmark-defs
-    (theorem-def-hashes))
+    (first (normed-and-replacements-cached)))
 
   (def-test-case "Have replacements"
     (define defs '((define-fun min1 ((x Int) (y Int)) Int (ite (<= x y) x y))
@@ -1275,9 +1275,6 @@
 ;; benchmark
 (define (mk-final-defs-hash given-hashes)
   (prepare (norm-defs (first (qual-all-hashes given-hashes)))))
-
-(memo0 theorem-def-hashes (norm-defs (first (qual-hashes-theorem-files))))
-(memo0 final-theorem-defs (prepare (theorem-def-hashes)))
 
 (module+ test
   (def-test-case "mk-final-defs-hash works"
@@ -1448,7 +1445,7 @@
     (define raw-names (names-in raw))
 
     ;; Remove redundancies
-    (define normal       (final-theorem-defs))
+    (define normal       (final-benchmark-defs))
     (define normal-names (names-in normal))
 
     ;; If some raw name is smaller than some normalised name, the two names must

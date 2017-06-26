@@ -194,7 +194,7 @@ library
 
 (module+ test
   (define test-benchmark-defs
-    (final-theorem-defs))
+    (final-benchmark-defs))
 
   (def-test-case "Module tests"
     (define files
