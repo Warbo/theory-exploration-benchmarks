@@ -2,4 +2,4 @@
 #lang racket
 
 (require "lib/normalise.rkt")
-(write (gen-normed-and-replacements (first (qual-hashes-theorem-files))))
+(write (gen-normed-and-replacements))

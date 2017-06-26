@@ -14,11 +14,12 @@
 (provide all-constructor-function-replacements all-replacements-closure
          decode-name
          decode-string encode-lower-name final-benchmark-defs
-         gen-normed-and-replacements gen-final-benchmark-defs
+         gen-normed-and-replacements
          lowercase-benchmark-names mk-final-defs
-         mk-final-defs-hash nn norm-name normalised-theorems2
-         normed-qualified-theorem-files qual-hashes-theorem-files replace-names
-         unqualify)
+         mk-final-defs-hash nn norm-name
+         normed-and-replacements-cached normed-qualified-theorem-files prepare
+         qual-hashes-theorem-files
+         replace-names unqualify)
 
 (module+ test
   (require "testing.rkt"))
@@ -1210,21 +1211,17 @@
               test-replacements)))
 
 ;; Do the actual normalisation, to populate the cache
-(define (gen-normed-and-replacements exprs)
+(define (gen-normed-and-replacements)
   (when (getenv "BENCHMARKS_NORMALISED_DEFINITIONS")
     (error (string-append "Shouldn't call gen-normed-and-replacements "
                           "when BENCHMARK_NORMALISED_DEFINITIONS is set")))
-  (define result
-    (normed-and-replacements-inner (map prefix-locals exprs)
-                                   '()))
-  (list (first result)
-        (apply extend-replacements (second result))))
+  (normed-and-replacements (first (qual-hashes-theorem-files))))
 
 ;; Removes redundant alpha-equivalent definitions from EXPRS, resulting in a
 ;; normalised form given as the first element of the result.
 ;; Also keeps track of the replacements it's made in the process, returning them
 ;; as the second element of the result.
-(define/test-contract normed-and-replacements
+(define/test-contract (normed-and-replacements exprs)
   (-> (*list/c definition?)
       (list/c (and/c (*list/c definition?)
                      (lambda (defs)
@@ -1234,10 +1231,16 @@
   ;; All of the hard work is done inside normed-and-replacements-inner, but that
   ;; function is recursive, so memoising it would fill the lookup table with
   ;; intermediate results.
-  (memo1 (lambda (exprs)
-           (read-from-cache! "BENCHMARKS_NORMALISED_DEFINITIONS"
-                             (lambda ()
-                               (gen-normed-and-replacements exprs))))))
+  (define result
+    (normed-and-replacements-inner (map prefix-locals exprs)
+                                   '()))
+  (list (first result)
+        (apply extend-replacements (second result))))
+
+(define (normed-and-replacements-cached)
+  (read-from-cache! "BENCHMARKS_NORMALISED_DEFINITIONS"
+                    (lambda ()
+                      (error "No BENCHMARKS_NORMALISED_DEFINITIONS"))))
 
 (define/test-contract (normed-and-replacements-inner exprs reps)
   (-> (*list/c definition?)
@@ -1319,12 +1322,8 @@
 ;; Normalised benchmark from given BENCHMARKS
 (memo0 final-benchmark-defs
        (read-from-cache! "BENCHMARKS_FINAL_BENCHMARK_DEFS"
-                         gen-final-benchmark-defs))
-
-(define (gen-final-benchmark-defs)
-  (if (getenv "BENCHMARKS_FINAL_BENCHMARK_DEFS")
-      (error "BENCHMARKS_FINAL_BENCHMARK_DEFS already set, aborting")
-      (mk-final-defs-hash (theorem-hashes))))
+                         (lambda ()
+                           (error "No BENCHMARKS_FINAL_BENCHMARK_DEFS"))))
 
 ;; All function names defined in given BENCHMARKS. NOTE: These will be
 ;; hex-encoded.
@@ -1333,9 +1332,7 @@
 
 (module+ test
   (define subset
-    (replace-names '(grammars/simp_expr_unambig1.smt2append
-                     grammars/simp_expr_unambig1.smt2lin
-                     grammars/simp_expr_unambig4.smt2nil
+    (replace-names '(grammars/simp_expr_unambig4.smt2nil
                      grammars/simp_expr_unambig4.smt2cons
                      grammars/simp_expr_unambig4.smt2C
                      grammars/simp_expr_unambig4.smt2D
@@ -1352,19 +1349,23 @@
                      grammars/simp_expr_unambig4.smt2append
                      grammars/simp_expr_unambig4.smt2linTerm
                      grammars/simp_expr_unambig4.smt2lin
-                     tip2015/sort_StoogeSort2IsSort.smt2nil
-                     tip2015/sort_StoogeSort2IsSort.smt2cons
-                     tip2015/sort_StoogeSort2IsSort.smt2sort2
-                     tip2015/sort_StoogeSort2IsSort.smt2insert2
-                     tip2015/sort_StoogeSort2IsSort.smt2zsplitAt
-                     tip2015/sort_StoogeSort2IsSort.smt2ztake
-                     tip2015/sort_StoogeSort2IsSort.smt2stooge2sort2)))
 
-  (define test-hashes
-    (files-to-hashes test-files))
+                     isaplanner/prop_84.smt2CustomTrue
+                     isaplanner/prop_84.smt2CustomFalse
+                     isaplanner/prop_84.smt2custom-bool-converter
+                     isaplanner/prop_84.smt2nil
+                     isaplanner/prop_84.smt2cons
+                     isaplanner/prop_84.smt2Pair2
+                     isaplanner/prop_84.smt2Z
+                     isaplanner/prop_84.smt2S
+                     isaplanner/prop_84.smt2zip
+                     isaplanner/prop_84.smt2take
+                     isaplanner/prop_84.smt2len
+                     isaplanner/prop_84.smt2drop
+                     isaplanner/prop_84.smt2append)))
 
   (define test-defs
-    (mk-defs-hash test-hashes))
+    (mk-defs-hash (theorem-hashes)))
 
   (def-test-case "No alpha-equivalent duplicates in result"
     (let ([normalised (norm test-defs)])
@@ -1380,7 +1381,7 @@
                      (check-equal? norms (list norm)))))
                 normalised)))
 
-  (define qual (first (qual-all-hashes test-hashes)))
+  (define qual (first (qual-all-hashes (theorem-hashes))))
 
   (let ([syms (names-in qual)])
 
@@ -1448,21 +1449,11 @@
     ;; The names which appear after normalising should be the first,
     ;; lexicographically, from each alpha-equivalent group
 
-    ;; Collect together some definitions, which include some alpha-equivalent
-    ;; redundancies
-    (define files (append test-files
-                          (theorem-files)
-                          (benchmark-files
-                           '("tip2015/sort_StoogeSort2IsSort.smt2"
-                             "isaplanner/prop_58.smt2"
-                             "tip2015/list_PairUnpair.smt2"))))
-
-    (define hashes    (files-to-hashes files))
-    (define raw       (first (qual-all-hashes hashes)))
+    (define raw       (first (qual-hashes-theorem-files)))
     (define raw-names (names-in raw))
 
     ;; Remove redundancies
-    (define normal       (mk-final-defs-hash hashes))
+    (define normal       (mk-final-defs-hash (theorem-hashes)))
     (define normal-names (names-in normal))
 
     ;; If some raw name is smaller than some normalised name, the two names must
@@ -1778,11 +1769,8 @@
                  (check-equal? (length found) 1)))
               (expression-constructors test-benchmark-defs)))
 
-  (define f (benchmark-file "tip2015/nat_alt_mul_comm.smt2"))
-  ;(define f (benchmark-file "grammars/simp_expr_unambig3.smt2"))
-
   (define one-liners
-    (first (qual-all-hashes (files-to-hashes (string-split f "\n")))))
+    (first (qual-all-hashes (files-to-hashes (list (benchmark-file "isaplanner/prop_84.smt2"))))))
 
   (define result
     (filter non-empty?
@@ -1794,8 +1782,7 @@
                                               (names-in x))
                                             one-liners))])
     (with-check-info
-     (('f          f)
-      ('one-liners one-liners)
+     (('one-liners one-liners)
       ('result     result)
       ('all-result all-result))
      (check-equal? all-result result)))
@@ -1821,14 +1808,8 @@
                 ("ztake"        "parameterised recursive")
                 ("stooge2sort2" "mutually recursive"))))
 
-    (def-test-case "Real symbols qualified"
-    (define fs (benchmark-files '("tip2015/propositional_AndCommutative.smt2"
-                                  "tip2015/propositional_Sound.smt2"
-                                  "tip2015/propositional_Okay.smt2"
-                                  "tip2015/regexp_RecSeq.smt2"
-                                  "tip2015/relaxedprefix_correct.smt2"
-                                  "tip2015/propositional_AndIdempotent.smt2"
-                                  "tip2015/propositional_AndImplication.smt2")))
+  (def-test-case "Real symbols qualified"
+    (define fs (benchmark-files '("tip2015/propositional_AndCommutative.smt2")))
     (define hashes (files-to-hashes fs))
     (define q (first (qual-all-hashes hashes)))
     (define s (names-in q))
@@ -1856,7 +1837,7 @@
                 syms)))
 
 (memo0 normed-qualified-theorem-files
-       (preprepare (norm-defs (first (qual-hashes-theorem-files)))))
+       (preprepare (first (normed-and-replacements-cached))))
 
 (define/test-contract (constructor-function-replacements qualified replacements)
   (-> (*list/c definition?) replacements? replacements?)
@@ -1904,7 +1885,7 @@
                             (assert-not (= 1 1)))))))))
 
 (define (all-replacements-closure)
-  (replacements-closure (first (qual-hashes-theorem-files))))
+  (second (normed-and-replacements-cached)))
 
 (memo0 name-replacements
        (foldl (lambda (x h)
@@ -1958,26 +1939,3 @@
                                      (check-true (string-contains? str ".smt2")
                                                  "Symbol is qualified"))))
                                (symbols-in thm))))))
-
-(memo0 normalised-theorems2
-       (hash-foldl (lambda (pth thm result)
-                     (hash-set result pth (replace-names thm)))
-                   (hash)
-                   (qualified-theorems)))
-
-(module+ test
-  (def-test-case "Normalised theorem names"
-    (hash-for-each (normalised-theorems2)
-                   (lambda (pth thm)
-                     (for-each (lambda (sym)
-                                 (define s (unqualify sym))
-
-                                 (unless (or (member s native-symbols)
-                                             (member s (locals-in thm)))
-                                   (with-check-info
-                                     (('sym sym)
-                                      ('pth pth)
-                                      ('thm thm))
-                                     (check-equal? s (norm-name s)
-                                                   "Symbol is normalised"))))
-                               (flatten thm))))))

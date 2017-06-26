@@ -8,7 +8,7 @@
 (provide check-equal? check-exn check-false
          check-not-equal? check-pred check-true constructorS constructorZ
          custom-bool custom-int custom-ite custom-nat def-test-case form
-         form-with-deps mut nat-def redundancies test-data test-files
+         form-with-deps mut nat-def redundancies test-data
          testing-file with-check-info)
 
 ;; Selects specific test-cases based on a regex from the environment
@@ -36,7 +36,7 @@
 ;; Suppress progress info during tests, as it's verbose and confusing. This can
 ;; be bypassed by setting the DEBUG env var, but it's suggested to also set the
 ;; PLT_TEST_REGEX env var so you only get output from specific tests.
-(quiet)
+;(quiet)
 
 ;; For testing, we default to only using a subset of the benchmarks, which we
 ;; accomplish by overriding theorem-files; this acts as a sanity check, and is
@@ -60,24 +60,19 @@
                          "isaplanner/prop_01.smt2"
                          "isaplanner/prop_15.smt2"
                          "isaplanner/prop_35.smt2"
-                         "isaplanner/prop_43.smt2"
                          "isaplanner/prop_44.smt2"
                          "isaplanner/prop_84.smt2"
                          "prod/prop_35.smt2"
-                         "tip2015/bin_plus_comm.smt2"
-                         "tip2015/fermat_last.smt2"
                          "tip2015/heap_SortPermutes'.smt2"
                          "tip2015/list_SelectPermutations.smt2"
-                         "tip2015/nat_pow_one.smt2"
                          "tip2015/propositional_AndCommutative.smt2"
-                         "tip2015/propositional_AndIdempotent.smt2"
                          "tip2015/sort_NStoogeSort2Count.smt2"
                          "tip2015/sort_NStoogeSort2Permutes.smt2"
                          "tip2015/tree_sort_SortPermutes'.smt2")))
 
     ;; Override theorem-files to return these chosen files, if no BENCHMARKS
     ;; were given explicitly
-    (when (member (getenv "BENCHMARKS") '(#f ""))
+    #;(when (member (getenv "BENCHMARKS") '(#f ""))
       (set-theorem-files! (lambda ()
                             required-testing-files)))
 
@@ -165,9 +160,3 @@
                       (custom-ite q
                                   (models2 q x)
                                   (models5 q x y))))))
-
-(define test-files
-  (benchmark-files '("grammars/simp_expr_unambig1.smt2"
-                     "grammars/simp_expr_unambig4.smt2"
-                     "tip2015/sort_StoogeSort2IsSort.smt2"
-                     "tip2015/sort_BSortPermutes.smt2")))

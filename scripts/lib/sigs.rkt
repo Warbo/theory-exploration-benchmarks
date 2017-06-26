@@ -322,9 +322,7 @@ library
 
 (module+ test
   (def-test-case "Single files"
-    (define files (map (lambda (suf)
-                         (benchmark-file suf))
-                       '("tip2015/tree_sort_SortPermutes'.smt2")))
+    (define files (map benchmark-file '("isaplanner/prop_84.smt2")))
 
     (for-each (lambda (f)
                 (define sig
@@ -336,8 +334,8 @@ library
 
   (def-test-case "Multiple files"
     (define files
-      (benchmark-files '("tip2015/tree_SwapAB.smt2"
-                         "tip2015/list_SelectPermutations.smt2")))
+      (benchmark-files '("grammars/packrat_unambigPackrat.smt2"
+                         "isaplanner/prop_84.smt2")))
 
     (define sig
       (defs-to-sig files))
