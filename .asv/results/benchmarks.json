@@ -13,6 +13,20 @@
         "unit": "seconds", 
         "warmup_time": -1
     }, 
+    "benchmarks.time_mk_fin_defs": {
+        "code": "def time_mk_fin_defs():\n    check_output(['mk_fin_defs'])\n", 
+        "goal_time": 0.1, 
+        "name": "benchmarks.time_mk_fin_defs", 
+        "number": 0, 
+        "param_names": [], 
+        "params": [], 
+        "pretty_name": "benchmarks.time_mk_fin_defs", 
+        "repeat": 0, 
+        "timeout": 60.0, 
+        "type": "time", 
+        "unit": "seconds", 
+        "warmup_time": -1
+    }, 
     "benchmarks.time_mk_sdata": {
         "code": "def time_mk_sdata():\n    check_output(['mk_sdata'])\n", 
         "goal_time": 0.1, 
@@ -37,6 +51,20 @@
         "pretty_name": "benchmarks.time_mk_thms", 
         "repeat": 0, 
         "timeout": 60.0, 
+        "type": "time", 
+        "unit": "seconds", 
+        "warmup_time": -1
+    }, 
+    "benchmarks.time_run_tests": {
+        "code": "def time_run_tests():\n    check_call(['run_tests'])\n", 
+        "goal_time": 0.1, 
+        "name": "benchmarks.time_run_tests", 
+        "number": 0, 
+        "param_names": [], 
+        "params": [], 
+        "pretty_name": "benchmarks.time_run_tests", 
+        "repeat": 0, 
+        "timeout": 300, 
         "type": "time", 
         "unit": "seconds", 
         "warmup_time": -1
