@@ -437,11 +437,6 @@
                                                 (= (Y/Z.smt2foo local-1)
                                                    Y/Z.smt2baz))))))))
 
-;; Read all files named in GIVEN-FILES, combine their definitions together and
-;; remove alpha-equivalent duplicates
-(define (mk-defs-hash given-hashes)
-  (norm-defs (first (qual-all-hashes given-hashes))))
-
 ;; Prefix all definitions in EXPR with NAME, and prefix all local variables
 (define (qualify name expr)
   (foldl (lambda (sym x)
@@ -1188,7 +1183,7 @@
 
 (module+ test
   (define test-benchmark-defs
-    (mk-defs-hash (theorem-hashes)))
+    (theorem-def-hashes))
 
   (def-test-case "Have replacements"
     (define defs '((define-fun min1 ((x Int) (y Int)) Int (ite (<= x y) x y))
@@ -1279,9 +1274,10 @@
 ;; Takes a hashmap of filename->content and returns a combined, normalised TIP
 ;; benchmark
 (define (mk-final-defs-hash given-hashes)
-  (prepare (mk-defs-hash given-hashes)))
+  (prepare (norm-defs (first (qual-all-hashes given-hashes)))))
 
-(memo0 final-theorem-defs (mk-final-defs-hash (theorem-hashes)))
+(memo0 theorem-def-hashes (norm-defs (first (qual-all-hashes (theorem-hashes)))))
+(memo0 final-theorem-defs (prepare (theorem-def-hashes)))
 
 (module+ test
   (def-test-case "mk-final-defs-hash works"
@@ -1787,7 +1783,7 @@
      (check-equal? all-result result)))
 
   (let* ([file "tip2015/sort_StoogeSort2IsSort.smt2"]
-         [defs (mk-defs-hash (files-to-hashes (list (benchmark-file file))))])
+         [defs (norm-defs (first (qual-all-hashes (files-to-hashes (list (benchmark-file file))))))])
     (for-each (lambda (data)
                 (define name      (first data))
                 (define qualified (string-append file name))
@@ -1821,7 +1817,7 @@
 
     (check-true (string-contains? (format-symbols
                                    (names-in
-                                    (mk-defs-hash hashes)))
+                                    (norm-defs (first (qual-all-hashes hashes)))))
                                   "or2")
                 "Found 'or2' symbol"))
 
