@@ -1,0 +1,10 @@
+From: Chris Warburton
+Date: Mon, 26 Jun 2017 15:09:00 +0100
+Subject: Re: Use caches in tests
+Message-Id: <e18178b5164d6550-981d92013b39fb9c-artemis@nixos>
+References: <e18178b5164d6550-0-artemis@nixos>
+In-Reply-To: <e18178b5164d6550-0-artemis@nixos>
+
+Removed all recalculations of the cached normalised definitions. Other
+things may still be getting avoiding the cache, but they're less
+visible. Testing time has been halved to about 2:30

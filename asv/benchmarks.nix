@@ -6,16 +6,13 @@
 with import dir {};
 with nix-config;
 with rec {
-  # Uses a small selection of benchmarks, useful for profiling, etc.
-  fewCache = mkCache (runCommand "few" { ALL = tip-benchmarks; } ''
-    pushd "$ALL"
-    while read -r F
-    do
-      DIR=$(dirname "$out/$F")
-      mkdir -p "$DIR"
-      cp -v "$F" "$DIR"/
-    done < <(find . -name "*.smt2" | sort | head -n20)
-  '');
+  inherit (testCache)
+    BENCHMARKS_CACHE
+    BENCHMARKS_FALLBACK
+    BENCHMARKS_FINAL_BENCHMARK_DEFS
+    BENCHMARKS_NORMALISED_DEFINITIONS
+    BENCHMARKS_NORMALISED_THEOREMS
+    TEST_DATA;
 
   # Take these from root so we can measure performance across revisions
   scripts = root + "/scripts";
@@ -33,21 +30,24 @@ with rec {
 
   deps = attrsToDirs {
     bin = {
-      run_tests = profileWith { inherit (cache) BENCHMARKS_FALLBACK TEST_DATA; }
-                              "test.sh";
+      run_tests   = profileWith testCache "test.sh";
 
-      mk_defs   = profileWith { inherit (fewCache) BENCHMARKS_FALLBACK; }
-                              "make_normalised_definitions.rkt";
+      mk_defs     = profileWith { inherit BENCHMARKS_FALLBACK; }
+                                "make_normalised_definitions.rkt";
 
-      mk_thms   = profileWith { inherit (fewCache)
-                                  BENCHMARKS_FALLBACK
-                                  BENCHMARKS_NORMALISED_DEFINITIONS; }
-                              "make_normalised_theorems.rkt";
+      mk_thms     = profileWith { inherit BENCHMARKS_CACHE
+                                          BENCHMARKS_FALLBACK
+                                          BENCHMARKS_NORMALISED_DEFINITIONS; }
+                                "make_normalised_theorems.rkt";
 
-      mk_sdata  = profileWith { inherit (fewCache)
-                                  BENCHMARKS_FALLBACK
-                                  BENCHMARKS_NORMALISED_DEFINITIONS; }
-                              "make_sampling_data.rkt";
+      mk_sdata    = profileWith { inherit BENCHMARKS_FALLBACK
+                                          BENCHMARKS_FINAL_BENCHMARK_DEFS
+                                          BENCHMARKS_NORMALISED_DEFINITIONS; }
+                                "make_sampling_data.rkt";
+
+      mk_fin_defs = profileWith { inherit BENCHMARKS_FALLBACK
+                                          BENCHMARKS_NORMALISED_DEFINITIONS; }
+                                "gen_final_benchmark_defs.rkt";
     };
   };
 };

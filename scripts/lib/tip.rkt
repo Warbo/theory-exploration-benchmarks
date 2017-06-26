@@ -13,7 +13,7 @@
          expression-types files-to-hashes get-def-s lowercase-names names-in
          native-symbols path-end symbols-in theorem? theorem-files
          theorem-hashes tip-benchmarks? tip-path?
-         toplevel-function-defs-of toplevel-names-in types-from-defs
+         toplevel-function-defs-of toplevel-names-in
          uppercase-names)
 
 (module+ test
@@ -71,8 +71,7 @@
                 (with-check-info
                   (('path pth))
                   (check-true (tip-path? pth))))
-              '("grammars/simp_expr_unambig1.smt2"
-                "grammars/simp_expr_unambig4.smt2"
+              '("grammars/packrat_unambigPackrat.smt2"
                 "tip2015/propositional_AndCommutative.smt2"
                 "tip2015/propositional_Sound.smt2"
                 "tip2015/propositional_Okay.smt2"
@@ -98,7 +97,7 @@
                 "/regexp_RecSeq.smt2"
 
                 ;; Too much path
-                "benchmarks/grammars/simp_expr_unambig4.smt2"
+                "benchmarks/grammars/packrat_unambigPackrat.smt2"
                 "/nix/store/1vgm16yp1vrwn8a9mnn1ji62a0jgi3sl-tip-benchmarks/isaplanner/prop_10.smt2"))))
 
 ;; A set of TIP benchmark problems, mapping filenames to problems
@@ -318,18 +317,19 @@
                    (check-false (set-member? syms sym))))
                 xs))
 
-    (let* ([f    (benchmark-file "tip2015/int_right_distrib.smt2")]
+    (let* ([f    (benchmark-file "isaplanner/prop_84.smt2")]
            [syms (symbols-from-file f)])
 
-      (should-have syms 'constructor '(Pos Neg Zero Succ P N))
+      (should-have syms 'constructor '(CustomTrue CustomFalse nil cons Pair2 Z
+                                                  S))
 
-      (should-have syms 'destructor  '(pred P_0 N_0))
+      (should-have syms 'destructor  '(head tail first second p))
 
-      (should-have syms 'function '(toInteger sign plus2 opposite
-                                    timesSign mult minus plus absVal
-                                    times))
+      (should-have syms 'function '(custom-bool-converter zip take len drop
+                                                          append))
 
-      (should-not-have syms 'variable '(x y z m m2 n n2 n3 o))
+      (should-not-have syms 'variable '(a b x y z x2 x3 x4 xs ys zs m m2 n n2 n3
+                                          o))
 
       (should-not-have syms 'keyword  '(match
                                         case
@@ -665,20 +665,6 @@
   (def-test-case "Can find constructor wrappers"
     (check-equal? (get-def-s 'constructor-Z redundancies)
                   (list constructorZ))))
-
-(define (types-from-defs)
-  (show (symbols-in
-         (remove-duplicates
-          (symbols-in
-           (expression-types
-            (read-benchmark (port->string (current-input-port)))))))))
-
-(module+ test
-  (def-test-case "types-from-defs works"
-    (define f (benchmark-file "tip2015/nat_alt_mul_comm.smt2"))
-
-    (check-equal? (string-trim (pipe (file->string f) types-from-defs))
-                  "CustomBool\nNat")))
 
 (module+ test
   (def-test-case "List manipulation"

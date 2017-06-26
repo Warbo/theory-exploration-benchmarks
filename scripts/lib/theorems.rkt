@@ -107,19 +107,6 @@
 
     (remove* (thm-locals thm) (thm-names thm)))
 
-(module+ test
-  (def-test-case "Normalised theorems"
-    (hash-for-each (normalised-theorems2)
-                   (lambda (path thm)
-                     (for-each (lambda (sym)
-                                 (with-check-info
-                                  (('path path)
-                                   ('thm  thm)
-                                   ('sym  sym))
-                                  (check-equal? sym (norm-name sym)
-                                                "Name is normalised")))
-                               (theorem-globals thm))))))
-
 (define (qual-thm filename thm)
   (replace-all (map (lambda (g)
                       (list g
@@ -258,11 +245,14 @@
 
 (module+ test
   (def-test-case "Expected dependencies"
-    (let ([deps (theorem-deps-of
-                 (benchmark-file "tip2015/bin_plus_comm.smt2"))])
-      (with-check-info
-        (('deps deps))
-        (check-equal? (length deps) 1))))
+    (define deps
+      (theorem-deps-of
+       (benchmark-file "isaplanner/prop_84.smt2")))
+
+    (with-check-info
+      (('deps deps)
+       ('should-have '(zip append take len drop)))
+      (check-equal? (length deps) 5)))
 
   (def-test-case "Theorem deps"
     (for-each (lambda (name-cases)
@@ -317,18 +307,16 @@
                     constructor-tip2015/propositional_AndCommutative.smt2&))
 
                   (,(begin
-                      (testing-file "tip2015/propositional_AndCommutative.smt2")
-                      (testing-file "tip2015/propositional_AndIdempotent.smt2"))
+                      (testing-file "tip2015/propositional_AndCommutative.smt2"))
                    (tip2015/propositional_AndCommutative.smt2valid
                     constructor-tip2015/propositional_AndCommutative.smt2&))
 
                   (,(begin
                       (testing-file "prod/prop_35.smt2")
                       (testing-file "isaplanner/prop_01.smt2")
-                      (testing-file "tip2015/nat_pow_one.smt2"))
-                   (prod/prop_35.smt2exp
-                    constructor-isaplanner/prop_01.smt2S
-                    constructor-isaplanner/prop_01.smt2Z))
+                      (testing-file "isaplanner/prop_15.smt2"))
+                   (isaplanner/prop_15.smt2len isaplanner/prop_15.smt2ins
+                    constructor-isaplanner/prop_01.smt2S))
                   (,(begin
                       (testing-file "isaplanner/prop_35.smt2"))
                    (constructor-CustomFalse

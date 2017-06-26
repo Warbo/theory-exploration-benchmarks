@@ -1,0 +1,21 @@
+From: Chris Warburton
+Date: Mon, 26 Jun 2017 15:10:38 +0100
+Subject: Re: Reduce file usage in tests
+Message-Id: <e2c54b134aa70324-8e63968889c75675-artemis@nixos>
+References: <e2c54b134aa70324-0-artemis@nixos>
+In-Reply-To: <e2c54b134aa70324-0-artemis@nixos>
+
+Not quite implemented as described, but good enough.
+
+The files used by tests have been consolidated down to just 16, and
+these are now the only ones we provide in the BENCHMARKS_FALLBACK env
+var when we're testing.
+
+Since we're caching more thoroughly now, and tests are (for the most
+part) using those caches, this is less of an issue.
+
+Most tests are now either:
+
+ - Using pure values
+ - Using a few files (e.g. 2 or 3), which is fast enough
+ - Using "all" 16 files, via caches

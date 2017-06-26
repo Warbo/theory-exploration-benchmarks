@@ -13,8 +13,7 @@
   (require "testing.rkt")
 
   (define (defs-to-sig x)
-    (mk-signature-s (format-symbols (mk-final-defs-hash
-                                     (files-to-hashes x)))))
+    (mk-signature-s (format-symbols (mk-final-defs-hash (files-to-hashes x)))))
 
   (define (string-to-haskell vals)
     ;; mk-final-defs takes in filenames, so it can qualify names. This makes
@@ -193,6 +192,9 @@ library
                    (string-append dir "/LICENSE")))
 
 (module+ test
+  (define test-benchmark-defs
+    (final-benchmark-defs))
+
   (def-test-case "Module tests"
     (define files
       (string-join (theorem-files) "\n"))
@@ -204,7 +206,7 @@ library
                            [#"OUT_DIR" ,(string->bytes/utf-8 out-dir)])
          (lambda ()
            (full-haskell-package-s
-            (format-symbols (mk-final-defs-hash (theorem-hashes)))
+            (format-symbols test-benchmark-defs)
             out-dir)
 
            (with-check-info
@@ -322,9 +324,7 @@ library
 
 (module+ test
   (def-test-case "Single files"
-    (define files (map (lambda (suf)
-                         (benchmark-file suf))
-                       '("tip2015/tree_sort_SortPermutes'.smt2")))
+    (define files (map benchmark-file '("isaplanner/prop_84.smt2")))
 
     (for-each (lambda (f)
                 (define sig
@@ -336,8 +336,8 @@ library
 
   (def-test-case "Multiple files"
     (define files
-      (benchmark-files '("tip2015/tree_SwapAB.smt2"
-                         "tip2015/list_SelectPermutations.smt2")))
+      (benchmark-files '("grammars/packrat_unambigPackrat.smt2"
+                         "isaplanner/prop_84.smt2")))
 
     (define sig
       (defs-to-sig files))
@@ -347,17 +347,13 @@ library
       ('sig     sig))
      (check-true (string-contains? sig "local"))))
 
-  (def-test-case "Random files"
-    (define files
-      (theorem-files))
-
+  (def-test-case "Testing files"
     (define sig
-      (defs-to-sig files))
+      (mk-signature-s (format-symbols (final-benchmark-defs))))
 
     (with-check-info
-     (('files   files)
-      ('sig     sig)
-      ('message "Made Haskell for random files"))
+     (('sig     sig)
+      ('message "Made Haskell for testing files"))
      (check-true (string-contains? sig "QuickSpec"))))
 
   (def-test-case "Form datatype survives translation"
@@ -377,9 +373,6 @@ library
   ;; renaming step, to ensure that all names are valid Haskell identifiers. We
   ;; need to ensure that the names we produce don't get altered by this step.
   (def-test-case "Name preservation"
-    (define test-benchmark-defs
-      (mk-final-defs-hash (theorem-hashes)))
-
     (define test-benchmark-lower-names
       ;; A selection of names, which will be lowercase in Haskell
       (foldl (lambda (def result)
