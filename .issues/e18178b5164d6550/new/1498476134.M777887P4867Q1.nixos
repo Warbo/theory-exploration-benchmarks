@@ -1,8 +1,9 @@
 From: Chris Warburton
 Date: Mon, 26 Jun 2017 12:21:18 +0100
-State: new
+State: resolved
 Subject: Use caches in tests
 Message-Id: <e18178b5164d6550-0-artemis@nixos>
+resolution: fixed
 
 Running tests with 'quiet' disabled shows that we're doing expensive
 things like normalising the TIP benchmarks over and over.
