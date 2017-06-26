@@ -1,0 +1,14 @@
+From: Chris Warburton
+Date: Mon, 26 Jun 2017 10:18:34 +0100
+State: new
+Subject: Rename BENCHMARKS_FALLBACK
+Message-Id: <d12c70e7f61afc05-0-artemis@nixos>
+
+This is our main source of data. Is BENCHMARKS really used? If not, use
+that name instead.
+
+As far as I can tell, our commands either take in data from stdin or
+custom env vars, or else use (derivatives of) BENCHMARKS_FALLBACK.
+
+Full test seems like the only alternative, but we should be able to
+implement that via the cache/testCache distinction.
