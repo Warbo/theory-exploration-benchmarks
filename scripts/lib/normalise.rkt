@@ -1364,11 +1364,8 @@
                      isaplanner/prop_84.smt2drop
                      isaplanner/prop_84.smt2append)))
 
-  (define test-defs
-    (mk-defs-hash (theorem-hashes)))
-
   (def-test-case "No alpha-equivalent duplicates in result"
-    (let ([normalised (norm test-defs)])
+    (let ([normalised (norm test-benchmark-defs)])
       (for-each (lambda (norm)
                   (define norms
                     (filter (curry equal? norm) normalised))
@@ -1413,7 +1410,7 @@
        (check-equal? count 1)))
 
     (define norm-def
-      (get-def-s sym test-defs))
+      (get-def-s sym test-benchmark-defs))
 
     (define norm-count
       (length norm-def))
@@ -1826,15 +1823,15 @@
                                   "or2")
                 "Found 'or2' symbol"))
 
-    (let ([syms (names-in test-defs)])
-      (for-each (lambda (sym)
-                  (with-check-info
-                    (('sym       sym)
-                     ('test-defs test-defs)
-                     ('message   "Symbol is qualified"))
-                    (check-true (string-contains? (symbol->string sym)
-                                                  ".smt2"))))
-                syms)))
+  (let ([syms (names-in test-benchmark-defs)])
+    (for-each (lambda (sym)
+                (with-check-info
+                 (('sym       sym)
+                  ('test-benchmark-defs test-benchmark-defs)
+                  ('message   "Symbol is qualified"))
+                 (check-true (string-contains? (symbol->string sym)
+                                               ".smt2"))))
+              syms)))
 
 (memo0 normed-qualified-theorem-files
        (preprepare (first (normed-and-replacements-cached))))
