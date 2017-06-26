@@ -4,7 +4,8 @@
 (require "lib/normalise.rkt")
 (require "lib/tip.rkt")
 
-(when (getenv "BENCHMARKS_FINAL_BENCHMARK_DEFS")
-  (error "BENCHMARKS_FINAL_BENCHMARK_DEFS already set, aborting"))
+(module+ main
+  (when (getenv "BENCHMARKS_FINAL_BENCHMARK_DEFS")
+    (error "BENCHMARKS_FINAL_BENCHMARK_DEFS already set, aborting"))
 
-(write (prepare (first (normed-and-replacements-cached))))
+  (write (prepare (first (normed-and-replacements-cached)))))

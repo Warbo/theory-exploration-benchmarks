@@ -13,8 +13,7 @@
   (require "testing.rkt")
 
   (define (defs-to-sig x)
-    (mk-signature-s (format-symbols (mk-final-defs-hash
-                                     (files-to-hashes x)))))
+    (mk-signature-s (format-symbols (mk-final-defs-hash (files-to-hashes x)))))
 
   (define (string-to-haskell vals)
     ;; mk-final-defs takes in filenames, so it can qualify names. This makes
@@ -348,17 +347,13 @@ library
       ('sig     sig))
      (check-true (string-contains? sig "local"))))
 
-  (def-test-case "Random files"
-    (define files
-      (theorem-files))
-
+  (def-test-case "Testing files"
     (define sig
-      (defs-to-sig files))
+      (mk-signature-s (format-symbols (final-benchmark-defs))))
 
     (with-check-info
-     (('files   files)
-      ('sig     sig)
-      ('message "Made Haskell for random files"))
+     (('sig     sig)
+      ('message "Made Haskell for testing files"))
      (check-true (string-contains? sig "QuickSpec"))))
 
   (def-test-case "Form datatype survives translation"
