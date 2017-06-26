@@ -132,9 +132,78 @@ with rec {
     rev    = "fae25da";
     sha256 = "08zm9a8dlwqm6bnd5z8714j5365pklwh4lkgcnhq0ns1lq0njp3l";
   };
-};
-rec {
-  inherit patchedHaskellPackages nix-config;
+
+  # Generates all the intermediate steps of the transformation
+  mkCache = BENCHMARKS_FALLBACK: rec {
+    inherit BENCHMARKS_FALLBACK;
+
+    TEST_DATA = "${./test-data}";
+
+    BENCHMARKS_CACHE = runCommand "benchmarks-cache"
+      {
+        inherit BENCHMARKS_FALLBACK BENCHMARKS_FINAL_BENCHMARK_DEFS
+                BENCHMARKS_NORMALISED_DEFINITIONS;
+        src         = ./scripts;
+        buildInputs = [ env ];
+      }
+      ''
+        "$src/make_sampling_data.rkt" > "$out"
+      '';
+
+    BENCHMARKS_NORMALISED_THEOREMS = runCommand "normalised-theorems"
+      {
+        inherit BENCHMARKS_CACHE BENCHMARKS_FALLBACK
+                BENCHMARKS_NORMALISED_DEFINITIONS;
+        src         = ./scripts;
+        buildInputs = [ env ];
+      }
+      ''
+        "$src/make_normalised_theorems.rkt" > "$out"
+      '';
+
+    BENCHMARKS_NORMALISED_DEFINITIONS = runCommand "normalised-definitions"
+      {
+        inherit BENCHMARKS_FALLBACK;
+        src         = ./scripts;
+        buildInputs = [ env ];
+      }
+      ''
+        "$src/make_normalised_definitions.rkt" > "$out"
+      '';
+
+    BENCHMARKS_FINAL_BENCHMARK_DEFS = runCommand "final-defs"
+      {
+        inherit BENCHMARKS_FALLBACK BENCHMARKS_NORMALISED_DEFINITIONS;
+        src         = ./scripts;
+        buildInputs = [ env ];
+      }
+      ''
+        "$src/gen_final_benchmark_defs.rkt" > "$out"
+      '';
+  };
+
+  mkTestScript = vars: nix-config.wrap {
+    inherit vars;
+    paths  = [ env ];
+    script = ''
+      #!/usr/bin/env bash
+      raco test "${./scripts}/test.rkt" || exit 1
+    '';
+  };
+
+  runTestScript = given: runCommand "run-test"
+    (given // {
+      # Allow testing to be skipped, as it can take a few minutes
+      doCheck = if getEnv "SKIP_TESTS" == "" then "true" else "false";
+    })
+    ''
+      if $doCheck
+      then
+        "$script" || exit 1
+        echo "passed" > "$out"
+      fi
+      echo "skipped" > "$out"
+    '';
 
   env = buildEnv {
     name  = "tip-bench-env";
@@ -153,6 +222,9 @@ rec {
       ]))
     ];
   };
+};
+rec {
+  inherit env patchedHaskellPackages nix-config;
 
   # Take benchmarks from git, but transform them to replace "built-in"
   # definitions like "Bool" and "<" with explicitly defined versions.
@@ -254,93 +326,16 @@ rec {
     };
     mkCache testDir;
 
-  # Generates all the intermediate steps of the transformation
-  mkCache = BENCHMARKS_FALLBACK: rec {
-    inherit BENCHMARKS_FALLBACK;
-
-    TEST_DATA = "${./test-data}";
-
-    BENCHMARKS_CACHE = runCommand "benchmarks-cache"
-      {
-        inherit BENCHMARKS_FALLBACK BENCHMARKS_FINAL_BENCHMARK_DEFS
-                BENCHMARKS_NORMALISED_DEFINITIONS;
-        src         = ./scripts;
-        buildInputs = [ env ];
-      }
-      ''
-        "$src/make_sampling_data.rkt" > "$out"
-      '';
-
-    BENCHMARKS_NORMALISED_THEOREMS = runCommand "normalised-theorems"
-      {
-        inherit BENCHMARKS_CACHE BENCHMARKS_FALLBACK
-                BENCHMARKS_NORMALISED_DEFINITIONS;
-        src         = ./scripts;
-        buildInputs = [ env ];
-      }
-      ''
-        "$src/make_normalised_theorems.rkt" > "$out"
-      '';
-
-    BENCHMARKS_NORMALISED_DEFINITIONS = runCommand "normalised-definitions"
-      {
-        inherit BENCHMARKS_FALLBACK;
-        src         = ./scripts;
-        buildInputs = [ env ];
-      }
-      ''
-        "$src/make_normalised_definitions.rkt" > "$out"
-      '';
-
-    BENCHMARKS_FINAL_BENCHMARK_DEFS = runCommand "final-defs"
-      {
-        inherit BENCHMARKS_FALLBACK BENCHMARKS_NORMALISED_DEFINITIONS;
-        src         = ./scripts;
-        buildInputs = [ env ];
-      }
-      ''
-        "$src/gen_final_benchmark_defs.rkt" > "$out"
-      '';
-  };
-
-  testScript = nix-config.wrap {
-    paths  = [ env ];
-    vars   = testCache;
-    script = ''
-      #!/usr/bin/env bash
-      raco test "${./scripts}/test.rkt" || exit 1
-    '';
-  };
+  testScript = mkTestScript testCache;
 
   # Standalone to allow separate testing and to avoid requiring expensive caches
-  quickToolTest = runCommand "quick-test"
-    {
-      # Allow testing to be skipped, as it can take a few minutes
-      doCheck = if getEnv "SKIP_TESTS" == "" then "true" else "false";
-    }
-    ''
-      if $doCheck
-      then
-        "${testScript}" || exit 1
-        echo "passed" > "$out"
-      fi
-      echo "skipped" > "$out"
-    '';
+  quickToolTest = runTestScript { script = testScript; };
 
   # Standalone since it's too slow to use as a dependency of tools
-  fullToolTest = stdenv.mkDerivation {
-    inherit (cache) BENCHMARKS_FALLBACK TEST_DATA;
+  fullToolTest = runTestScript {
     inherit quickToolTest;
 
-    name = "te-benchmark-full-tool-test";
-    src  = ./scripts;
-
-    # Include tools as a dependency, so we run its fast tests first
-    buildInputs  = [ env tools ];
-    buildCommand = ''
-      raco test "$src/test.rkt" || exit 1
-      echo "pass" > "$out"
-    '';
+    script = mkTestScript cache;
 
     # Setting BENCHMARKS during tests overrides BENCHMARKS_FALLBACK, and also
     # causes all files to be tested rather than a subset.

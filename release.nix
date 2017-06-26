@@ -11,7 +11,7 @@ with rec {
 
       # Remove attributes added by 'callPackage'. Also avoid building the whole
       # of 'patchedHaskellPackages', when we only care about tip-lib.
-      strip = x: removeAttrs x [ "override" "overrideDerivation"
+      strip = x: removeAttrs x [ "override" "overrideDerivation" "nix-config"
                                  "patchedHaskellPackages" ] //
                  { inherit (x.patchedHaskellPackages) tip-lib; };
    };
