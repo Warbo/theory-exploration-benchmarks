@@ -1143,17 +1143,13 @@
 
     (define defs  (norm-defs given))
     (define syms  (names-in defs))
-    (define min1  (member 'min1 syms))
-    (define min2  (member 'min2 syms))
 
     (with-check-info
       (('defs    defs)
        ('syms    syms)
-       ('min1    min1)
-       ('min2    min2)
        ('message "Simple redundant functions deduped"))
-      (check-true (or (and min1 (not min2))
-                      (and min2 (not min1)))))
+      (check-true (and      (member 'min1 syms)
+                       (not (member 'min2 syms)))))
 
     (let* ([given '((define-fun min1 ((x Int) (y Int)) Int (ite (<= x y) x y))
                     (define-fun min2 ((a Int) (b Int)) Int (ite (<= a b) a b))
