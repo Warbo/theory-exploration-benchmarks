@@ -13,7 +13,7 @@
 
 (provide all-constructor-function-replacements all-replacements-closure
          decode-name
-         decode-string encode-lower-name final-benchmark-defs
+         decode-string encode-lower-name final-benchmark-defs final-theorem-defs
          gen-normed-and-replacements
          lowercase-benchmark-names mk-final-defs
          mk-final-defs-hash nn norm-name
@@ -1281,6 +1281,8 @@
 (define (mk-final-defs-hash given-hashes)
   (prepare (mk-defs-hash given-hashes)))
 
+(memo0 final-theorem-defs (mk-final-defs-hash (theorem-hashes)))
+
 (module+ test
   (def-test-case "mk-final-defs-hash works"
     (check-equal? (mk-final-defs-hash
@@ -1450,7 +1452,7 @@
     (define raw-names (names-in raw))
 
     ;; Remove redundancies
-    (define normal       (mk-final-defs-hash (theorem-hashes)))
+    (define normal       (final-theorem-defs))
     (define normal-names (names-in normal))
 
     ;; If some raw name is smaller than some normalised name, the two names must

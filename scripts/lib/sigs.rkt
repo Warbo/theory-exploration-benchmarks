@@ -193,6 +193,9 @@ library
                    (string-append dir "/LICENSE")))
 
 (module+ test
+  (define test-benchmark-defs
+    (final-theorem-defs))
+
   (def-test-case "Module tests"
     (define files
       (string-join (theorem-files) "\n"))
@@ -204,7 +207,7 @@ library
                            [#"OUT_DIR" ,(string->bytes/utf-8 out-dir)])
          (lambda ()
            (full-haskell-package-s
-            (format-symbols (mk-final-defs-hash (theorem-hashes)))
+            (format-symbols test-benchmark-defs)
             out-dir)
 
            (with-check-info
@@ -375,9 +378,6 @@ library
   ;; renaming step, to ensure that all names are valid Haskell identifiers. We
   ;; need to ensure that the names we produce don't get altered by this step.
   (def-test-case "Name preservation"
-    (define test-benchmark-defs
-      (mk-final-defs-hash (theorem-hashes)))
-
     (define test-benchmark-lower-names
       ;; A selection of names, which will be lowercase in Haskell
       (foldl (lambda (def result)
