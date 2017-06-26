@@ -965,7 +965,7 @@
    (encode-names
     (preprepare x))))
 
-(define (qual-hashes-theorem-files)
+(memo0 qual-hashes-theorem-files
   (qual-all-hashes (theorem-hashes)))
 
 (define (preprepare x)
@@ -1380,7 +1380,7 @@
                      (check-equal? norms (list norm)))))
                 normalised)))
 
-  (define qual (first (qual-all-hashes (theorem-hashes))))
+  (define qual (first (qual-hashes-theorem-files)))
 
   (let ([syms (names-in qual)])
 
