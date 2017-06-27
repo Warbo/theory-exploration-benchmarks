@@ -399,7 +399,8 @@ rec {
   };
 
   tip-benchmark-haskell = stdenv.mkDerivation {
-    name         = "tip-benchmarks-haskell";
+    inherit (cache) BENCHMARKS_FINAL_BENCHMARK_DEFS;
+    name         = "tip-benchmark-haskell";
     buildInputs  = [ tools ];
     buildCommand = ''
       mkdir "$out"
