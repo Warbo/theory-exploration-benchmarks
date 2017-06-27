@@ -137,8 +137,6 @@ with rec {
   mkCache = BENCHMARKS_FALLBACK: rec {
     inherit BENCHMARKS_FALLBACK;
 
-    TEST_DATA = ./test-data/nat-simple-raw.json;
-
     BENCHMARKS_CACHE = runCommand "benchmarks-cache"
       {
         inherit BENCHMARKS_FALLBACK BENCHMARKS_FINAL_BENCHMARK_DEFS
@@ -183,7 +181,7 @@ with rec {
   };
 
   mkTestScript = vars: nix-config.wrap {
-    inherit vars;
+    vars   = { TEST_DATA = ./test-data/nat-simple-raw.json; } // vars;
     paths  = [ env ];
     script = ''
       #!/usr/bin/env bash

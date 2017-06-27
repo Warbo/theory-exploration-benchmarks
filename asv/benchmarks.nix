@@ -11,8 +11,7 @@ with rec {
     BENCHMARKS_FALLBACK
     BENCHMARKS_FINAL_BENCHMARK_DEFS
     BENCHMARKS_NORMALISED_DEFINITIONS
-    BENCHMARKS_NORMALISED_THEOREMS
-    TEST_DATA;
+    BENCHMARKS_NORMALISED_THEOREMS;
 
   # Take these from root so we can measure performance across revisions
   scripts = root + "/scripts";
@@ -30,7 +29,7 @@ with rec {
 
   deps = attrsToDirs {
     bin = {
-      run_tests   = profileWith testCache "test.sh";
+      run_tests   = testScript;
 
       mk_defs     = profileWith { inherit BENCHMARKS_FALLBACK; }
                                 "make_normalised_definitions.rkt";
