@@ -390,6 +390,7 @@ rec {
   });
 
   tip-benchmark-smtlib = stdenv.mkDerivation {
+    inherit (cache) BENCHMARKS_FINAL_BENCHMARK_DEFS;
     name         = "tip-benchmark-smtlib";
     buildInputs  = [ tools ];
     buildCommand = ''
