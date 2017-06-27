@@ -101,7 +101,7 @@
                                    (cons b (merge x  bs)))]))
 
 (define/test-contract (insert f x xs)
-  (-> any/c (*list/c any/c) (*list/c any/c))
+  (-> (-> any/c any/c boolean?) any/c (*list/c any/c) (*list/c any/c))
   (match xs
     [(list) (list x)]
     [(cons y ys) (if (f x y)
