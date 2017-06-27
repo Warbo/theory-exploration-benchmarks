@@ -511,7 +511,7 @@
                     "Parsing gives expected value"))
 
     (define test-eqs
-      (file->string (test-data "nat-simple-raw.json")))
+      (file->string (getenv "TEST_DATA")))
 
     (check-true  (jsexpr? (string->jsexpr test-eqs)))
     (check-true  (list?   (string->jsexpr test-eqs)))

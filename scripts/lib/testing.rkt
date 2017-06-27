@@ -8,7 +8,7 @@
 (provide check-equal? check-exn check-false
          check-not-equal? check-pred check-true constructorS constructorZ
          custom-bool custom-int custom-ite custom-nat def-test-case form
-         form-with-deps mut nat-def redundancies test-data
+         form-with-deps mut nat-def redundancies
          testing-file with-check-info)
 
 ;; Selects specific test-cases based on a regex from the environment
@@ -26,17 +26,10 @@
     (eprintf (string-append name "\n"))
     (test-case name body ...)))
 
-;; Loads test data from files
-(define (test-data f)
-  (when (member (getenv "TEST_DATA") '(#f ""))
-    (error "No TEST_DATA env var given"))
-  (string-append (getenv "TEST_DATA") "/" f))
-
-
 ;; Suppress progress info during tests, as it's verbose and confusing. This can
 ;; be bypassed by setting the DEBUG env var, but it's suggested to also set the
 ;; PLT_TEST_REGEX env var so you only get output from specific tests.
-;(quiet)
+(quiet)
 
 ;; For testing, we default to only using a subset of the benchmarks, which we
 ;; accomplish by overriding theorem-files; this acts as a sanity check, and is

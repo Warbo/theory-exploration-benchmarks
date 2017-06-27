@@ -137,7 +137,7 @@ with rec {
   mkCache = BENCHMARKS_FALLBACK: rec {
     inherit BENCHMARKS_FALLBACK;
 
-    TEST_DATA = "${./test-data}";
+    TEST_DATA = ./test-data/nat-simple-raw.json;
 
     BENCHMARKS_CACHE = runCommand "benchmarks-cache"
       {
