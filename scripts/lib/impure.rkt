@@ -81,10 +81,9 @@
 
 (define benchmark-dir
   (or (getenv "BENCHMARKS")
-      (getenv "BENCHMARKS_FALLBACK")
       (raise-user-error
        'benchmark-dir
-       "No BENCHMARKS_FALLBACK env var found; should be set by Nix")))
+       "No BENCHMARKS env var found; should be set by Nix")))
 
 ;; Use this thunk to find the set of paths we're benchmarking. By default, use
 ;; all  files in benchmark-dir.

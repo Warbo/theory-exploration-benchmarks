@@ -5,9 +5,8 @@ with import ./. {};
   buildCommand = "exit 1";
   shellHook    = ''
     {
-      export BENCHMARKS_FALLBACK="${tip-benchmarks}"
-      echo "Set BENCHMARKS_FALLBACK to $BENCHMARKS_FALLBACK"
-      echo "To use a different set of benchmarks, you can set BENCHMARKS"
+      export BENCHMARKS="${tip-benchmarks}"
+      echo "Set BENCHMARKS to $BENCHMARKS"
 
       export TEST_DATA="${./test-data/nat-simple-raw.json}"
       echo "Set TEST_DATA to $TEST_DATA"

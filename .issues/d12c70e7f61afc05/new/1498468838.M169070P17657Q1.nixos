@@ -1,8 +1,9 @@
 From: Chris Warburton
 Date: Mon, 26 Jun 2017 10:18:34 +0100
-State: new
+State: resolved
 Subject: Rename BENCHMARKS_FALLBACK
 Message-Id: <d12c70e7f61afc05-0-artemis@nixos>
+resolution: fixed
 
 This is our main source of data. Is BENCHMARKS really used? If not, use
 that name instead.

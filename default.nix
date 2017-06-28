@@ -134,12 +134,12 @@ with rec {
   };
 
   # Generates all the intermediate steps of the transformation
-  mkCache = BENCHMARKS_FALLBACK: rec {
-    inherit BENCHMARKS_FALLBACK;
+  mkCache = BENCHMARKS: rec {
+    inherit BENCHMARKS;
 
     BENCHMARKS_CACHE = runCommand "benchmarks-cache"
       {
-        inherit BENCHMARKS_FALLBACK BENCHMARKS_FINAL_BENCHMARK_DEFS
+        inherit BENCHMARKS BENCHMARKS_FINAL_BENCHMARK_DEFS
                 BENCHMARKS_NORMALISED_DEFINITIONS;
         src         = ./scripts;
         buildInputs = [ env ];
@@ -150,8 +150,7 @@ with rec {
 
     BENCHMARKS_NORMALISED_THEOREMS = runCommand "normalised-theorems"
       {
-        inherit BENCHMARKS_CACHE BENCHMARKS_FALLBACK
-                BENCHMARKS_NORMALISED_DEFINITIONS;
+        inherit BENCHMARKS_CACHE BENCHMARKS BENCHMARKS_NORMALISED_DEFINITIONS;
         src         = ./scripts;
         buildInputs = [ env ];
       }
@@ -161,7 +160,7 @@ with rec {
 
     BENCHMARKS_NORMALISED_DEFINITIONS = runCommand "normalised-definitions"
       {
-        inherit BENCHMARKS_FALLBACK;
+        inherit BENCHMARKS;
         src         = ./scripts;
         buildInputs = [ env ];
       }
@@ -171,7 +170,7 @@ with rec {
 
     BENCHMARKS_FINAL_BENCHMARK_DEFS = runCommand "final-defs"
       {
-        inherit BENCHMARKS_FALLBACK BENCHMARKS_NORMALISED_DEFINITIONS;
+        inherit BENCHMARKS BENCHMARKS_NORMALISED_DEFINITIONS;
         src         = ./scripts;
         buildInputs = [ env ];
       }
@@ -335,9 +334,6 @@ rec {
 
     script = mkTestScript cache;
 
-    # Setting BENCHMARKS during tests overrides BENCHMARKS_FALLBACK, and also
-    # causes all files to be tested rather than a subset.
-    BENCHMARKS          = tip-benchmarks;
     BENCHMARKS_TEST_ALL = "1";
 
     # Check contracts while testing; it's disabled by default for being too slow
@@ -384,7 +380,7 @@ rec {
           --set PLT_COMPILED_FILE_CHECK        exists                            \
           --set BENCHMARKS_CACHE               "$BENCHMARKS_CACHE"               \
           --set BENCHMARKS_NORMALISED_THEOREMS "$BENCHMARKS_NORMALISED_THEOREMS" \
-          --set BENCHMARKS_FALLBACK            "$BENCHMARKS_FALLBACK"
+          --set BENCHMARKS                     "$BENCHMARKS"
       done
     '';
   });

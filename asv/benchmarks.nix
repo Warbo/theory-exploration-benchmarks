@@ -7,8 +7,8 @@ with import dir {};
 with nix-config;
 with rec {
   inherit (testCache)
+    BENCHMARKS
     BENCHMARKS_CACHE
-    BENCHMARKS_FALLBACK
     BENCHMARKS_FINAL_BENCHMARK_DEFS
     BENCHMARKS_NORMALISED_DEFINITIONS
     BENCHMARKS_NORMALISED_THEOREMS;
@@ -31,20 +31,20 @@ with rec {
     bin = {
       run_tests   = testScript;
 
-      mk_defs     = profileWith { inherit BENCHMARKS_FALLBACK; }
+      mk_defs     = profileWith { inherit BENCHMARKS; }
                                 "make_normalised_definitions.rkt";
 
       mk_thms     = profileWith { inherit BENCHMARKS_CACHE
-                                          BENCHMARKS_FALLBACK
+                                          BENCHMARKS
                                           BENCHMARKS_NORMALISED_DEFINITIONS; }
                                 "make_normalised_theorems.rkt";
 
-      mk_sdata    = profileWith { inherit BENCHMARKS_FALLBACK
+      mk_sdata    = profileWith { inherit BENCHMARKS
                                           BENCHMARKS_FINAL_BENCHMARK_DEFS
                                           BENCHMARKS_NORMALISED_DEFINITIONS; }
                                 "make_sampling_data.rkt";
 
-      mk_fin_defs = profileWith { inherit BENCHMARKS_FALLBACK
+      mk_fin_defs = profileWith { inherit BENCHMARKS
                                           BENCHMARKS_NORMALISED_DEFINITIONS; }
                                 "gen_final_benchmark_defs.rkt";
     };
