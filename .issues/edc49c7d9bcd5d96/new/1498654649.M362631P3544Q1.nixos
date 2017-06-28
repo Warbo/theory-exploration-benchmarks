@@ -1,0 +1,12 @@
+From: Chris Warburton
+Date: Wed, 28 Jun 2017 13:54:16 +0100
+Subject: Re: theorems-from-file redundant?
+Message-Id: <edc49c7d9bcd5d96-bc19794e8c3ba77d-artemis@nixos>
+References: <edc49c7d9bcd5d96-0-artemis@nixos>
+In-Reply-To: <edc49c7d9bcd5d96-0-artemis@nixos>
+
+theorems-from-file is given a filename, it reads in the s-expressions
+from that file, then looks through them for any theorems they contain
+(anything beginning with 'assert-not').
+
+We already have this data in 'theorem-hashes'
