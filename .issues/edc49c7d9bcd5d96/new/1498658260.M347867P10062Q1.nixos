@@ -1,0 +1,19 @@
+From: Chris Warburton
+Date: Wed, 28 Jun 2017 14:55:02 +0100
+Subject: Re: theorems-from-file redundant?
+Message-Id: <edc49c7d9bcd5d96-c06c7e2449a4c544-artemis@nixos>
+References: <edc49c7d9bcd5d96-0-artemis@nixos>
+In-Reply-To: <edc49c7d9bcd5d96-0-artemis@nixos>
+
+Lots of stuff in theorems.rkt and conjectures.rkt is using
+(theorem-files), which contains the full filenames of the tip
+benchmarks. These files are being read, parsed, etc. which is all
+redundant.
+
+I've added (theorem-ids) to tip.rkt, which lists only the end of the
+paths: the parts we use for identifying where a symbol has come
+from. I'm now switching theorems.rkt and conjectures.rkt to use these.
+
+We can turn an id into a path using (benchmark-file id), but that should
+only be necessary in tests (e.g. to verify that the theorem is the right
+one, etc.)

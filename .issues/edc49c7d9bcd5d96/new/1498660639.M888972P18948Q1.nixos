@@ -1,0 +1,8 @@
+From: Chris Warburton
+Date: Wed, 28 Jun 2017 15:36:52 +0100
+Subject: Re: theorems-from-file redundant?
+Message-Id: <edc49c7d9bcd5d96-cc8b4a9bdd668777-artemis@nixos>
+References: <edc49c7d9bcd5d96-0-artemis@nixos>
+In-Reply-To: <edc49c7d9bcd5d96-0-artemis@nixos>
+
+Made new theorem-ids value, and use it instead of theorem-files.

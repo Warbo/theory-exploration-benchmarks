@@ -1,7 +1,8 @@
 From: Chris Warburton
 Date: Sat, 10 Jun 2017 14:23:12 +0100
-State: new
+State: resolved
 Subject: theorems-from-file redundant?
 Message-Id: <edc49c7d9bcd5d96-0-artemis@nixos>
+resolution: fixed
 
 Looks pretty useless; throw it out, and simplify away anything it needed.

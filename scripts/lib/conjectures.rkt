@@ -88,7 +88,7 @@
                                 (check-not-equal? #f (member c eqs)
                                                   "All equations are found")))
                             conjectures)))
-                (theorem-files))))
+                (theorem-ids))))
 
 (define (conjectures-admitted-by-sample-wrapper)
   (define sample (read-benchmark (port->string)))
@@ -273,7 +273,7 @@
     (for-each (lambda (f)
                 (check-true (< (length (equation-from f)) 2)
                             "Extracting equations doesn't crash"))
-              (theorem-files))
+              (theorem-ids))
 
     (for-each (lambda (f)
                 (define thm (normed-theorem-of f))
@@ -312,7 +312,7 @@
                   (check-equal? (length eqs)
                                 (if seems-valid 1 0)
                                 "Can extract equations from unconditional =")))
-              (theorem-files))))
+              (theorem-ids))))
 
 ;; Turns a list, such as '(f x y) into nested unary applications, like
 ;; '(apply (apply f x) y)
