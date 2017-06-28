@@ -1,0 +1,10 @@
+From: Chris Warburton
+Date: Wed, 28 Jun 2017 21:48:52 +0100
+Subject: Re: Handle mutually-recursive functions
+Message-Id: <8088309b5c435751-e91ec9f8052a1700-artemis@nixos>
+References: <8088309b5c435751-0-artemis@nixos>
+In-Reply-To: <8088309b5c435751-0-artemis@nixos>
+
+Looks like all occurrences of 'define-fun' in the main code
+(i.e. pattern matches which actually affect execution; rather than just
+examples from test cases) now have a corresponding 'define-funs-rec'
