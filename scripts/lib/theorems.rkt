@@ -22,50 +22,39 @@
 ;; adds in to work around TIP's special-casing of '='. Since no exploration
 ;; system will include such things in their output, we strip them here to ensure
 ;; comparisons will find correct matches.
-(define/test-contract (theorems-from-file f)
+(define/test-contract (theorem-from-file f)
   (-> any/c (lambda (result)
               (or (and (list? result)
-                       (equal? (length result) 1))
+                       (not (empty? result))
+                       (equal? (first result) 'assert-not))
                   (raise-user-error
                    'result
                    "Expected a single (negated) theorem. Found ~a"
                    result))))
-
-  (define (get-theorems x)
-    (match x
-      [(list 'assert-not _) (list (unwrap-custom-bool x))]
-      [(cons h t)           (append (get-theorems h) (get-theorems t))]
-      [_                    '()]))
-
-  (get-theorems (file->list f)))
+  (unwrap-custom-bool (second (hash-ref (theorem-hashes) f))))
 
 (module+ test
   (def-test-case "Can extract theorems"
-    (for-each (lambda (benchmark-file)
-                (define thms (theorems-from-file benchmark-file))
+    (for-each (lambda (id)
+                (define thm (theorem-from-file id))
 
                 (define content (unwrap-custom-bool
-                                 (file->list benchmark-file)))
+                                 (file->list (benchmark-file id))))
 
                 (with-check-info
-                  (('benchmark-file benchmark-file)
-                   ('thms           thms))
-                  (check-equal? (length thms) 1))
-
-                (with-check-info
-                  (('benchmark-file benchmark-file)
-                   ('thms           thms)
+                  (('benchmark-file id)
+                   ('thm            thm)
                    ('content        content))
-                  (check-not-equal? (member (car thms) content) #f)))
-              (theorem-files))))
+                  (check-not-equal? (member thm content) #f)))
+              (theorem-ids))))
 
 (memo0 benchmark-theorems
        (make-immutable-hash
         (foldl (lambda (f rest)
-                 (cons (cons (path-end f) (first (theorems-from-file f)))
+                 (cons (cons f (theorem-from-file f))
                        rest))
                '()
-               (theorem-files))))
+               (theorem-ids))))
 
 (define (theorem-of f)
   (hash-ref (benchmark-theorems) (path-end f)
@@ -82,7 +71,7 @@
     (for-each (lambda (benchmark-file)
                 (check-not-equal? (theorem-of benchmark-file)
                                   #f))
-              (theorem-files))))
+              (theorem-ids))))
 
 (define (theorem-globals thm)
   (define (thm-locals expr)
@@ -107,12 +96,11 @@
 
     (remove* (thm-locals thm) (thm-names thm)))
 
-(define (qual-thm filename thm)
+(define (qual-thm id thm)
   (replace-all (map (lambda (g)
                       (list g
                             (string->symbol
-                             (string-append (path-end filename)
-                                            (symbol->string g)))))
+                             (string-append id (symbol->string g)))))
                     (theorem-globals thm))
                thm))
 
@@ -143,14 +131,11 @@
 
         (make-immutable-hash
          (hash-map (benchmark-theorems)
-                   (lambda (f thm)
-                     (cons (path-end f)
+                   (lambda (id thm)
+                     (cons id
                            (unqualify
                             (replace final-replacements
-                                     (qual-thm (string-append
-                                                benchmark-dir "/"
-                                                (path-end f))
-                                               thm))))))))
+                                     (qual-thm id thm))))))))
       ;; Otherwise return cached version
       (let* ([f (open-input-file (getenv "BENCHMARKS_NORMALISED_THEOREMS"))]
              [result (read f)])
@@ -205,7 +190,7 @@
                   (normed-theorem-of benchmark-file))
 
                 (check-equal? (structure-of unnormed) (structure-of normed)))
-              (theorem-files))))
+              (theorem-ids))))
 
 (define (theorem-types expr)
   (match expr
@@ -324,4 +309,4 @@
 
 (memo0 all-theorem-deps
        (map (lambda (f) (list (path-end f) (list->set (theorem-deps-of f))))
-            (theorem-files)))
+            (theorem-ids)))

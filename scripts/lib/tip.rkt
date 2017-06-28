@@ -12,7 +12,7 @@
          expression-symbols
          expression-types files-to-hashes get-def-s lowercase-names names-in
          native-symbols path-end symbols-in theorem? theorem-files
-         theorem-hashes tip-benchmarks? tip-path?
+         theorem-hashes theorem-ids tip-benchmarks? tip-path?
          toplevel-function-defs-of toplevel-names-in
          uppercase-names)
 
@@ -660,6 +660,8 @@
                    (expression-funs         exp))))
 
 (memo0 theorem-hashes (files-to-hashes (theorem-files)))
+
+(memo0 theorem-ids (map path-end (theorem-files)))
 
 (module+ test
   (def-test-case "Can find constructor wrappers"
