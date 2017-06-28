@@ -9,8 +9,7 @@
 (require "util.rkt")
 
 (provide definition? expression-constructors expression-destructors
-         expression-symbols
-         expression-types files-to-hashes get-def-s lowercase-names names-in
+         files-to-hashes get-def-s lowercase-names names-in
          native-symbols path-end symbols-in theorem? theorem-files
          theorem-hashes theorem-ids tip-benchmarks? tip-path?
          toplevel-function-defs-of toplevel-names-in
@@ -334,6 +333,7 @@
       (should-not-have syms 'keyword  '(match
                                         case
                                         define-fun
+                                        define-funs-rec
                                         declare-datatypes
                                         assert-not
                                         forall
@@ -549,39 +549,6 @@
                                                   (expression-constructors b))]
     [_                                    null]))
 
-;; Return a list of types defined in a given expression, e.g. '(List) if given a
-;; definition of List
-(define (expression-types exp)
-  (define (constructor-types defs)
-    (match defs
-      [(cons h t) (append (append-map (lambda (x) (symbols-in (cdr x)))
-                                      (cdr h))
-                          (constructor-types t))]
-      [_          null]))
-
-  (match exp
-         [(list 'define-fun-rec
-                (list 'par p
-                      (list name args return body)))   (remove* (symbols-in p)
-                                                                (symbols-in (cons return (map cadr args))))]
-         [(list 'define-fun-rec name args return body) (cons return (map cadr args))]
-         [(list 'define-fun
-                (list 'par p
-                      (list name args return body)))   (remove* (symbols-in p)
-                                                                (symbols-in (cons return (map cadr args))))]
-         [(list 'define-fun     name args return body) (cons return (map cadr args))]
-
-         [(list 'declare-datatypes given decs)         (append (map car decs)
-                                                               (remove* (symbols-in given)
-                                                                        (symbols-in (map (lambda (x) (constructor-types (cdr x)))
-                                                                                         decs))))]
-         [(cons 'define-funs-rec x) (let ()
-                                      (eprintf "FIXME: Unhandled case: declare-funs-rec\n")
-                                      (expression-types x))]
-         [(cons a b)                                   (append (expression-types a)
-                                                               (expression-types b))]
-         [_                                            null]))
-
 ;; Return a list of destructors defined in EXP
 (define (expression-destructors exp)
     (define (destructor-symbols c)
@@ -650,14 +617,6 @@
         [_                                            null]))
 
     (memo1 (lambda (exp) (flatten (go exp))))))
-
-;; Returns all global names defined in the given expression, including
-;; functions, constructors and destructors, but excluding types
-(define (expression-symbols exp)
-  (remove* (expression-types exp)
-           (append (expression-constructors exp)
-                   (expression-destructors  exp)
-                   (expression-funs         exp))))
 
 (memo0 theorem-hashes (files-to-hashes (theorem-files)))
 

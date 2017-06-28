@@ -1,0 +1,11 @@
+From: Chris Warburton
+Date: Wed, 28 Jun 2017 18:17:57 +0100
+Subject: Re: Handle mutually-recursive functions
+Message-Id: <8088309b5c435751-dddc9f2c84ca72f0-artemis@nixos>
+References: <8088309b5c435751-0-artemis@nixos>
+In-Reply-To: <8088309b5c435751-0-artemis@nixos>
+
+One case was expression-types. Turns out, it's only used by tag-types
+and expression-symbols, neither of which are themselves used.
+
+Hence they can all be thrown away :)
