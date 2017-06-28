@@ -1,0 +1,26 @@
+From: Chris Warburton
+Date: Wed, 28 Jun 2017 17:53:28 +0100
+State: new
+Subject: Dedupe replacement lists
+Message-Id: <b54ea615c57a1b17-0-artemis@nixos>
+
+Our replacements are lists of lists. Each inner list represents a set of
+equivalent names; the first element is the "canonical" one to use, all
+the others will be replaced to use this one. We ensure that the first
+name is the smallest lexicographically.
+
+These inner lists can end up with quite a few duplicate elements. We
+handle this by providing 'new-of' and 'old-of' instead of using bare
+'car' and 'cdr', so that 'old-of' can remove any occurrences of the
+canonical name. It's still pretty naff though.
+
+One thing we need to avoid is doing too much processing while these
+replacement sets are being constructed; for example, sorting the
+elements after an insertion. This is because our deduplicating algorithm
+is already O(n^3) so we want to avoid any further work in each
+iteration.
+
+One possibility is to dedupe as part of the 'wrapper' functions like
+'replacements-closure', or even 'normed-and-replacements' (since it's
+'normed-and-replacements-inner' which does the O(n^3) work). In the
+latter case, this would ensure that the deduping gets cached.

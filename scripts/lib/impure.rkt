@@ -110,16 +110,9 @@
   (curry map benchmark-file))
 
 (define (read-from-cache! cache fallback)
-  (if (and (getenv "IN_TEST")
-           (not (getenv "BENCHMARKS_TEST_ALL")))
-      (fallback)
-      (let ()
-        (define cache-path (getenv cache))
+  (define cache-path (getenv cache))
 
-        (if (and cache-path (file-exists? cache-path))
-            (let ()
-              (define in   (open-input-file cache-path))
-              (define data (read in))
-              (close-input-port in)
-              data)
-            (error (string-append "No " cache " given"))))))
+  (unless (and cache-path (file-exists? cache-path))
+    (error (string-append "No " cache " given")))
+
+  (with-input-from-string (file->string cache-path) read))

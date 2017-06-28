@@ -63,9 +63,14 @@ with the `shell-pipeline` and `grommet` packages available.
 If you want to generate Haskell code you'll need the `tip` command, from the
 `tip-lib` Haskell package.
 
+The transformation takes place in multiple stages, the result of each is cached
+on disk and the filename stored in an environment variable (these have names
+prefixed with `BENCHMARKS`). Nix manages this for us; if you want to avoid Nix,
+you can see which environment variables need to be set for your desired script
+by looking at its invocation in the `*.nix` files.
+
 You can invoke the test suite using `scripts/test.sh`, or by using the
-`scripts/test.rkt` module either with `raco test` or using DrRacket; ensure you
-set the `IN_TEST` env var when calling the Racket module directly. The tests
+`scripts/test.rkt` module either with `raco test` or using DrRacket. The tests
 also need the `cabal` command, and a Haskell environment with the `QuickSpec`,
 `QuickCheck`, `tip-lib` and `testing-feat` packages available.
 
@@ -84,9 +89,9 @@ available in `PATH`.
 
 Tests can also be run in many ways, e.g. via Dr Racket, but the simplest is to
 call the provided `scripts/test.sh` script. Alternatively, use Racket's `raco`
-command and set the `IN_TEST` env var:
+command:
 
-    IN_TEST=1 raco test scripts/test.rkt
+    raco test scripts/test.rkt
 
 Tests will be run automatically during installation, which can be skipped by
 setting the `SKIP_TESTS` environment variable to `1`.
@@ -114,8 +119,10 @@ invoking it, what to do with the results, etc.
 
 ## Usage ##
 
-To combine the TIP benchmarks into one theory, run `mk_final_defs`. This will
-print the resulting benchmark, in TIP format, to stdout.
+To combine the TIP benchmarks into one theory, ensure the `tools` are in your
+`PATH` (e.g. using `nix-shell -p '(import ./. {}).tools'`) and run
+`mk_final_defs`. This will print the resulting benchmark, in TIP format, to
+stdout.
 
 To generate a Haskell package from a benchmark, pipe the benchmark into
 `full_haskell_package`. Make sure to set the `OUT_DIR` environment variable
@@ -136,10 +143,6 @@ size is requested which is too small to fit any theorem's dependencies.
 Some features default to using a set of TIP benchmarks provided by Nix. You can
 override this by setting the `BENCHMARKS` environment variable to a directory
 containing the desired benchmarks.
-
-Some expensive operations will cache data to `/tmp`, keyed by the filenames
-being benchmarked. If more than 1000 cached files are found, a selection will
-be deleted to prevent filling the disk.
 
 ## Other Uses ##
 

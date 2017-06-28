@@ -1,0 +1,10 @@
+From: Chris Warburton
+Date: Wed, 28 Jun 2017 16:05:45 +0100
+Subject: Re: Take temp dir (for testing sigs) from environment
+Message-Id: <81030fb08844d031-9e30fe9f9aaff98d-artemis@nixos>
+References: <81030fb08844d031-0-artemis@nixos>
+In-Reply-To: <81030fb08844d031-0-artemis@nixos>
+
+Duh, Nix sets the temp dir as part of the build environment. Since we're
+using Racket's own `make-temporary-file` rather than hard-coding to
+`/tmp`, this should be fine.
