@@ -344,17 +344,6 @@
                   (if (< ma mb) mb ma))]
     [x          (name-num pre x)]))
 
-;; Rename types in X to begin with "type-"
-(define (tag-types x)
-  ;; Tag types with 'type-' to disambiguate
-  (foldl (lambda (t y)
-           (if (and (symbol? t)
-                    (not (member t native-symbols)))
-               (replace-in t (prefix-name t "type-") y)
-               y))
-         x
-         (expression-types x)))
-
 ;; Theorems are anonymous, so we use their path as a name, since it's stable
 ;; even when we rewrite the contents (e.g. for normalising)
 (define (qualified-theorems? thms)
@@ -445,8 +434,7 @@
                                                       (symbol->string sym)))
                        x))
          (prefix-locals expr)
-         (symbols-in expr #;(append (expression-symbols expr)
-                             (expression-types   expr)))))
+         (symbols-in expr)))
 
 (module+ test
   (def-test-case "Can qualify theorems"
