@@ -1,0 +1,8 @@
+From: Chris Warburton
+Date: Wed, 28 Jun 2017 15:52:49 +0100
+Subject: Re: precision-recall-eqs-wrapper file reading
+Message-Id: <c01ecdff4383b5d4-879a50f44bc9214d-artemis@nixos>
+References: <c01ecdff4383b5d4-0-artemis@nixos>
+In-Reply-To: <c01ecdff4383b5d4-0-artemis@nixos>
+
+Read "ground truth" file before passing to library.

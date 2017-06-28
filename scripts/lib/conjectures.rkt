@@ -743,7 +743,7 @@
   (define ground-truth
     (map (lambda (thm)
            (list truth-source thm))
-         (read-benchmark (file->string g-truth))))
+         (read-benchmark g-truth)))
 
   (fix-json-for-output
    (conjectures-from-raw from-json

@@ -7,4 +7,4 @@
 (write-json
  (precision-recall-eqs-wrapper (port->string)
                                (getenv "TRUTH_SOURCE")
-                               (getenv "GROUND_TRUTH")))
+                               (file->string (getenv "GROUND_TRUTH"))))
