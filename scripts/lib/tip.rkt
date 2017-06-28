@@ -333,6 +333,7 @@
       (should-not-have syms 'keyword  '(match
                                         case
                                         define-fun
+                                        define-funs-rec
                                         declare-datatypes
                                         assert-not
                                         forall
