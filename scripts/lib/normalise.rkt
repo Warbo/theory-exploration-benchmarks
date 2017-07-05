@@ -1207,9 +1207,39 @@
                        (equal? (names-in defs)
                                  (remove-duplicates (names-in defs)))))
               replacements?))
-  ;; All of the hard work is done inside normed-and-replacements-inner, but that
-  ;; function is recursive, so memoising it would fill the lookup table with
-  ;; intermediate results.
+
+  ;; This does the real work
+  (define/test-contract (normed-and-replacements-inner exprs reps)
+    (-> (*list/c definition?)
+        (*list/c replacements?)
+        (list/c (*list/c definition?) (*list/c replacements?)))
+
+    (msg "Normalising ~a definitions\n" (length exprs))
+
+    ;; Find the names of redundant definitions, and a canonical replacement
+    (define/test-contract redundancies
+      replacements?
+      (find-redundancies exprs))
+
+    (msg "~a names remain distinct\n" (count-replacements redundancies))
+
+    ;; Switch out all of the redundant names (including in definitions)
+    (define/test-contract stripped
+      (*list/c definition?)
+      (remove-duplicates (replace (finalise-replacements redundancies)
+                                  exprs)))
+
+    (define e-len (length exprs))
+    (define s-len (length stripped))
+
+    (msg "Removed ~a redundant definitions\n" (- e-len s-len))
+
+    (define replacements (cons redundancies reps))
+
+    (if (equal? e-len s-len)
+        (list                          stripped replacements)
+        (normed-and-replacements-inner stripped replacements)))
+
   (define result
     (normed-and-replacements-inner (map prefix-locals exprs)
                                    '()))
@@ -1220,37 +1250,6 @@
   (read-from-cache! "BENCHMARKS_NORMALISED_DEFINITIONS"
                     (lambda ()
                       (error "No BENCHMARKS_NORMALISED_DEFINITIONS"))))
-
-(define/test-contract (normed-and-replacements-inner exprs reps)
-  (-> (*list/c definition?)
-      (*list/c replacements?)
-      (list/c (*list/c definition?) (*list/c replacements?)))
-
-  (msg "Normalising ~a definitions\n" (length exprs))
-
-  ;; Find the names of redundant definitions, and a canonical replacement
-  (define/test-contract redundancies
-    replacements?
-    (find-redundancies exprs))
-
-  (msg "~a names remain distinct\n" (count-replacements redundancies))
-
-  ;; Switch out all of the redundant names (including in definitions)
-  (define/test-contract stripped
-    (*list/c definition?)
-    (remove-duplicates (replace (finalise-replacements redundancies)
-                                exprs)))
-
-  (define e-len (length exprs))
-  (define s-len (length stripped))
-
-  (msg "Removed ~a redundant definitions\n" (- e-len s-len))
-
-  (define replacements (cons redundancies reps))
-
-  (if (equal? e-len s-len)
-      (list                          stripped replacements)
-      (normed-and-replacements-inner stripped replacements)))
 
 (define (mk-final-defs)
   (show (final-benchmark-defs)))
