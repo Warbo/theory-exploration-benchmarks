@@ -1003,27 +1003,14 @@
                   "Replacements get smallest value from lists")))
 
 (define (normalised-intermediate? x)
-  (define ((names-list? len) names)
-    (and (list? names)
-         (not (empty? names))
-         (equal? (length names) len)))
-
-  (define names-expr?
-    (match-lambda
-      [(list namess expr)
-       (and (definition? expr)
-            (list? namess)
-            (not (empty? namess))
-            (all-of (names-list? (length (first namess))) namess))]))
-
-  (define names-expr-pair?
-    (lambda (x)
-      (and (list? x)
-           (equal? 2 (length x))
-           (names-expr? x))))
-
-  (and (list? x)
-       (all-of names-expr-pair? x)))
+  (hash/c definition? (and/c (non-empty-listof (*list/c symbol?))
+                             (lambda (namess)
+                               ;; Each alternative list of names should be the
+                               ;; same length
+                               (define len (length (first namess)))
+                               (all-of (lambda (names)
+                                         (equal? (length names) len))
+                                       namess)))))
 
 (define/test-contract (mk-output expr so-far)
   (-> definition?
@@ -1038,37 +1025,24 @@
     (*list/c symbol?)
     (toplevel-names-in expr))
 
-  ;; Look for an existing alpha-equivalent definition
-  ;;   '(((name1 name2 ...) expr) ...)
-  (define/test-contract existing-pos
-    (or/c integer? boolean?)
-    (index-where so-far (lambda (x)
-                          (equal? norm-line (second x)))))
-
-  (if (equal? #f existing-pos)
-      ;; This expr isn't redundant, associate its names with its normal form
-      (cons (list (list names) norm-line)
-            so-far)
-
-      ;; This expr is redundant, include its names in the replacement list
-      (list-update so-far existing-pos (lambda (existing)
-                                         (list (cons names (first existing))
-                                               norm-line)))))
+  (hash-update so-far norm-line
+               (curry cons names)  ;; Prepend names to any existing list
+               (list names)))      ;; Use names as-is if no entry exists yet
 
 (module+ test
   (let ([output (mk-output constructorZ
-                           `((((existing-Z)) ,(norm constructorZ))))])
+                           (hash (norm constructorZ) '((existing-Z))))])
     (def-test-case "Redundant output contains normalised defs"
-      (check-equal? (map second output)
+      (check-equal? (hash-keys output)
                     `(,(norm constructorZ))))
 
     (def-test-case "Redundant output contains classes of equivalent names"
-      (check-equal? (map first output)
+      (check-equal? (hash-values output)
                     `(((constructor-Z) (existing-Z)))))
 
     (def-test-case "Redundancy output"
       (check-equal? output
-                    `((((constructor-Z) (existing-Z)) ,(norm constructorZ)))))))
+                    (hash (norm constructorZ) '((constructor-Z) (existing-Z)))))))
 
 ;; Looks for alpha-equivalent definitions in RAW-EXPRS, and returns a set of
 ;; name replacements which can be used to update references and remove
@@ -1076,7 +1050,7 @@
 (define/test-contract (find-redundancies raw-exprs)
   (-> (and/c (*list/c definition?) unencoded? unnormalised?)
       replacements?)
-  (names-to-reps (map first (foldl mk-output null raw-exprs))))
+  (names-to-reps (hash-values (foldl mk-output (hash) raw-exprs))))
 
 (module+ test
   (def-test-case "Can find redundancies from definitions list"
@@ -1088,8 +1062,7 @@
 
     (check-equal? (list (set '(Nat1 Z1 S1 p1)
                              '(Nat2 Z2 S2 p2)))
-                  (map (lambda (x) (list->set (first x)))
-                       (foldl mk-output null defs)))
+                  (map list->set (hash-values (foldl mk-output (hash) defs))))
 
     (check-equal? (finalise-replacements
                    (extend-replacements
