@@ -1,0 +1,49 @@
+From: Chris Warburton
+Date: Wed, 05 Jul 2017 17:13:28 +0100
+State: new
+Subject: Normalising is REALLY slow
+Message-Id: <c2f76fe24382fbb0-0-artemis@nixos>
+
+I'm seeing got 45 minutes of CPU time and counting; it's not even
+finished the first pass yet!
+
+This is the reason we've added asv. Try to sort it out. Use benchmarks,
+profiling, whatever.
+
+Some thoughts:
+
+ - We need to maintain the order of definitions.
+ - We might benefit from putting the definitions in a hash table and
+   using a list of names-being-defined as the structure we loop over.
+  - Looking up and comparing names should be quicker than whole
+    definitions.
+ - We could also benefit from a hash table with normalised forms as keys
+   and a list of names-being-defined as values.
+  - We kind of have this now, except we're using a list.
+ - We could also benefit from maintaining, for each global, a list of
+   names whose definitions reference it.
+  - This makes it easy to see which definitions need updating when a
+    redundancy is found.
+
+How about taking the following steps:
+
+IDEA 1:
+
+Instead of looking for a matching normal form in a list, use a hash
+table. This should be straightforward, as the list is a local, temporary
+value in the normalising loop. This should be quicker since the hash
+table can use constant time lookups.
+
+The hash table should use normal forms as keys (the second value of our
+list's elements), and lists-of-lists-of-names as values (the first value
+of our list's elements).
+
+IDEA 2:
+
+I don't think we need to distinguish between normal forms and
+definitions. The only difference is whether the names being defined are
+'in place' or not; since we have lists of names being defined, we can
+keep these separate, and treat 'normalised-definition-1', etc. as
+'holes' which are filled by the elements of our list-of-names. We can
+then check for redundancy by comparing definitions directly, rather than
+having to normalise them first.
