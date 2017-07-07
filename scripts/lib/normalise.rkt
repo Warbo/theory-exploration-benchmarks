@@ -148,22 +148,31 @@
 (define (qualified-theorems? thms)
   (and/c (hash/c tip-path? theorem?)))
 
+(define (prefixed-locals? x)
+  (and  (definition? x)
+        (or (equal? x (prefix-locals x))
+            (raise-user-error
+             'prefixed-locals?
+             "Unprefixed locals in definition:\n~a\n"
+             x))))
+
 ;; Prefix each name with the path of the file it came from, and combine all
 ;; definitions together into one long list (ordered lexicographically by path).
 ;; Theorems are also qualified, but remain independent and keyed by their path.
 (define/test-contract (qual-all-hashes given-hashes)
-  (-> tip-benchmarks? (list/c (*list/c definition?)
+  (-> tip-benchmarks? (list/c (*list/c (and/c definition?
+                                              prefixed-locals?))
                               qualified-theorems?))
   (define entries
     (sort (hash->list given-hashes) string>? #:key car))
 
   (define result
-    (foldl (lambda (elem result)
-             (match (list elem result)
-               [(list (cons pth (list defs thm))
-                      (list all thms))
-                (list (cons (qualify pth defs) all)
-                      (hash-set thms pth (qualify pth thm)))]))
+    (foldl (match-lambda*
+             [(list (cons pth (list defs thm))
+                    (list all thms))
+
+              (list (cons (map (curry qualify pth) defs) all)
+                    (hash-set thms pth (qualify pth thm)))])
            (list '() (hash))
            entries))
 
@@ -373,7 +382,9 @@
                   "Prefix locals of function definition")
 
     (check-equal? after (prefix-locals (prefix-locals before))
-                  "Prefixing is idempotent")))
+                  "Prefixing is idempotent")
+
+    (check-true  (prefixed-locals? after))))
 
 ;; Removes qualification from our "custom" definitions, introduced by
 ;; strip-native.rkt, since they're not actually defined in any TIP file.
@@ -812,6 +823,10 @@
                                          (equal? (length names) len))
                                        namess)))))
 
+;; A pair where the first is a list of names, and the second is a normalised
+;; definition. Plugging the names into the definition recovers the original.
+(define names-def-pair? (list/c (*list/c symbol?) definition?))
+
 (define/test-contract (mk-output expr so-far)
   (-> definition?
       normalised-intermediate?
@@ -830,7 +845,7 @@
                (list names)))      ;; Use names as-is if no entry exists yet
 
 (module+ test
-  (let ([output (mk-output constructorZ
+  (let ([output (mk-output (split-off-names constructorZ)
                            (hash (norm constructorZ) '((existing-Z))))])
     (def-test-case "Redundant output contains normalised defs"
       (check-equal? (hash-keys output)
@@ -855,10 +870,10 @@
 (module+ test
   (def-test-case "Can find redundancies from definitions list"
     (define defs
-      '((declare-datatypes ()
-                           ((Nat1 (Z1) (S1 (p1 Nat1)))))
-        (declare-datatypes ()
-                           ((Nat2 (Z2) (S2 (p2 Nat2)))))))
+      (map split-off-names '((declare-datatypes ()
+                                                ((Nat1 (Z1) (S1 (p1 Nat1)))))
+                             (declare-datatypes ()
+                                                ((Nat2 (Z2) (S2 (p2 Nat2))))))))
 
     (check-equal? (list (set '(Nat1 Z1 S1 p1)
                              '(Nat2 Z2 S2 p2)))
@@ -876,7 +891,9 @@
                   (list->set (remove-duplicates
                               (replace
                                (finalise-replacements
-                                (find-redundancies redundancies))
+                                (find-redundancies
+                                 (map (compose split-off-names prefix-locals)
+                                      redundancies)))
                                redundancies))))))
 
 ;; Remove redundancies from EXPRS, leaving only alpha-distinct definitions. When
@@ -954,15 +971,59 @@
     (define test-replacements
       (all-replacements-closure))
 
+    (define all-names
+      (names-in test-benchmark-defs))
+
     (for-each (lambda (rep)
                 (for-each (lambda (old)
-                            (check-false (set-member?
-                                          (names-in test-benchmark-defs)
-                                          old)))
+                            (with-check-info
+                              (('old   old)
+                               ('rep   rep)
+                               ('names all-names))
+                              (check-false (set-member? all-names old))))
                           (old-of rep))
                 (check-not-equal? #f (set-member?
                                       (names-in test-benchmark-defs)
-                                      (new-of rep))))
+                                      (new-of rep)))
+
+                (define new      (new-of rep))
+                (define new-def  (first (get-def-s new test-benchmark-defs)))
+                (define norm-new (norm new-def))
+
+                (for-each (lambda (old)
+                            (with-check-info
+                              (('new new)
+                               ('old old)
+                               ('rep rep))
+                              (check-true (symbol<=? new old)
+                                          "New is smaller than old")
+
+                              (check-false (equal? new old)
+                                           "New and old are different"))
+
+                            (define old-def
+                              (first
+                               (get-def-s old
+                                          (first (qual-hashes-theorem-files)))))
+
+                            (define norm-old (norm old-def))
+
+                            (define replaced
+                              (replace-all (zip (flatten norm-old)
+                                                (flatten norm-new))
+                                           norm-old))
+
+                            (with-check-info
+                              (('rep      rep)
+                               ('old      old)
+                               ('new      new)
+                               ('old-def  old-def)
+                               ('new-def  new-def)
+                               ('norm-old norm-old)
+                               ('norm-new norm-new)
+                               ('replaced replaced))
+                              (check-equal? norm-new replaced)))
+                          (old-of rep)))
               test-replacements)))
 
 ;; Do the actual normalisation, to populate the cache
@@ -1021,6 +1082,13 @@
                                    '()))
   (list (first result)
         (apply extend-replacements (second result))))
+
+(define (split-off-names expr)
+  (list (toplevel-names-in expr) (norm expr)))
+
+(define (plug-in-names x)
+  (replace-all (zip (toplevel-names-in (second x)) (first x))
+               (second x)))
 
 (define (normed-and-replacements-cached)
   (read-from-cache! "BENCHMARKS_NORMALISED_DEFINITIONS"
@@ -1152,8 +1220,18 @@
                                     #f)))
               subset))
 
+  (define (decode-syms x)
+    (read-benchmark (decode-string (format-symbols x))))
+
+  ;; For things like custom...
+  (define unenc-final (decode-syms (final-benchmark-defs)))
+
   (for-each (lambda (sym)
-    (define def (get-def-s sym qual))
+    (define def
+      (get-def-s sym
+                 (if (is-custom? sym)
+                     unenc-final
+                     qual)))
 
     (let ([count (length def)])
       (with-check-info
@@ -1286,18 +1364,19 @@
                                  'isaplanner/prop_58.smt2second)))
                   (finalise-replacements
                    (find-redundancies
-                    '((declare-datatypes
-                       (local-a local-b)
-                       ((isaplanner/prop_58.smt2Pair
-                         (isaplanner/prop_58.smt2Pair2
-                          (isaplanner/prop_58.smt2first local-a)
-                          (isaplanner/prop_58.smt2second local-b)))))
-                      (declare-datatypes
-                       (local-a local-b)
-                       ((tip2015/sort_StoogeSort2IsSort.smt2Pair
-                         (tip2015/sort_StoogeSort2IsSort.smt2Pair2
-                          (tip2015/sort_StoogeSort2IsSort.smt2first local-a)
-                          (tip2015/sort_StoogeSort2IsSort.smt2second local-b))))))))))
+                    (map (compose split-off-names prefix-locals)
+                         '((declare-datatypes
+                            (local-a local-b)
+                            ((isaplanner/prop_58.smt2Pair
+                              (isaplanner/prop_58.smt2Pair2
+                               (isaplanner/prop_58.smt2first local-a)
+                               (isaplanner/prop_58.smt2second local-b)))))
+                           (declare-datatypes
+                            (local-a local-b)
+                            ((tip2015/sort_StoogeSort2IsSort.smt2Pair
+                              (tip2015/sort_StoogeSort2IsSort.smt2Pair2
+                               (tip2015/sort_StoogeSort2IsSort.smt2first local-a)
+                               (tip2015/sort_StoogeSort2IsSort.smt2second local-b)))))))))))
 
     (define qualified-example
     '((define-fun (par (a b)
@@ -1340,7 +1419,10 @@
                     (check-sat))))
 
   (def-test-case "Find redundancies"
-    (check-equal? (finalise-replacements (find-redundancies redundancies))
+    (check-equal? (finalise-replacements (find-redundancies
+                                          (map (compose split-off-names
+                                                        prefix-locals)
+                                               redundancies)))
                   (finalise-replacements
                    (extend-replacements
                     (replacement 'constructor-S)
@@ -1351,9 +1433,10 @@
 
     (check-equal? (finalise-replacements
                    (find-redundancies
-                    '((declare-datatypes () ((TB (C1A) (C2C (D1B TB)))))
-                      (declare-datatypes () ((TC (C1C) (C2B (D1A TC)))))
-                      (declare-datatypes () ((TA (C1B) (C2A (D1C TA))))))))
+                    (map split-off-names
+                         '((declare-datatypes () ((TB (C1A) (C2C (D1B TB)))))
+                           (declare-datatypes () ((TC (C1C) (C2B (D1A TC)))))
+                           (declare-datatypes () ((TA (C1B) (C2A (D1C TA)))))))))
                   (finalise-replacements
                    (extend-replacements
                     (replacement 'TA  'TB  'TC)
@@ -1578,12 +1661,14 @@
 
   (let ([syms (names-in test-benchmark-defs)])
     (for-each (lambda (sym)
+                (define str (string-downcase (symbol->string sym)))
+
                 (with-check-info
-                 (('sym       sym)
-                  ('test-benchmark-defs test-benchmark-defs)
-                  ('message   "Symbol is qualified"))
-                 (check-true (string-contains? (symbol->string sym)
-                                               ".smt2"))))
+                  (('sym     sym)
+                   ('str     str)
+                   ('message "Symbol is qualified"))
+                 (check-true (or (string-contains? str ".smt2")
+                                 (is-custom? sym)))))
               syms)))
 
 (memo0 normed-qualified-theorem-files
@@ -1645,6 +1730,9 @@
                 CustomNat CustomZ CustomS
                 CustomBool CustomTrue CustomFalse
                 custom-bool-converter)))
+
+(memo0 all-names
+  (append-map toplevel-names-in (first (qual-hashes-theorem-files))))
 
 (define (norm-name x)
   (cond
