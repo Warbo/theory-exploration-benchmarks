@@ -1766,25 +1766,40 @@
 (memo0 all-names
   (append-map toplevel-names-in (first (qual-hashes-theorem-files))))
 
-(define (norm-name x)
+(define/test-contract (norm-name x)
+  (-> (and/c symbol?
+             (lambda (x)
+               (or (member x (all-names))
+                   (is-custom? x)
+                   (raise-arguments-error
+                    'norm-name
+                    "Name not found"
+                    "given" x
+                    "available" (all-names)))))
+      (and/c symbol?
+             (lambda (x)
+               (define unenc-names (map decode-name
+                                        (names-in (final-benchmark-defs))))
+               (or (member x unenc-names)
+                   (raise-user-error
+                    'norm-name
+                    "Result '~a' isn't in names:\n~a\n"
+                    x
+                    unenc-names)))))
   (cond
     ;; custom* and Custom* can be left unchanged
-    [(string-prefix? (string-downcase (symbol->string x)) "custom")
-     x]
+    [(string-prefix? (string-downcase (symbol->string x)) "custom") x]
 
     ;; Leave constructor functions as-is
-    [(string-prefix? (symbol->string x) "constructor-") x]
+    #;[(string-prefix? (symbol->string x) "constructor-") x]
 
     ;; Names appearing in name-replacements are looked up (which may yield
     ;; themselves)
     [(hash-has-key? (name-replacements) x)
      (hash-ref (name-replacements) x)]
 
-    [else
-     (raise-arguments-error 'norm-name
-                            "Name not found"
-                            "given" x
-                            "available" (hash-keys (name-replacements)))]))
+    ;; Other names refer to themselves
+    [else x]))
 
 ;; Shorthand, since it's used to often
 (define nn norm-name)
