@@ -789,17 +789,21 @@
             ;; equivs is '((n1 n2 ...) (m1 m2 ...) ...) where n1, m1, ... are
             ;; equivalent, n2, m2, ... are equivalent, and so on.
 
-            ;; Loop once for each element in the lists (e.g. n1, n2, n3, ...).
-            ;; 'included' will be updated each iteration, and returned as result
-            (for/fold ([included result])
-                      ([_ (first equivs)] ;; stop when names run out
-                       [n (in-naturals 0)]) ;; names to add this iteration
+            (if (equal? 1 (length equivs))
+                ;; Nothing to replace
+                result
 
-              ;; Get nth element of each list in equivs
-              (let ([nths (map (curry nth n) equivs)])
+                ;; Loop once for each element in the lists (e.g. n1, n2, ...).
+                ;; 'included' updates each iteration, and is returned as result.
+                (for/fold ([included result])
+                          ([_ (first equivs)] ;; stop when names run out
+                           [n (in-naturals 0)]) ;; names to add this iteration
 
-                ;; Turn into replacement set and accumulate
-                (cons (apply replacement nths) included))))
+                  ;; Get nth element of each list in equivs
+                  (let ([nths (map (curry nth n) equivs)])
+
+                    ;; Turn into replacement set and accumulate
+                    (cons (apply replacement nths) included)))))
           '()
           names)))
 
