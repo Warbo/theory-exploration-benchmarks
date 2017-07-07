@@ -835,22 +835,16 @@
 ;; definition. Plugging the names into the definition recovers the original.
 (define names-def-pair? (list/c (*list/c symbol?) definition?))
 
-(define/test-contract (mk-output expr so-far)
-  (-> definition?
+(define/test-contract (mk-output pair so-far)
+  (-> names-def-pair?
       normalised-intermediate?
       normalised-intermediate?)
+  (match pair
+    [(list names norm-def)
 
-  (define/test-contract norm-line
-    definition?
-    (norm expr))
-
-  (define/test-contract names
-    (*list/c symbol?)
-    (toplevel-names-in expr))
-
-  (hash-update so-far norm-line
-               (curry cons names)  ;; Prepend names to any existing list
-               (list names)))      ;; Use names as-is if no entry exists yet
+     (hash-update so-far norm-def
+                  (curry cons names) ;; Prepend names to any existing list
+                  (list names))]))   ;; Use names as-is if no entry exists
 
 (module+ test
   (let ([output (mk-output (split-off-names constructorZ)
@@ -871,7 +865,7 @@
 ;; name replacements which can be used to update references and remove
 ;; redundancies.
 (define/test-contract (find-redundancies raw-exprs)
-  (-> (and/c (*list/c definition?) unencoded? unnormalised?)
+  (-> (and/c (*list/c names-def-pair?) unencoded?)
       replacements?)
   (names-to-reps (hash-values (foldl mk-output (hash) raw-exprs))))
 
@@ -1055,9 +1049,9 @@
 
   ;; This does the real work
   (define/test-contract (normed-and-replacements-inner exprs reps)
-    (-> (*list/c definition?)
+    (-> (*list/c names-def-pair?)
         (*list/c replacements?)
-        (list/c (*list/c definition?) (*list/c replacements?)))
+        (list/c (*list/c names-def-pair?) (*list/c replacements?)))
 
     (msg "Normalising ~a definitions\n" (length exprs))
 
@@ -1066,13 +1060,14 @@
       replacements?
       (find-redundancies exprs))
 
-    (msg "~a names remain distinct\n" (count-replacements redundancies))
+    (msg "Found ~a redundancies\n" (count-replacements redundancies))
 
     ;; Switch out all of the redundant names (including in definitions)
+    (define finalised (finalise-replacements redundancies))
+
     (define/test-contract stripped
-      (*list/c definition?)
-      (remove-duplicates (replace (finalise-replacements redundancies)
-                                  exprs)))
+      (*list/c names-def-pair?)
+      (remove-duplicates (replace finalised exprs)))
 
     (define e-len (length exprs))
     (define s-len (length stripped))
@@ -1085,10 +1080,39 @@
         (list                          stripped replacements)
         (normed-and-replacements-inner stripped replacements)))
 
+  ;; Add in "custom" implementation of booleans, naturals and integers to be
+  ;; used without reference to any particular file. Note that these should end
+  ;; up lexicographically smaller than any of the benchmarks, since "custom"
+  ;; appears before any of the TIP benchmark directory names.
+  ;; TODO: Add disambiguating prefix to all names during qualification, e.g.
+  ;; 'qual-foo/bar.smt2func', rather than just 'foo/bar.smt2func', so we can't
+  ;; get any conflicts with e.g. 'custom/bar.smt2func'.
+  (define (strip-qual name)
+    (string->symbol (second (string-split (symbol->string name) ".smt2"))))
+
+  (define custom-defs
+    (foldl (lambda (def customs)
+             (define names (toplevel-names-in def))
+             (if (is-custom? (first names))
+                 (cons (replace-all (zip names (map strip-qual names))
+                                    def)
+                       customs)
+                 customs))
+           '()
+           exprs))
+
+  ;; Remove redundancies from all the given expressions, as well as our
+  ;; "standalone" custom versions. For efficiency we first split all definitions
+  ;; into their normalised form + names.
   (define result
-    (normed-and-replacements-inner (map prefix-locals exprs)
+    (normed-and-replacements-inner (map split-off-names
+                                        (append custom-defs exprs))
                                    '()))
-  (list (first result)
+
+  ;; For each resulting definition, we "plug" the names back into the normalised
+  ;; form, and we combine together all of the discovered replacements (this is
+  ;; faster than combining them as we go, since it involves sorting).
+  (list (map plug-in-names (first result))
         (apply extend-replacements (second result))))
 
 (define (split-off-names expr)
