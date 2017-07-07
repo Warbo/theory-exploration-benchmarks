@@ -50,258 +50,52 @@
 ;; names are left intact. This allows easy alpha-equivalence checking: A and B
 ;; are alpha-equivalent iff (equal? (norm A) (norm B))
 (define/test-contract norm
-  (-> any/c
-      ;; Our result should be normalised
-      (lambda (result)
-        (all-of (lambda (name)
-                  (or (regexp-match? "^defining-"  (symbol->string name))
-                      (regexp-match? "^normalise-" (symbol->string name))
-                      (raise-user-error
-                       'norm
-                       "Name '~a' wasn't normalised away in:\n~a\n"
-                       name
-                       result)))
-                (names-in result))))
-  (memo1 (lambda (expr)
-  (define norm-func-1 'defining-function-1)
+  (-> (and/c definition?
+             ;; Our input should have locals prefixed
+             (lambda (input)
+               (all-of (lambda (name)
+                         (or (regexp-match? "^local-[0-9]*$"
+                                            (symbol->string name))
+                             (raise-user-error
+                              'norm
+                              "Local '~a' hasn't been prefixed in:\n~a\n"
+                              name
+                              input)))
+                       (locals-in input))))
+      (and/c definition?
+             ;; Our result should be normalised
+             (lambda (result)
+               (all-of (lambda (name)
+                         (or (regexp-match? "^defining-name-[0-9]*$"
+                                            (symbol->string name))
+                             (regexp-match? "^local-[0-9]*$"
+                                            (symbol->string name))
+                             (raise-user-error
+                              'norm
+                              "Name '~a' wasn't normalised away in:\n~a\n"
+                              name
+                              result)))
+                       (names-in result)))))
+  (lambda (expr)
+    (define norm-func-1 'defining-function-1)
 
-  (define (norm-func args body)
-    (if (empty? args)
-        (list args (norm body))
-        (let* ([arg (car args)]
-               [rec (norm-func (cdr args) body)]
-               [v   (next-var rec)])
-          (list (cons (cons v (cdr arg)) (first rec))
-                (replace-in (car arg) v (second rec))))))
+    (define names (toplevel-names-in expr))
 
-  (define (norm-params ps def)
-    (if (empty? ps)
-        (match def
-          [(list name        args        return body)
-           (let ([fun (norm-func args body)])
-             (list ps
-                   (list norm-func-1 (first fun) return
-                         (replace-in name norm-func-1  (second fun)))))]
-          [_ (error "Unexpected parameterised function definition" def)])
-        (let* ([p   (car ps)]
-               [rec (norm-params (cdr ps) def)]
-               [v   (next-var rec)])
-          (list (cons v (first rec))
-                (replace-in p v (second rec))))))
+    (define new   (map (lambda (n)
+                         (string->symbol
+                          (string-append "defining-name-" (~a (+ 1 n)))))
+                       (range (length names))))
 
-  (match expr
-    [(list 'define-funs-rec decs defs)
-     (begin
-       (define (norm-mutual dec def)
-         ;; Declarations may or may not be parameterised
-         (define par  (equal? 'par (first dec)))
-         (define pars (when par
-                        (second dec)))
-
-         ;; Pair up each declaration with its definition and treat like a
-         ;; regular function
-         (define new (if par
-                         (norm-func (second (third dec))
-                                    def)
-                         (norm-func (second dec)
-                                    def)))
-
-         (define new-pars
-           (when par
-             (second
-              (foldl (lambda (par name-result)
-                       (define name   (first  name-result))
-                       (define result (second name-result))
-                       (list (next-var name)
-                             (cons (list par name) result)))
-                     (list (next-var new)
-                           '())
-                     pars))))
-
-         (when par
-           (unless (equal? (length pars) (length new-pars))
-             (raise-user-error
-              'norm-mutual
-              "Normalising parameters shouldn't change how many there are. Given:\n~a\nProduced:\n~a\n"
-              pars
-              new-pars)))
-
-         (define final
-           (if par
-               (replace-all new-pars new)
-               new))
-
-         (define final-args
-           (first final))
-
-         (define name
-           (if par
-               (first (third dec))
-               (first dec)))
-
-         (define type
-           (if par
-               (replace-all new-pars (third (third dec)))
-               (third dec)))
-
-         (list
-          (if par
-              ;;         parameters
-              (list 'par (map second new-pars)
-                    (list name final-args type))
-
-              (list name final-args type))
-
-          ;; Body
-          (second final)))
-
-       (define new-decs-defs
-         (map (lambda (dec-def)
-                (norm-mutual (first dec-def) (second dec-def)))
-              (zip decs defs)))
-
-       ;; Split the results back up into declarations and definitions
-       (define new-decs
-         (map first new-decs-defs))
-
-       (unless (equal? (length decs) (length new-decs))
-         (raise-user-error
-          'norm
-          "Normalising recursive functions should keep the same number of declarations, got:\n~a\nproduced:\n~a\n"
-          decs
-          new-decs))
-
-       (define new-defs
-         (map second new-decs-defs))
-
-       (unless (equal? (length defs) (length new-defs))
-         (raise-user-error
-          'norm
-          "Normalising recursive functions should keep the same number of definitions, got:\n~a\nproduced:\n~a\n"
-          defs
-          new-defs))
-
-       ;; Invent a "defining-function-X" name for each name being declared
-       (define names
-         (names-in expr))
-
-       (define new-names
-         (foldl
-          (lambda (name result)
-            (cons (list name
-                        (string->symbol
-                         (string-append "defining-function-"
-                                        (~a (+ 1 (length result))))))
-                  result))
-          '()
-          names))
-
-       ;; Replace all of the declared names in the normalised result
-       (define result
-         (replace-all new-names
-                      (list 'define-funs-rec new-decs new-defs)))
-
-       result)]
-
-    [(  list 'define-fun-rec (list 'par p         def))
-     (let ([rec (norm-params p def)])
-       (list 'define-fun-rec (list 'par (first rec) (second rec))))]
-
-    [(  list 'define-fun-rec name        args      return body)
-     (let ([rec       (norm-func args body)])
-       (list 'define-fun-rec norm-func-1 (first rec) return (replace-in name
-                                                                      norm-func-1
-                                                                      (second rec))))]
-
-    [(  list 'define-fun (list 'par p         def))
-     (let ([rec (norm-params p def)])
-       (list 'define-fun (list 'par (first rec) (second rec))))]
-
-    [(  list 'define-fun name        args      return body)
-     (let ([rec (norm-func args body)])
-       (list 'define-fun norm-func-1 (first rec) return (replace-in name
-                                                                  norm-func-1
-                                                                  (second rec))))]
-
-    [  (list 'declare-datatypes given     decs)
-     (define (replace-param p expr)
-       (define name
-         (inc-name var-prefix (max-name var-prefix expr)))
-
-       (list (cons name (first expr))
-             (replace-in p name (second expr))))
-
-     (define (norm-type dec expr)
-       (define type-prefix "defining-type-")
-
-       (define name
-         (inc-name type-prefix (max-name type-prefix expr)))
-
-       (define (norm-constructor c rec3)
-         (define (norm-destructor d rec2)
-           (define destructor-prefix "normalise-destructor-")
-
-           (cons (cons (inc-name destructor-prefix
-                                 (max-name destructor-prefix
-                                           (list expr rec3 rec2)))
-                       (cdr d))
-                 rec2))
-
-         (define constructor-prefix "normalise-constructor-")
-
-         (cons (cons (inc-name constructor-prefix
-                               (max-name constructor-prefix (list expr rec3)))
-                     (foldr norm-destructor '() (cdr c)))
-               rec3))
-
-       (cons (cons name
-                   (replace-in (car dec) name
-                               (foldr norm-constructor '() (cdr dec))))
-             expr))
-
-     (cons 'declare-datatypes
-           (foldr replace-param
-                  (list '() (foldr norm-type '() decs))
-                  given))]
-
-    [  (list 'case pat body)
-     (let ([norm-body (norm body)])
-       (cons 'case (match pat
-                     [(list con)    (list pat norm-body)]
-                     [(cons con ps) (match (foldl (lambda (x y)
-                                                    (let ([name (next-var y)])
-                                                      (list (cons name (first y))
-                                                            (replace-in x name (second y)))))
-                                                  (list '() norm-body)
-                                                  ps)
-                                      [(list norm-ps norm-body2)
-                                       (list (cons con norm-ps) norm-body2)])]
-                     [_             (list pat norm-body)])))]
-
-    [(list 'lambda args body)
-       (cons 'lambda (norm-func args body))]
-
-    [(list 'let bindings body)
-     (cons 'let (foldr (lambda (binding rec)
-                         (let* ([value (norm (second binding))]
-                                [name  (next-var (cons value rec))])
-                           (list (cons (list name value) (first rec))
-                                 (replace-in (first binding) name (second rec)))))
-                       (list '() (norm body))
-                       bindings))]
-
-    [(cons a b) (cons (norm a) (norm b))]
-
-    [_ expr]))))
+    (replace-all (zip names new) expr)))
 
 (module+ test
   (def-test-case "Norm"
     (check-equal? '(declare-datatypes
                     ()
-                    ((defining-type-1
-                       (normalise-constructor-2)
-                       (normalise-constructor-1
-                        (normalise-destructor-1 defining-type-1)))))
+                    ((defining-name-1
+                       (defining-name-2)
+                       (defining-name-3
+                        (defining-name-4 defining-name-1)))))
                   (norm nat-def))))
 
 ;; Looks through EXPR for the highest sequential name, and returns the next name
@@ -670,14 +464,15 @@
           `(define-fun                   ,name ,arg-decs ,type ,body)
           `(define-fun (par ,parameters (,name ,arg-decs ,type ,body)))))
 
-    func)
+    (prefix-locals func))
 
   (append x (map func-for (expression-constructors x))))
 
 (module+ test
   (def-test-case "Can add constructor functions"
     (check-equal? (add-constructor-funcs (list nat-def))
-                  `(,nat-def ,constructorZ ,constructorS)))
+                  `(,nat-def ,(prefix-locals constructorZ)
+                             ,(prefix-locals constructorS))))
 
   (def-test-case "Bare constructor function type"
     (check-equal? (add-constructor-funcs '((declare-datatypes
@@ -702,13 +497,13 @@
                      ((MyStream (MyCons (myHead local-a)
                                         (myTail (MyStream local-a))))))
                     (define-fun
-                      (par (local-a)
+                      (par (local-1)
                            (constructor-MyCons
-                            ((local-myHead local-a)
-                             (local-myTail (MyStream local-a)))
-                            (MyStream local-a)
-                            (as (MyCons local-myHead local-myTail)
-                                (MyStream local-a)))))))))
+                            ((local-2 local-1)
+                             (local-3 (MyStream local-1)))
+                            (MyStream local-1)
+                            (as (MyCons local-2 local-3)
+                                (MyStream local-1)))))))))
 
 ;; Strips off any filename prefix from a symbol, in case it can't be written
 ;; verbatim as a symbol (TIP doesn't support escaping in symbol names like
@@ -804,9 +599,9 @@
                 (not (regexp-match? #rx"^local-" (symbol->string parameter))))
               parameters))
 
-    (replace-all (zip unprefixed-parameters
-                      (map prefix-local unprefixed-parameters))
-                 func))
+    (prefix-locals (replace-all (zip unprefixed-parameters
+                                     (map prefix-local unprefixed-parameters))
+                                func)))
 
   (foldl (lambda (d expr)
            (append expr (list (mk-destructor-func d))))
@@ -821,9 +616,9 @@
                   '((declare-datatypes
                      ()
                      ((Nat (Z) (S (p Nat)))))
-                    (define-fun destructor-p ((destructor-arg Nat)) Nat
-                      (match destructor-arg
-                        (case (S local-p) local-p))))))
+                    (define-fun destructor-p ((local-1 Nat)) Nat
+                      (match local-1
+                        (case (S local-2) local-2))))))
 
   (def-test-case "Can add destructor functions for parameterised types"
     (check-equal? (add-destructor-funcs
@@ -838,27 +633,27 @@
                                   (Many (head b)
                                         (tail (OneAndMany a b))))))
                     (define-fun
-                      (par (local-a local-b)
+                      (par (local-1 local-2)
                            (destructor-theOne
-                            ((destructor-arg (OneAndMany local-a local-b)))
-                            local-a
-                            (match destructor-arg
-                              (case (One local-theOne) local-theOne)))))
+                            ((local-3 (OneAndMany local-1 local-2)))
+                            local-1
+                            (match local-3
+                              (case (One local-4) local-4)))))
                     (define-fun
-                      (par (local-a local-b)
+                      (par (local-1 local-2)
                            (destructor-head
-                            ((destructor-arg (OneAndMany local-a local-b)))
-                            local-b
-                            (match destructor-arg
-                              (case (Many local-head local-tail) local-head)))))
+                            ((local-3 (OneAndMany local-1 local-2)))
+                            local-2
+                            (match local-3
+                              (case (Many local-4 local-5) local-4)))))
                     (define-fun
-                      (par (local-a local-b)
+                      (par (local-1 local-2)
                            (destructor-tail
-                            ((destructor-arg (OneAndMany local-a local-b)))
-                            (OneAndMany local-a local-b)
-                            (match destructor-arg
-                              (case (Many local-head local-tail)
-                                local-tail)))))))))
+                            ((local-3 (OneAndMany local-1 local-2)))
+                            (OneAndMany local-1 local-2)
+                            (match local-3
+                              (case (Many local-4 local-5)
+                                local-5)))))))))
 
 ;; Decode an encoded "globalXXX" or "GlobalXXX" name
 (define (decode-name name)
@@ -1104,8 +899,9 @@
 (module+ test
   (def-test-case "Normalise redundant definitions"
     (define given
-      '((define-fun min1 ((x Int) (y Int)) Int (ite (<= x y) x y))
-        (define-fun min2 ((a Int) (b Int)) Int (ite (<= a b) a b))))
+      (map prefix-locals
+           '((define-fun min1 ((x Int) (y Int)) Int (ite (<= x y) x y))
+             (define-fun min2 ((a Int) (b Int)) Int (ite (<= a b) a b)))))
 
     (define defs  (norm-defs given))
     (define syms  (names-in defs))
@@ -1117,9 +913,10 @@
       (check-true (and      (member 'min1 syms)
                        (not (member 'min2 syms)))))
 
-    (let* ([given '((define-fun min1 ((x Int) (y Int)) Int (ite (<= x y) x y))
-                    (define-fun min2 ((a Int) (b Int)) Int (ite (<= a b) a b))
-                    (define-fun fun3 ((x Int)) Int (min2 x x)))]
+    (let* ([given (map prefix-locals
+                       '((define-fun min1 ((x Int) (y Int)) Int (ite (<= x y) x y))
+                         (define-fun min2 ((a Int) (b Int)) Int (ite (<= a b) a b))
+                         (define-fun fun3 ((x Int)) Int (min2 x x))))]
            [defs  (norm-defs given)]
            [syms  (symbols-in
                    (filter (lambda (expr)
@@ -1148,8 +945,9 @@
     (first (normed-and-replacements-cached)))
 
   (def-test-case "Have replacements"
-    (define defs '((define-fun min1 ((x Int) (y Int)) Int (ite (<= x y) x y))
-                   (define-fun min2 ((a Int) (b Int)) Int (ite (<= a b) a b))))
+    (define defs (map prefix-locals
+                      '((define-fun min1 ((x Int) (y Int)) Int (ite (<= x y) x y))
+                        (define-fun min2 ((a Int) (b Int)) Int (ite (<= a b) a b)))))
     (check-equal? (finalise-replacements (replacements-closure defs))
                   (finalise-replacements (replacement 'min2 'min1)))
 
@@ -1259,19 +1057,19 @@
                       (as Global666f6f2f6261722e736d74325a
                           Global666f6f2f6261722e736d74324e6174))
                     (define-fun global64657374727563746f722d666f6f2f6261722e736d743270
-                      ((destructor-arg Global666f6f2f6261722e736d74324e6174))
+                      ((local-1 Global666f6f2f6261722e736d74324e6174))
                       Global666f6f2f6261722e736d74324e6174
-                      (match destructor-arg
-                        (case (Global666f6f2f6261722e736d743253 local-p)
-                          local-p)))
+                      (match local-1
+                        (case (Global666f6f2f6261722e736d743253 local-2)
+                          local-2)))
                     (define-fun global636f6e7374727563746f722d666f6f2f6261722e736d74325a ()
                       Global666f6f2f6261722e736d74324e6174
                       (as Global666f6f2f6261722e736d74325a
                           Global666f6f2f6261722e736d74324e6174))
                     (define-fun global636f6e7374727563746f722d666f6f2f6261722e736d743253
-                      ((local-p Global666f6f2f6261722e736d74324e6174))
+                      ((local-1 Global666f6f2f6261722e736d74324e6174))
                       Global666f6f2f6261722e736d74324e6174
-                      (as (Global666f6f2f6261722e736d743253 local-p)
+                      (as (Global666f6f2f6261722e736d743253 local-1)
                           Global666f6f2f6261722e736d74324e6174))
                     (check-sat)))))
 
@@ -1321,7 +1119,7 @@
                      isaplanner/prop_84.smt2append)))
 
   (def-test-case "No alpha-equivalent duplicates in result"
-    (let ([normalised (norm test-benchmark-defs)])
+    (let ([normalised (map norm test-benchmark-defs)])
       (for-each (lambda (norm)
                   (define norms
                     (filter (curry equal? norm) normalised))
@@ -1336,7 +1134,7 @@
 
   (define qual (first (qual-hashes-theorem-files)))
 
-  (let ([syms (names-in qual)])
+  (let ([syms (map norm-name (names-in qual))])
 
     (for-each (lambda (sym)
                 (with-check-info
@@ -1567,7 +1365,7 @@
   (def-test-case "Normalise"
     (define (check-normal kind def expected)
       (define canon
-        (norm def))
+        (norm (prefix-locals def)))
 
       (with-check-info
        (('kind     kind)
@@ -1586,13 +1384,13 @@
                                         (as nil (list Int))))
                           (cons y (cons x
                                         (as nil (list Int))))))
-                  '(define-fun defining-function-1
-                     ((normalise-var-2 Int) (normalise-var-1 Int))
+                  '(define-fun defining-name-1
+                     ((local-1 Int) (local-2 Int))
                      (list Int)
-                     (ite (<= normalise-var-2 normalise-var-1)
-                          (cons normalise-var-2 (cons normalise-var-1
+                     (ite (<= local-1 local-2)
+                          (cons local-1 (cons local-2
                                                       (as nil (list Int))))
-                          (cons normalise-var-1 (cons normalise-var-2
+                          (cons local-2 (cons local-1
                                                       (as nil (list Int)))))))
 
     (check-normal "parameterised function"
@@ -1605,13 +1403,13 @@
                            (Pair2 (ztake x y)
                                   (zdrop x y)))))
                   '(define-fun
-                     (par (normalise-var-3)
-                          (defining-function-1
-                            ((normalise-var-2 Int)
-                             (normalise-var-1 (list normalise-var-3)))
-                            (Pair (list normalise-var-3) (list normalise-var-3))
-                            (Pair2 (ztake normalise-var-2 normalise-var-1)
-                                   (zdrop normalise-var-2 normalise-var-1))))))
+                     (par (local-1)
+                          (defining-name-1
+                            ((local-2 Int)
+                             (local-3 (list local-1)))
+                            (Pair (list local-1) (list local-1))
+                            (Pair2 (ztake local-2 local-3)
+                                   (zdrop local-2 local-3))))))
 
     (check-normal "datatype"
                   '(declare-datatypes
@@ -1621,11 +1419,12 @@
                       (cons (head a)
                             (tail (list a))))))
                   '(declare-datatypes
-                    (normalise-var-1)
-                    ((defining-type-1
-                       (normalise-constructor-2)
-                       (normalise-constructor-1 (normalise-destructor-2 normalise-var-1)
-                                                (normalise-destructor-1 (defining-type-1 normalise-var-1)))))))
+                    (local-1)
+                    ((defining-name-1
+                       (defining-name-2)
+                       (defining-name-3
+                         (defining-name-4 local-1)
+                         (defining-name-5 (defining-name-1 local-1)))))))
 
     (check-normal "let binding"
                   '(define-fun-rec msorttd
@@ -1635,13 +1434,11 @@
                                                x))
                                (msorttd (zdrop k
                                                x)))))
-                  '(define-fun-rec defining-function-1
-                     ((normalise-var-2 (list Int))) (list Int)
-                     (let ((normalise-var-1 (div (zlength normalise-var-2) 2)))
-                       (lmerge (defining-function-1 (ztake normalise-var-1
-                                                           normalise-var-2))
-                               (defining-function-1 (zdrop normalise-var-1
-                                                           normalise-var-2))))))
+                  '(define-fun-rec defining-name-1
+                     ((local-1 (list Int))) (list Int)
+                     (let ((local-2 (div (zlength local-1) 2)))
+                       (lmerge (defining-name-1 (ztake local-2 local-1))
+                               (defining-name-1 (zdrop local-2 local-1))))))
 
     (check-normal "pattern match"
                   '(define-fun-rec s
@@ -1652,14 +1449,14 @@
                          (OneAnd xs))
                        (case (OneAnd ys)
                          (ZeroAnd (s ys)))))
-                  '(define-fun-rec defining-function-1
-                     ((normalise-var-2 Bin)) Bin
-                     (match normalise-var-2
+                  '(define-fun-rec defining-name-1
+                     ((local-1 Bin)) Bin
+                     (match local-1
                        (case One (ZeroAnd One))
-                       (case (ZeroAnd normalise-var-1)
-                         (OneAnd normalise-var-1))
-                       (case (OneAnd normalise-var-1)
-                         (ZeroAnd (defining-function-1 normalise-var-1))))))
+                       (case (ZeroAnd local-2)
+                         (OneAnd local-2))
+                       (case (OneAnd local-3)
+                         (ZeroAnd (defining-name-1 local-3))))))
 
     (check-normal "anonymous function"
                   '(define-fun-rec qsort
@@ -1675,24 +1472,24 @@
                               (filter (lambda ((x2 Int))
                                         (> x2 y))
                                       xs))))
-                  '(define-fun-rec defining-function-1
-                     ((normalise-var-3 Int) (normalise-var-2 (list Int)))
+                  '(define-fun-rec defining-name-1
+                     ((local-1 Int) (local-2 (list Int)))
                      (list Int)
-                     (append (append (defining-function-1
-                                       (filter (lambda ((normalise-var-1 Int))
-                                                 (<= normalise-var-1
-                                                     normalise-var-3))
-                                               normalise-var-2))
-                                     (cons normalise-var-3 (as nil (list Int))))
-                             (defining-function-1
-                               (filter (lambda ((normalise-var-1 Int))
-                                         (> normalise-var-1 normalise-var-3))
-                                       normalise-var-2))))))
+                     (append (append (defining-name-1
+                                       (filter (lambda ((local-3 Int))
+                                                 (<= local-3
+                                                     local-1))
+                                               local-2))
+                                     (cons local-1 (as nil (list Int))))
+                             (defining-name-1
+                               (filter (lambda ((local-4 Int))
+                                         (> local-4 local-1))
+                                       local-2))))))
 
     (def-test-case "Can prepare form"
-    (check-true (begin
-                  (prepare form-with-deps)
-                  #t)))
+      (check-true (begin
+                    (prepare form-with-deps)
+                    #t)))
 
   (def-test-case "Form defines datatype"
     (define prepared
@@ -1859,7 +1656,7 @@
     [(string-prefix? (symbol->string x) "constructor-") x]
 
     ;; Names appearing in name-replacements are looked up (which may yield
-    ;; themselves
+    ;; themselves)
     [(hash-has-key? (name-replacements) x)
      (hash-ref (name-replacements) x)]
 
