@@ -762,6 +762,10 @@
 (memo0 qual-hashes-theorem-files
   (qual-all-hashes (theorem-hashes)))
 
+(module+ test
+  (def-test-case "Have qual-hashes-theorem-files"
+    (check-true (list? (qual-hashes-theorem-files)))))
+
 (define (preprepare x)
   (add-constructor-funcs
    (add-destructor-funcs
