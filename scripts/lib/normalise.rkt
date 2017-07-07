@@ -40,6 +40,11 @@
                                 (symbol->string name))))
           (names-in exprs)))
 
+(define (is-custom? name)
+  (define str (string-downcase (symbol->string name)))
+  (or (string-contains? str ".smt2custom")
+      (string-prefix?   str "custom")))
+
 ;; Normalise an expression: all type parameters, local variables, global
 ;; definitions, etc. are replaced with sequential names. References to global
 ;; names are left intact. This allows easy alpha-equivalence checking: A and B
