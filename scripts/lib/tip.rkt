@@ -471,41 +471,52 @@
 ;; it contains. This includes globals being defined, globals being used,
 ;; functions, types and other values, but does *not* include keywords or bound
 ;; local variables (e.g. using 'let or 'lambda)
-(define symbols-in
-  (let ()
-    (define (case-symbols c)
-      (match c
-        ;; Remove the symbols occuring in pat from body. This will remove fresh
-        ;; variables, but may also remove constructors. That's fine though,
-        ;; since we extract constructors separately anyway.
-        [(list 'case pat body) (remove* (flatten (go pat))
-                                        (flatten (go body)))]
-        [_                     (error "Unexpected case form")]))
+(define (symbols-in exp)
+  (define (case-symbols c)
+    (match c
+      ;; Remove the symbols occuring in pat from body. This will remove fresh
+      ;; variables, but may also remove constructors. That's fine though,
+      ;; since we extract constructors separately anyway.
+      [(list 'case pat body) (remove* (flatten (if (list? pat)
+                                                   (cdr pat)
+                                                   '()))
+                                      (cons (if (list? pat)
+                                                (car pat)
+                                                pat)
+                                            (flatten (go body))))]
+      [_                     (error "Unexpected case form")]))
 
-    (define (go exp)
-      (match exp
-        [(cons 'match (cons arg cases)) (cons (go arg)
-                                              (go (map case-symbols cases)))]
-        [(list 'lambda args body)       (remove* (map car args)
-                                                 (flatten (go body)))]
-        [(list 'let defs body)          (remove* (map car defs)
-                                                 (flatten
-                                                  (cons (go (map cdr defs))
-                                                        (go body))))]
-        [(list 'as val typ)             (cons (go val) (go typ))]
-        [(list 'forall args body)       (remove* (map first args)
-                                                 (flatten
-                                                  (go (cons (map second args)
-                                                            body))))]
-        [(list 'assert-not body)        (go body)]
-        [(list 'par args body)          (remove* args (go body))]
-        [(cons a b)                     (cons (go a) (go b))]
-        [_                              (if (symbol? exp) (list exp) null)]))
+  (define (go exp)
+    (match exp
+      [(cons 'match (cons arg cases)) (cons (go arg)
+                                            (go (map case-symbols cases)))]
+      [(list 'lambda args body)       (remove* (map car args)
+                                               (flatten (go body)))]
+      [(list 'let defs body)          (remove* (map car defs)
+                                               (flatten
+                                                (cons (go (map cdr defs))
+                                                      (go body))))]
+      [(list 'as val typ)             (cons (go val) (go typ))]
+      [(list 'forall args body)       (remove* (map first args)
+                                               (flatten
+                                                (go (cons (map second args)
+                                                          body))))]
+      [(list 'assert-not body)        (go body)]
+      [(list 'par args body)          (remove* args (go body))]
+      [(cons a b)                     (cons (go a) (go b))]
+      [_                              (if (symbol? exp) (list exp) null)]))
 
-    (lambda (exp)
-      (remove* native-symbols (flatten (go exp))))))
+  (remove* native-symbols (flatten (go exp))))
 
 (module+ test
+  (def-test-case "Symbols in expression"
+    (check-equal?
+     (list->set (symbols-in '(match foo
+                               (case bar      baz)
+                               (case (quux x) (foo x baz)))))
+     (set 'foo 'bar 'baz 'quux)
+     "Pattern matches"))
+
   (def-test-case "Symbols in theorems"
     (check-equal? (set 'Foo 'bar 'baz)
                   (list->set (symbols-in
