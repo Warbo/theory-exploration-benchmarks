@@ -297,7 +297,7 @@
                       (testing-file "isaplanner/prop_01.smt2")
                       (testing-file "isaplanner/prop_15.smt2"))
                    (isaplanner/prop_15.smt2len isaplanner/prop_15.smt2ins
-                    constructor-isaplanner/prop_01.smt2S))
+                    constructor-CustomS))
                   (,(begin
                       (testing-file "isaplanner/prop_35.smt2"))
                    (constructor-CustomFalse
