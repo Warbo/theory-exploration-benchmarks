@@ -77,15 +77,13 @@
                               name
                               result)))
                        (names-in result)))))
+  (norm-names-in (toplevel-names-in expr) expr))
 
-  (define norm-func-1 'defining-function-1)
-
-  (define names (toplevel-names-in expr))
-
-  (define new   (map (lambda (n)
-                       (string->symbol
-                        (string-append "defining-name-" (~a (+ 1 n)))))
-                     (range (length names))))
+(define (norm-names-in names expr)
+  (define new (map (lambda (n)
+                     (string->symbol
+                      (string-append "defining-name-" (~a (+ 1 n)))))
+                   (range (length names))))
 
   (replace-all (zip names new) expr))
 
@@ -1120,7 +1118,8 @@
         (apply extend-replacements (second result))))
 
 (define (split-off-names expr)
-  (list (toplevel-names-in expr) (norm expr)))
+  (define names (toplevel-names-in expr))
+  (list names (norm-names-in names expr)))
 
 (define (plug-in-names x)
   (replace-all (zip (toplevel-names-in (second x)) (first x))
