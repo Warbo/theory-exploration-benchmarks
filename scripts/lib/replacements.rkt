@@ -188,13 +188,20 @@
 (define/test-contract (extend-replacements . repss)
   (-> replacements? ... replacements?)
 
+  (define/match (postprocess x)
+    [((list))          (list)]
+    [((cons rep reps)) (let ([rep2 (skip-dupes rep)])
+                          (if (equal? 1 (length rep2))
+                              (postprocess reps)
+                              (cons rep2 (postprocess reps))))])
+
   ;; Combine all sets, then sort out internal consistency
-  (merge-replacements (foldl reps-union (mk-reps) repss)))
+  (postprocess (merge-replacements (foldl reps-union (mk-reps) repss))))
 
 (module+ test
   (def-test-case "Extend one set of replacements with another"
     (check-equal? (finalise-replacements
-                   (mk-reps (mk-rep 'A 'B 'C) (mk-rep 'D 'E 'F) (mk-rep 'G)))
+                   (mk-reps (mk-rep 'A 'B 'C) (mk-rep 'D 'E 'F)))
                   (finalise-replacements
                    (foldl extend-replacements
                           (replacement)

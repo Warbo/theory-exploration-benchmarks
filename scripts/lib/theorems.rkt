@@ -168,13 +168,14 @@
                         ('symbols syms))
                        (check-false (member 'custom-bool-converter syms)))))))
 
-(define (normed-theorem-of f)
-  (hash-ref (normalised-theorems) (path-end f)
+(define/test-contract (normed-theorem-of f)
+  (-> tip-path? theorem?)
+  (hash-ref (normalised-theorems) f
             (lambda ()
               (raise-arguments-error
                'normed-theorem-of
                "No theorem found"
-               "given-file" f))))
+               "id" f))))
 
 (module+ test
   (def-test-case "Normalise theorems"
@@ -183,11 +184,11 @@
         [(cons x y) (cons (structure-of x) (structure-of y))]
         [_          #f]))
 
-    (for-each (lambda (benchmark-file)
+    (for-each (lambda (theorem-id)
                 (define unnormed
-                  (theorem-of benchmark-file))
+                  (theorem-of theorem-id))
                 (define normed
-                  (normed-theorem-of benchmark-file))
+                  (normed-theorem-of theorem-id))
 
                 (check-equal? (structure-of unnormed) (structure-of normed)))
               (theorem-ids))))
@@ -212,7 +213,7 @@
            (define normed (normed-theorem-of f))
 
            (define constructors
-             (expression-constructors (first (qual-hashes-theorem-files))))
+             (expression-constructors (normed-qualified-theorem-files)))
 
            ;; Remove types
            (define raw-names
@@ -231,8 +232,7 @@
 (module+ test
   (def-test-case "Expected dependencies"
     (define deps
-      (theorem-deps-of
-       (benchmark-file "isaplanner/prop_84.smt2")))
+      (theorem-deps-of "isaplanner/prop_84.smt2"))
 
     (with-check-info
       (('deps deps)
@@ -241,27 +241,23 @@
 
   (def-test-case "Theorem deps"
     (for-each (lambda (name-cases)
-                (for-each (lambda (f-deps)
-                            (define f
-                              (first f-deps))
+                (for-each (match-lambda
+                            [(list f raw-deps)
+                             (define deps
+                               (replace-names raw-deps))
 
-                            (define absolute-path
-                              (benchmark-file f))
+                             (define calc-deps
+                               (replace-names
+                                (theorem-deps-of f)))
 
-                            (define deps
-                              (replace-names (second f-deps)))
-
-                            (define calc-deps
-                              (replace-names
-                               (theorem-deps-of absolute-path)))
-
-                            (with-check-info
-                              (('sort          (first name-cases))
-                               ('absolute-path absolute-path)
-                               ('deps          (second f-deps))
-                               ('calc-deps     calc-deps))
-                              (check-equal? (list->set calc-deps)
-                                            (list->set deps))))
+                             (with-check-info
+                               (('sort      (first name-cases))
+                                ('f         f)
+                                ('raw-deps  raw-deps)
+                                ('deps      deps)
+                                ('calc-deps calc-deps))
+                               (check-equal? (list->set calc-deps)
+                                             (list->set deps)))])
                           (second name-cases)))
 
               ;; Cases are grouped by type, e.g. whether they require
@@ -301,12 +297,12 @@
                       (testing-file "isaplanner/prop_01.smt2")
                       (testing-file "isaplanner/prop_15.smt2"))
                    (isaplanner/prop_15.smt2len isaplanner/prop_15.smt2ins
-                    constructor-isaplanner/prop_01.smt2S))
+                    constructor-CustomS))
                   (,(begin
                       (testing-file "isaplanner/prop_35.smt2"))
                    (constructor-CustomFalse
                     isaplanner/prop_35.smt2dropWhile))))))))
 
 (memo0 all-theorem-deps
-       (map (lambda (f) (list (path-end f) (list->set (theorem-deps-of f))))
+       (map (lambda (f) (list f (list->set (theorem-deps-of f))))
             (theorem-ids)))

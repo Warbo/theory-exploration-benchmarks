@@ -1,0 +1,9 @@
+From: Chris Warburton
+Date: Wed, 05 Jul 2017 23:01:03 +0100
+Subject: Re: Normalising is REALLY slow
+Message-Id: <c2f76fe24382fbb0-ccc3cd7399924cb9-artemis@nixos>
+References: <c2f76fe24382fbb0-0-artemis@nixos>
+In-Reply-To: <c2f76fe24382fbb0-0-artemis@nixos>
+
+Implemented "IDEA 1": using a hash table instead of a list in the
+normalising loop. Seems to give a slight speed up.
