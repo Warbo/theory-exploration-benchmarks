@@ -2,10 +2,10 @@
 
 (provide as-str
          decode16 define/test-contract
-         deterministic-shuffle encode16 format-symbols hash-foldl index-where
-         map-set non-empty? prefix-name
-         read-benchmark replace-all replace-strings
-         replace-in show string-reverse)
+         encode16 format-symbols hash-foldl
+         map-set prefix-name
+         read-benchmark replace-strings
+         show string-reverse)
 
 (module+ test
   (require rackunit))
@@ -19,22 +19,6 @@
      (if (and (getenv "PLT_TR_CONTRACTS") #t)
          #'(define/contract sig contract body ...)
          #'(define          sig          body ...))]))
-
-;; Replace all occurrences of OLD with REPLACEMENT in EXPR
-(define (replace-in old replacement expr)
-  (if (equal? old expr)
-      replacement
-      (match expr
-        [(cons a b) (cons (replace-in old replacement a)
-                          (replace-in old replacement b))]
-        [_          expr])))
-
-;; For each (OLD NEW) in REPS, replace OLD with NEW in EXPR
-(define (replace-all reps expr)
-  (foldl (lambda (rep expr)
-           (replace-in (first rep) (second rep) expr))
-         expr
-         reps))
 
 ;; For each (SRC DST) in REPS, replaces SRC with DST in STR
 (define (replace-strings str reps)
@@ -73,54 +57,11 @@
 (define (prefix-name n p)
   (string->symbol (string-append p (symbol->string n))))
 
-;; Backported from Racket 6.7
-(define index-where
-  (let ()
-    (define (index-where-acc acc lst proc)
-      (if (empty? lst)
-          #f
-          (if (proc (car lst))
-              acc
-              (index-where-acc (+ 1 acc) (cdr lst) proc))))
-    (lambda (lst proc)
-      (index-where-acc 0 lst proc))))
-
-;; Returns the last N elements of LST
-(define (take-from-end n lst)
-  (reverse (take (reverse lst) n)))
-
-(define (non-empty? x)
-  (not (empty? x)))
-
-;; Creates a list of pairs '((X1 Y1) (X2 Y2) ...) when given a pair of lists
-;; '(X1 X2 ...) and '(Y1 Y2 ...)
-(define (zip xs ys)
-  (if (empty? xs)
-      null
-      (if (empty? ys)
-          null
-          (cons (list (car xs) (car ys))
-                (zip  (cdr xs) (cdr ys))))))
-
 ;; Idempotent symbol->string
 (define (as-str x)
   (if (string? x)
       x
       (symbol->string x)))
-
-;; Returns TRUE if any element of XS passes predicate F, FALSE otherwise
-(define (any-of f xs)
-  (foldl (lambda (x y)
-           (or (f x) y))
-         #f
-         xs))
-
-;; Returns FALSE if any element of XS fails predicate F, TRUE otherwise
-(define (all-of f xs)
-  (foldl (lambda (x y)
-           (and (f x) y))
-         #t
-         xs))
 
 ;; Map a function F over the elements of a set S
 (define (map-set f s)
@@ -185,34 +126,6 @@
            (string-append (number->string byte 16) rest))
          ""
          (bytes->list bs)))
-
-(define ((assoc-contains? . keys) l)
-  (unless (list? l)
-    (raise-user-error
-     'assoc-contains
-     "Expected a list, given ~s" l))
-  (all-of (lambda (key)
-            (or (any-of (lambda (pair)
-                          (and (pair? pair)
-                               (equal? (car pair) key)))
-                        l)
-                (raise-user-error
-                 'assoc-contains
-                 "Couldn't find entry for ~s in ~s" key l)))
-          keys))
-
-(define (assoc-get key val)
-  (second (assoc key val)))
-
-;; Deterministically, but unpredictably, shuffle the given NAMES. KEYGEN turns
-;; a name into a hash, and we perform the shuffle by sorting the hashes.
-(define (deterministic-shuffle keygen names)
-  (define sorted
-    (sort (map (lambda (n) (list n (keygen n)))
-               names)
-          (lambda (x y)
-            (not (bytes>? (second x) (second y))))))
-  (map first sorted))
 
 (define lcm
   (lambda args

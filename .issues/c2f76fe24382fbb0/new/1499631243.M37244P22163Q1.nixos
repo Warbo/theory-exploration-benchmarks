@@ -1,0 +1,28 @@
+From: Chris Warburton
+Date: Sun, 09 Jul 2017 19:27:14 +0100
+Subject: Re: Normalising is REALLY slow
+Message-Id: <c2f76fe24382fbb0-a932aff495f18178-artemis@nixos>
+References: <c2f76fe24382fbb0-0-artemis@nixos>
+In-Reply-To: <c2f76fe24382fbb0-0-artemis@nixos>
+
+raco profile shows that reps-insert-rep-acc is taking most of the time:
+
+ [47] 122422(78.7%) 122422(78.7%) reps-insert-rep-acc .../lib/replacements.rkt:168:0
+
+We need some ideas to speed this up.
+
+At the moment, we're doing the following loop:
+
+ - Start with an empty result list
+ - For each rep, loop through the result list
+  - For each entry, see if it's disjoint from the rep
+   - If so, go to the next entry
+   - If not, merge this entry with this rep, and start again
+
+Starting again seems a bit wasteful; what extra invariants are there we
+can use?
+
+We could just "pull out" the entry, e.g. using a zipper, and restart
+that particular iteration; since we know the other reps are still
+disjoint from each other. That way, rather than building up a correct
+result via backtracking, we'd be accumulating and collapsing as we go.

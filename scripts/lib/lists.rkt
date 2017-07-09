@@ -2,8 +2,8 @@
 
 ;; Useful list functions
 
-(provide all-of any-of assoc-contains? assoc-get elem nth
-         take-from-end zip)
+(provide all-of any-of assoc-contains? assoc-get deterministic-shuffle elem
+         index-where non-empty? nth replace-all replace-in take-from-end zip)
 
 (module+ test
   (require rackunit))
