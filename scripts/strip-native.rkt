@@ -1,6 +1,12 @@
 #lang racket
 (require racket/match)
 
+(provide custom-bool custom-ite custom-not custom-and custom-or custom-=>
+         custom-bool-converter custom-nat custom-int custom-plus custom-inc
+         custom-dec custom-invert custom-abs custom-sign custom-+ custom--
+         custom-* custom-nat-> custom-> custom-div custom-mod custom-< custom->=
+         custom-<=)
+
 (define (dump x)
   (write x (current-error-port))
   (display "\n" (current-error-port))
@@ -459,54 +465,58 @@
    (remove 'te-sentinel-value
            (append raw-deps (first replaced)))))
 
-(define destination
-  (getenv "DESTINATION"))
+;; When called as a script, the following will be executed. When required as a
+;; library, it won't.
+(module+ main
 
-(when (member destination '("" #f))
-  (error "No DESTINATION given"))
+  (define destination
+    (getenv "DESTINATION"))
 
-(define source
-  (getenv "SOURCE"))
+  (when (member destination '("" #f))
+    (error "No DESTINATION given"))
 
-(when (member source '("" #f))
-  (error "No SOURCE given"))
+  (define source
+    (getenv "SOURCE"))
 
-(define input-files
-  (filter (lambda (x) (string-suffix? x ".smt2"))
-          (map (lambda (x)
-                 (string-trim (path->string x)
-                              (string-append source "/")
-                              #:left? #t
-                              #:right? #f))
-               (sequence->list (in-directory source)))))
+  (when (member source '("" #f))
+    (error "No SOURCE given"))
 
-(for-each (lambda (f)
-            (display (format "Stripping native symbols from ~a\n" f)
-                     (current-error-port))
-            ;; Read in the raw TIP benchmark, as a list of s-expressions
-            (define input
-              (string-append "(\n"
-                             (file->string (string-append source "/" f))
-                             "\n)"))
+  (define input-files
+    (filter (lambda (x) (string-suffix? x ".smt2"))
+            (map (lambda (x)
+                   (string-trim (path->string x)
+                                (string-append source "/")
+                                #:left? #t
+                                #:right? #f))
+                 (sequence->list (in-directory source)))))
 
-            (define raw
-              (let ([in (open-input-string input)])
-                (read in)))
+  (for-each (lambda (f)
+              (display (format "Stripping native symbols from ~a\n" f)
+                       (current-error-port))
+              ;; Read in the raw TIP benchmark, as a list of s-expressions
+              (define input
+                (string-append "(\n"
+                               (file->string (string-append source "/" f))
+                               "\n)"))
 
-            ;; Write out the replaced versions, unwrapping the list
-            (define result (replace-all raw))
+              (define raw
+                (let ([in (open-input-string input)])
+                  (read in)))
 
-            (make-directory* (apply build-path (cons destination
-                                                     (start (explode-path f)))))
-            (let ([out-string (open-output-string)]
-                  [out-file   (open-output-file (string-append destination
-                                                               "/"
-                                                               f)
-                                                #:exists 'replace)])
-              (for-each (lambda (expr)
-                          (write expr out-string)
-                          (display "\n" out-string))
-                        result)
-              (display (get-output-string out-string) out-file)
-              (close-output-port out-file)))
-          input-files)
+              ;; Write out the replaced versions, unwrapping the list
+              (define result (replace-all raw))
+
+              (make-directory* (apply build-path (cons destination
+                                                       (start (explode-path f)))))
+              (let ([out-string (open-output-string)]
+                    [out-file   (open-output-file (string-append destination
+                                                                 "/"
+                                                                 f)
+                                                  #:exists 'replace)])
+                (for-each (lambda (expr)
+                            (write expr out-string)
+                            (display "\n" out-string))
+                          result)
+                (display (get-output-string out-string) out-file)
+                (close-output-port out-file)))
+            input-files))
