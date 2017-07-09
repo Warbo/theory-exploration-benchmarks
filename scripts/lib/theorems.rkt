@@ -213,7 +213,7 @@
            (define normed (normed-theorem-of f))
 
            (define constructors
-             (expression-constructors (first (qual-hashes-theorem-files))))
+             (expression-constructors (normed-qualified-theorem-files)))
 
            ;; Remove types
            (define raw-names
