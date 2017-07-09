@@ -1,0 +1,41 @@
+{
+    "commit_hash": "2360d6e4a1e46502fa5df0b08173c0e00231ad04", 
+    "date": 1499560954000, 
+    "ended_at": {
+        "benchmarks.time_mk_defs": 1499564325000, 
+        "benchmarks.time_mk_fin_defs": 1499564332000, 
+        "benchmarks.time_mk_sdata": 1499564340000, 
+        "benchmarks.time_mk_thms": 1499564347000, 
+        "benchmarks.time_run_tests": 1499564461000
+    }, 
+    "env_name": "nix-py-dirnull", 
+    "params": {
+        "arch": "i686", 
+        "cpu": "Genuine Intel(R) CPU           L2400  @ 1.66GHz", 
+        "dir": "null", 
+        "machine": "nixos", 
+        "os": "Linux 4.4.52", 
+        "python": "", 
+        "ram": "3093764"
+    }, 
+    "profiles": {}, 
+    "python": "", 
+    "requirements": {
+        "dir": "null"
+    }, 
+    "results": {
+        "benchmarks.time_mk_defs": 9.719213962554932, 
+        "benchmarks.time_mk_fin_defs": 6.503548860549927, 
+        "benchmarks.time_mk_sdata": 7.974451065063477, 
+        "benchmarks.time_mk_thms": 6.897481918334961, 
+        "benchmarks.time_run_tests": 113.67970705032349
+    }, 
+    "started_at": {
+        "benchmarks.time_mk_defs": 1499564315000, 
+        "benchmarks.time_mk_fin_defs": 1499564325000, 
+        "benchmarks.time_mk_sdata": 1499564332000, 
+        "benchmarks.time_mk_thms": 1499564340000, 
+        "benchmarks.time_run_tests": 1499564347000
+    }, 
+    "version": 1
+}
