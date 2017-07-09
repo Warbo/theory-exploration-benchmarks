@@ -157,24 +157,23 @@
 
 ;; Return the names of all functions defined in the given expr, including
 ;; destructors; i.e. those things which need lowercase initials in Haskell.
-(define lowercase-names
-  (let ()
-    (define (go expr)
-      (cons (toplevel-function-names-in expr)
-            (match expr
-              [(list 'declare-datatypes _ decs)
-               (foldl (lambda (dec result)
-                        (define constructor-decs
-                          (cdr dec))
-                        (define destructor-decs
-                          (append-map cdr constructor-decs))
-                        (cons (map first destructor-decs) result))
-                      null
-                      decs)]
-              [(cons a b) (cons (go a) (go b))]
-              [_          null])))
+(define (lowercase-names expr)
+  (define (go expr)
+    (cons (toplevel-function-names-in expr)
+          (match expr
+            [(list 'declare-datatypes _ decs)
+             (foldl (lambda (dec result)
+                      (define constructor-decs
+                        (cdr dec))
+                      (define destructor-decs
+                        (append-map cdr constructor-decs))
+                      (cons (map first destructor-decs) result))
+                    null
+                    decs)]
+            [(cons a b) (cons (go a) (go b))]
+            [_          null])))
 
-    (lambda (expr) (flatten (go expr)))))
+  (flatten (go expr)))
 
 (module+ test
   (def-test-case "Lowercase name extraction"
