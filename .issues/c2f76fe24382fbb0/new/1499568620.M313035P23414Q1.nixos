@@ -1,0 +1,8 @@
+From: Chris Warburton
+Date: Sun, 09 Jul 2017 03:50:10 +0100
+Subject: Re: Normalising is REALLY slow
+Message-Id: <c2f76fe24382fbb0-cf6984618185da2a-artemis@nixos>
+References: <c2f76fe24382fbb0-0-artemis@nixos>
+In-Reply-To: <c2f76fe24382fbb0-0-artemis@nixos>
+
+Implemented "Idea 4"

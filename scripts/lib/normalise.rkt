@@ -846,14 +846,16 @@
                   "Replacements get smallest value from lists")))
 
 (define (normalised-intermediate? x)
-  (hash/c definition? (and/c (non-empty-listof (*list/c symbol?))
-                             (lambda (namess)
-                               ;; Each alternative list of names should be the
-                               ;; same length
-                               (define len (length (first namess)))
-                               (all-of (lambda (names)
-                                         (equal? (length names) len))
-                                       namess)))))
+  (list/c
+   (*list/c names-def-pair?)
+   (hash/c definition? (and/c (non-empty-listof (*list/c symbol?))
+                              (lambda (namess)
+                                ;; Each alternative list of names should be the
+                                ;; same length
+                                (define len (length (first namess)))
+                                (all-of (lambda (names)
+                                          (equal? (length names) len))
+                                        namess))))))
 
 ;; A pair where the first is a list of names, and the second is a normalised
 ;; definition. Plugging the names into the definition recovers the original.
@@ -866,13 +868,22 @@
   (match pair
     [(list names norm-def)
 
-     (hash-update so-far norm-def
-                  (curry cons names) ;; Prepend names to any existing list
-                  (list names))]))   ;; Use names as-is if no entry exists
+     (match so-far
+       [(list defs reps)
+
+        (list
+         (if (hash-has-key? reps norm-def)
+             defs
+             (cons pair defs))
+         (hash-update reps norm-def
+                      (curry cons names) ;; Prepend names to any existing list
+                      (list names)))])])) ;; Use names as-is if no entry exists
 
 (module+ test
-  (let ([output (mk-output (split-off-names constructorZ)
-                           (hash (norm constructorZ) '((existing-Z))))])
+  (let ([output (second
+                 (mk-output (split-off-names constructorZ)
+                            (list '() (hash (norm constructorZ)
+                                            '((existing-Z))))))])
     (def-test-case "Redundant output contains normalised defs"
       (check-equal? (hash-keys output)
                     `(,(norm constructorZ))))
@@ -889,9 +900,14 @@
 ;; name replacements which can be used to update references and remove
 ;; redundancies.
 (define/test-contract (find-redundancies raw-exprs)
-  (-> (and/c (*list/c names-def-pair?) unencoded?)
-      replacements?)
-  (names-to-reps (hash-values (foldl mk-output (hash) raw-exprs))))
+  (-> (and/c  (*list/c names-def-pair?)
+              unencoded?)
+      (list/c (*list/c names-def-pair?)
+              replacements?))
+  (match (foldl mk-output (list '() (hash)) raw-exprs)
+    [(list defs reps)
+     (list (reverse defs)
+           (names-to-reps (hash-values reps)))]))
 
 (module+ test
   (def-test-case "Can find redundancies from definitions list"
@@ -903,7 +919,9 @@
 
     (check-equal? (list (set '(Nat1 Z1 S1 p1)
                              '(Nat2 Z2 S2 p2)))
-                  (map list->set (hash-values (foldl mk-output (hash) defs))))
+                  (map list->set (hash-values (second (foldl mk-output
+                                                             (list '() (hash))
+                                                             defs)))))
 
     (check-equal? (finalise-replacements
                    (extend-replacements
@@ -911,15 +929,16 @@
                     (replacement 'Z2   'Z1)
                     (replacement 'S2   'S1)
                     (replacement 'p2   'p1)))
-                  (finalise-replacements (find-redundancies defs)))
+                  (finalise-replacements (second (find-redundancies defs))))
 
     (check-equal? (set constructorZ constructorS)
                   (list->set (remove-duplicates
                               (replace
                                (finalise-replacements
-                                (find-redundancies
-                                 (map (compose split-off-names prefix-locals)
-                                      redundancies)))
+                                (second
+                                 (find-redundancies
+                                  (map (compose split-off-names prefix-locals)
+                                       redundancies))))
                                redundancies))))))
 
 ;; Remove redundancies from EXPRS, leaving only alpha-distinct definitions. When
@@ -1073,42 +1092,40 @@
               replacements?))
 
   ;; This does the real work
-  (define/test-contract (normed-and-replacements-inner exprs reps)
-    (-> (*list/c names-def-pair?)
+  (define/test-contract (normed-and-replacements-inner e-len exprs reps)
+    (-> integer?
+        (*list/c names-def-pair?)
         (*list/c replacements?)
         (list/c (*list/c names-def-pair?) (*list/c replacements?)))
 
-    (msg "Normalising ~a definitions\n" (length exprs))
+    (msg "Normalising ~a definitions\n" e-len)
 
-    ;; Find the names of redundant definitions, and a canonical replacement
-    (define/test-contract redundancies
-      replacements?
-      (find-redundancies exprs))
+    (match (find-redundancies exprs)
+      [(list remaining redundancies)
+       (msg "Found ~a redundancies\n" (count-replacements redundancies))
 
-    (msg "Found ~a redundancies\n" (count-replacements redundancies))
+       ;; Switch out all of the redundant names (including in definitions)
+       (define finalised (finalise-replacements redundancies))
 
-    ;; Switch out all of the redundant names (including in definitions)
-    (define finalised (finalise-replacements redundancies))
+       (define/test-contract stripped
+         (*list/c names-def-pair?)
+         (replace finalised remaining))
 
-    (define/test-contract stripped
-      (*list/c names-def-pair?)
-      (remove-duplicates (replace finalised exprs)))
+       (define s-len (length stripped))
 
-    (define e-len (length exprs))
-    (define s-len (length stripped))
+       (msg "Removed ~a redundant definitions\n" (- e-len s-len))
 
-    (msg "Removed ~a redundant definitions\n" (- e-len s-len))
+       (define replacements (cons redundancies reps))
 
-    (define replacements (cons redundancies reps))
-
-    (if (equal? e-len s-len)
-        (list                          stripped replacements)
-        (normed-and-replacements-inner stripped replacements)))
+       (if (equal? e-len s-len)
+           (list                                stripped replacements)
+           (normed-and-replacements-inner s-len stripped replacements))]))
 
   ;; Remove redundancies from all the given expressions. For efficiency we first
   ;; split all definitions into their normalised form + names.
   (define result
-    (normed-and-replacements-inner (map split-off-names exprs)
+    (normed-and-replacements-inner (length exprs)
+                                   (map split-off-names exprs)
                                    '()))
 
   ;; For each resulting definition, we "plug" the names back into the normalised
@@ -1398,20 +1415,21 @@
                     (replacement 'tip2015/sort_StoogeSort2IsSort.smt2second
                                  'isaplanner/prop_58.smt2second)))
                   (finalise-replacements
-                   (find-redundancies
-                    (map (compose split-off-names prefix-locals)
-                         '((declare-datatypes
-                            (local-a local-b)
-                            ((isaplanner/prop_58.smt2Pair
-                              (isaplanner/prop_58.smt2Pair2
-                               (isaplanner/prop_58.smt2first local-a)
-                               (isaplanner/prop_58.smt2second local-b)))))
-                           (declare-datatypes
-                            (local-a local-b)
-                            ((tip2015/sort_StoogeSort2IsSort.smt2Pair
-                              (tip2015/sort_StoogeSort2IsSort.smt2Pair2
-                               (tip2015/sort_StoogeSort2IsSort.smt2first local-a)
-                               (tip2015/sort_StoogeSort2IsSort.smt2second local-b)))))))))))
+                   (second
+                    (find-redundancies
+                     (map (compose split-off-names prefix-locals)
+                          '((declare-datatypes
+                             (local-a local-b)
+                             ((isaplanner/prop_58.smt2Pair
+                               (isaplanner/prop_58.smt2Pair2
+                                (isaplanner/prop_58.smt2first local-a)
+                                (isaplanner/prop_58.smt2second local-b)))))
+                            (declare-datatypes
+                             (local-a local-b)
+                             ((tip2015/sort_StoogeSort2IsSort.smt2Pair
+                               (tip2015/sort_StoogeSort2IsSort.smt2Pair2
+                                (tip2015/sort_StoogeSort2IsSort.smt2first local-a)
+                                (tip2015/sort_StoogeSort2IsSort.smt2second local-b))))))))))))
 
     (define qualified-example
     '((define-fun (par (a b)
@@ -1454,10 +1472,11 @@
                     (check-sat))))
 
   (def-test-case "Find redundancies"
-    (check-equal? (finalise-replacements (find-redundancies
-                                          (map (compose split-off-names
-                                                        prefix-locals)
-                                               redundancies)))
+    (check-equal? (finalise-replacements
+                   (second (find-redundancies
+                            (map (compose split-off-names
+                                          prefix-locals)
+                                 redundancies))))
                   (finalise-replacements
                    (extend-replacements
                     (replacement 'constructor-S)
@@ -1467,11 +1486,12 @@
                   "Check known expression")
 
     (check-equal? (finalise-replacements
-                   (find-redundancies
-                    (map split-off-names
-                         '((declare-datatypes () ((TB (C1A) (C2C (D1B TB)))))
-                           (declare-datatypes () ((TC (C1C) (C2B (D1A TC)))))
-                           (declare-datatypes () ((TA (C1B) (C2A (D1C TA)))))))))
+                   (second
+                    (find-redundancies
+                     (map split-off-names
+                          '((declare-datatypes () ((TB (C1A) (C2C (D1B TB)))))
+                            (declare-datatypes () ((TC (C1C) (C2B (D1A TC)))))
+                            (declare-datatypes () ((TA (C1B) (C2A (D1C TA))))))))))
                   (finalise-replacements
                    (extend-replacements
                     (replacement 'TA  'TB  'TC)
