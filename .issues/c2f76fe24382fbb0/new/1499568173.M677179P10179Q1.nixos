@@ -1,0 +1,42 @@
+From: Chris Warburton
+Date: Sun, 09 Jul 2017 03:30:07 +0100
+Subject: Re: Normalising is REALLY slow
+Message-Id: <c2f76fe24382fbb0-a91942984231e2bd-artemis@nixos>
+References: <c2f76fe24382fbb0-0-artemis@nixos>
+In-Reply-To: <c2f76fe24382fbb0-0-artemis@nixos>
+
+Implemented "Idea 2":
+
+ - Simplified the process of normalisation.
+  - We now require that all locals have already been "prefixed"
+    (normalised) as part of the qualification step.
+  - This means we don't have to care about locals during normalisation.
+  - Normalisation now involves finding the names defined in an
+    expression, and replacing those with 'defining-name-1', etc.
+ - Before we remove redundancies, we split the given definitions into
+   their names and their normal form. This lets us compare normal forms
+   directly, then we "plug in" the names later.
+
+Also fiddled to make tests pass.
+
+Some more thoughts to speed things up:
+
+IDEA 3:
+
+We call remove-duplicates for each round of
+normed-and-replacements-inner. This is an O(n^2) function. We could
+eliminate it if we had mk-output build up the definitions as part of its
+output:
+
+ - If the given normal form exists in the hash, we append our names to
+   it and we return the definitions list as-is.
+ - If the given normal form doesn't exist in the hash, we insert our
+   names for it and we cons our definition on to the definitions list.
+
+IDEA 4:
+
+In split-off-names, we call toplevel-names-in and norm, but norm calls
+toplevel-names-in. We could eliminate this redundancy if we renamed norm
+to norm-names-in, make norm a wrapper which calls norm-names-in with the
+result of calling toplevel-names-in, and have split-off-names call
+norm-names-in with its existing toplevel-names-in result.

@@ -50,7 +50,7 @@
 ;; definitions, etc. are replaced with sequential names. References to global
 ;; names are left intact. This allows easy alpha-equivalence checking: A and B
 ;; are alpha-equivalent iff (equal? (norm A) (norm B))
-(define/test-contract norm
+(define/test-contract (norm expr)
   (-> (and/c definition?
              ;; Our input should have locals prefixed
              (lambda (input)
@@ -77,17 +77,17 @@
                               name
                               result)))
                        (names-in result)))))
-  (lambda (expr)
-    (define norm-func-1 'defining-function-1)
 
-    (define names (toplevel-names-in expr))
+  (define norm-func-1 'defining-function-1)
 
-    (define new   (map (lambda (n)
-                         (string->symbol
-                          (string-append "defining-name-" (~a (+ 1 n)))))
-                       (range (length names))))
+  (define names (toplevel-names-in expr))
 
-    (replace-all (zip names new) expr)))
+  (define new   (map (lambda (n)
+                       (string->symbol
+                        (string-append "defining-name-" (~a (+ 1 n)))))
+                     (range (length names))))
+
+  (replace-all (zip names new) expr))
 
 (module+ test
   (def-test-case "Norm"
