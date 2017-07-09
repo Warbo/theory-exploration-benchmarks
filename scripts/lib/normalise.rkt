@@ -10,6 +10,7 @@
 (require "replacements.rkt")
 (require "tip.rkt")
 (require "util.rkt")
+(require "../strip-native.rkt")
 
 (provide all-constructor-function-replacements all-replacements-closure
          decode-name
@@ -156,6 +157,18 @@
              "Unprefixed locals in definition:\n~a\n"
              x))))
 
+(define (add-custom-defs x)
+  (append x
+          (map (match-lambda
+                 [(list def deps)
+                  (prefix-locals def)])
+               (list custom-bool custom-ite custom-not custom-and custom-or
+                     custom-=> custom-bool-converter custom-nat custom-int
+                     custom-plus custom-inc custom-dec custom-invert custom-abs
+                     custom-sign custom-+ custom-- custom-* custom-nat->
+                     custom-> custom-div custom-mod custom-< custom->=
+                     custom-<=))))
+
 ;; Prefix each name with the path of the file it came from, and combine all
 ;; definitions together into one long list (ordered lexicographically by path).
 ;; Theorems are also qualified, but remain independent and keyed by their path.
@@ -245,6 +258,19 @@
          (symbols-in expr)))
 
 (module+ test
+  (def-test-case "Can qualify expressions"
+    (define match-expr
+      '(match foo
+         (case bar      baz)
+         (case (quux x) (foobar x foo))))
+
+    (check-equal? '(match a/b.smt2foo
+                     (case  a/b.smt2bar            a/b.smt2baz)
+                     (case (a/b.smt2quux local-1) (a/b.smt2foobar local-1
+                                                                  a/b.smt2foo)))
+                  (qualify "a/b.smt2" match-expr)
+                  "Pattern matching"))
+
   (def-test-case "Can qualify theorems"
     (check-equal? '(assert-not (forall
                                 ((local-1 A/B.smt2Foo))
@@ -1033,7 +1059,8 @@
   (when (getenv "BENCHMARKS_NORMALISED_DEFINITIONS")
     (error (string-append "Shouldn't call gen-normed-and-replacements "
                           "when BENCHMARK_NORMALISED_DEFINITIONS is set")))
-  (normed-and-replacements (first (qual-hashes-theorem-files))))
+  (normed-and-replacements
+   (add-custom-defs (first (qual-hashes-theorem-files)))))
 
 ;; Removes redundant alpha-equivalent definitions from EXPRS, resulting in a
 ;; normalised form given as the first element of the result.
@@ -1080,33 +1107,10 @@
         (list                          stripped replacements)
         (normed-and-replacements-inner stripped replacements)))
 
-  ;; Add in "custom" implementation of booleans, naturals and integers to be
-  ;; used without reference to any particular file. Note that these should end
-  ;; up lexicographically smaller than any of the benchmarks, since "custom"
-  ;; appears before any of the TIP benchmark directory names.
-  ;; TODO: Add disambiguating prefix to all names during qualification, e.g.
-  ;; 'qual-foo/bar.smt2func', rather than just 'foo/bar.smt2func', so we can't
-  ;; get any conflicts with e.g. 'custom/bar.smt2func'.
-  (define (strip-qual name)
-    (string->symbol (second (string-split (symbol->string name) ".smt2"))))
-
-  (define custom-defs
-    (foldl (lambda (def customs)
-             (define names (toplevel-names-in def))
-             (if (is-custom? (first names))
-                 (cons (replace-all (zip names (map strip-qual names))
-                                    def)
-                       customs)
-                 customs))
-           '()
-           exprs))
-
-  ;; Remove redundancies from all the given expressions, as well as our
-  ;; "standalone" custom versions. For efficiency we first split all definitions
-  ;; into their normalised form + names.
+  ;; Remove redundancies from all the given expressions. For efficiency we first
+  ;; split all definitions into their normalised form + names.
   (define result
-    (normed-and-replacements-inner (map split-off-names
-                                        (append custom-defs exprs))
+    (normed-and-replacements-inner (map split-off-names exprs)
                                    '()))
 
   ;; For each resulting definition, we "plug" the names back into the normalised
@@ -1256,7 +1260,7 @@
     (read-benchmark (decode-string (format-symbols x))))
 
   ;; For things like custom...
-  (define unenc-final (decode-syms (final-benchmark-defs)))
+  (define unenc-final (normed-qualified-theorem-files))
 
   (for-each (lambda (sym)
     (define def
@@ -1766,11 +1770,17 @@
 (memo0 all-names
   (append-map toplevel-names-in (first (qual-hashes-theorem-files))))
 
+(memo0 final-constructor-names
+       (filter (lambda (name) (string-prefix? (symbol->string name)
+                                              "constructor-"))
+               (names-in (normed-qualified-theorem-files))))
+
 (define/test-contract (norm-name x)
   (-> (and/c symbol?
              (lambda (x)
                (or (member x (all-names))
                    (is-custom? x)
+                   (member x (final-constructor-names))
                    (raise-arguments-error
                     'norm-name
                     "Name not found"
@@ -1778,14 +1788,15 @@
                     "available" (all-names)))))
       (and/c symbol?
              (lambda (x)
-               (define unenc-names (map decode-name
-                                        (names-in (final-benchmark-defs))))
-               (or (member x unenc-names)
+               (define final-names
+                 (map decode-name (names-in (final-benchmark-defs))))
+
+               (or (member x final-names)
                    (raise-user-error
                     'norm-name
                     "Result '~a' isn't in names:\n~a\n"
                     x
-                    unenc-names)))))
+                    final-names)))))
   (cond
     ;; custom* and Custom* can be left unchanged
     [(string-prefix? (string-downcase (symbol->string x)) "custom") x]
