@@ -719,7 +719,43 @@
                   '((declare-datatypes ()
                       ((Global4e6174
                          (Global5a)
-                         (Global53 (global70 Global4e6174)))))))))
+                         (Global53 (global70 Global4e6174))))))
+                  "Simple definition")
+
+    ;; Adapted from tip2015/escape_Injective.smt2
+    (check-equal? (encode-names
+                   '((declare-datatypes () ((CustomBool (CustomTrue) (CustomFalse))))
+                     (declare-datatypes () ((Token (A) (B) (C) (D) (ESC) (P) (Q) (R))))
+                     (define-fun isSpecial
+                       ((local-1 Token)) CustomBool
+                       (match local-1
+                         (case default                          CustomFalse)
+                         (case ESC CustomTrue)
+                         (case P   CustomTrue)
+                         (case Q   CustomTrue)
+                         (case R   CustomTrue)))))
+                  '((declare-datatypes () ((Global437573746f6d426f6f6c
+                                            (Global437573746f6d54727565)
+                                            (Global437573746f6d46616c7365))))
+                    (declare-datatypes () ((Global546f6b656e
+                                            (Global41)
+                                            (Global42)
+                                            (Global43)
+                                            (Global44)
+                                            (Global455343)
+                                            (Global50)
+                                            (Global51)
+                                            (Global52))))
+                    (define-fun global69735370656369616c
+                      ((local-1 Global546f6b656e))
+                      Global437573746f6d426f6f6c
+                      (match local-1
+                        (case default      Global437573746f6d46616c7365)
+                        (case Global455343 Global437573746f6d54727565)
+                        (case Global50     Global437573746f6d54727565)
+                        (case Global51     Global437573746f6d54727565)
+                        (case Global52     Global437573746f6d54727565))))
+                  "Match with default")))
 
 ;; Encode a function name for surviving Haskell translation
 (define (encode-lower-name name)

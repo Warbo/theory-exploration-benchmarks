@@ -24,6 +24,7 @@
   "isaplanner/prop_35.smt2"
   "isaplanner/prop_44.smt2"
   "prod/prop_35.smt2"
+  "tip2015/escape_Injective.smt2"
   "tip2015/heap_SortPermutes'.smt2"
   "tip2015/list_SelectPermutations.smt2"
   "tip2015/propositional_AndCommutative.smt2"
