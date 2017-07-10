@@ -1,8 +1,9 @@
 From: Chris Warburton
 Date: Mon, 10 Jul 2017 17:22:23 +0100
-State: new
+State: resolved
 Subject: 'default' is a keyword
 Message-Id: <fe3e46579986066b-0-artemis@nixos>
+resolution: fixed
 
 Pattern matches can include a 'default' case, which matches when the
 others don't.
