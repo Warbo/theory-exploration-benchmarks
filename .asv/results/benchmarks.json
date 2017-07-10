@@ -55,6 +55,20 @@
         "unit": "seconds", 
         "warmup_time": -1
     }, 
+    "benchmarks.time_more_defs": {
+        "code": "def time_more_defs():\n    check_output(['more_defs'])\n", 
+        "goal_time": 0.1, 
+        "name": "benchmarks.time_more_defs", 
+        "number": 0, 
+        "param_names": [], 
+        "params": [], 
+        "pretty_name": "benchmarks.time_more_defs", 
+        "repeat": 0, 
+        "timeout": 60.0, 
+        "type": "time", 
+        "unit": "seconds", 
+        "warmup_time": -1
+    }, 
     "benchmarks.time_run_tests": {
         "code": "def time_run_tests():\n    check_call(['run_tests'])\n", 
         "goal_time": 0.1, 

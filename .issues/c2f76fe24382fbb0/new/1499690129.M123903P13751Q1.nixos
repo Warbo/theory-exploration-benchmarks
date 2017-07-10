@@ -1,0 +1,27 @@
+From: Chris Warburton
+Date: Mon, 10 Jul 2017 13:28:30 +0100
+Subject: Re: Normalising is REALLY slow
+Message-Id: <c2f76fe24382fbb0-e03df65ec58dbd18-artemis@nixos>
+References: <c2f76fe24382fbb0-0-artemis@nixos>
+In-Reply-To: <c2f76fe24382fbb0-0-artemis@nixos>
+
+A thought occurs: the only reason we're merging overlapping reps
+together is to ensure that each name gets the smallest equivalent when
+finalised.
+
+We *could* use hash tables directly: this would avoid the need to
+finalise, but would make such merges tricky. There might be a way to
+quickly merge two hash tables such that we can a) identify the smallest
+name for each replacement and b) update all of the redundancies to point
+at that name, but at the moment it looks like maintaining lists and
+finalising is the simpler way.
+
+Still, we don't actually need to merge the reps; all we need to do is
+ensure that each rep contains the smallest name for its contents;
+i.e. it's OK for multiple overlapping reps to exist, as long as their
+overlap includes the smallest element.
+
+This should let us avoid comparing many of the contents of the reps;
+instead, for each rep we just have to check if its smallest value
+(constant time) appears in the old-of any other rep; if so, add the
+new-of the latter to the former.

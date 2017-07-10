@@ -34,6 +34,20 @@ with rec {
       mk_defs     = profileWith { inherit BENCHMARKS; }
                                 "make_normalised_definitions.rkt";
 
+      more_defs   = profileWith { BENCHMARKS = runCommand "larger-test"
+                                    { inherit (cache) BENCHMARKS; }
+                                    ''
+                                      find "$BENCHMARKS" -type f -o -type l |
+                                      head -n100                            |
+                                      while read -r F
+                                      do
+                                        DIR=$(basename "$(dirname "$F")")
+                                        mkdir -p "$out/$DIR"
+                                        cp -s "$F" "$out/$DIR"/
+                                      done
+                                    ''; }
+                                "make_normalised_definitions.rkt";
+
       mk_thms     = profileWith { inherit BENCHMARKS_CACHE
                                           BENCHMARKS
                                           BENCHMARKS_NORMALISED_DEFINITIONS; }

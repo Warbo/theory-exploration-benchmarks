@@ -2,6 +2,7 @@
 
 ;; Sets of replacements to make, due to definitions being alpha-equivalent.
 
+(require racket/trace)
 (require "compare.rkt")
 (require "lists.rkt")
 (require "sets.rkt")
@@ -110,7 +111,9 @@
                      (cons x xs)
                      (cons y (insert f x ys)))]))
 
-(define insert-rep (curry insert rep<?))
+(define insert-name (curry insert symbol<?))
+
+(define insert-rep  (curry insert rep<?))
 
 ;; Sorted lists let us bail out early
 (define/test-contract (in? lst x)
@@ -189,25 +192,29 @@
                      (do-merge (cons r acc) mod?          rep  rs)
                      (do-merge         acc #t    (merge r rep) rs))]))
 
-(define (reps-insert-rep-acc acc-merge acc-reps rep reps)
+(define/test-contract (reps-insert-rep-acc acc rep reps)
+  (-> replacements? replacement? replacements? replacements?)
   (match reps
-    [(list)      (cons (foldl merge rep acc-merge) acc-reps)]
+    [(list)      (cons rep acc)]
     [(cons r rs) (if (disjoint? r rep)
-                     ;; Accumulate r and recurse over the tail
-                     (reps-insert-rep-acc acc-merge (cons r acc-reps) rep rs)
-                     ;; Mark r for merging and continue
-                     (reps-insert-rep-acc (cons r acc-merge) acc-reps rep rs))]))
+                     ;; No overlap, recurse into the tail
+                     (reps-insert-rep-acc (cons r acc) rep rs)
 
-(define (reps-insert-rep rep reps)
-  (reps-insert-rep-acc '() (mk-reps) rep reps))
+                     ;; rep and r overlap, merge together then retry
+                     (reps-insert-rep-acc acc (merge rep r) rs))]))
 
-(define reps-union (curry foldl reps-insert-rep))
+(define/test-contract reps-insert-rep
+  (-> replacement? replacements? replacements?)
+  (curry reps-insert-rep-acc (mk-reps)))
+
+(define/test-contract reps-union
+  (-> replacements? replacements? replacements?)
+  (curry foldl reps-insert-rep))
 
 ;; Takes in a possibly-malformed set of replacements: symbols are allowed to
 ;; appear in multiple sets. We merge such overlapping sets to output a valid
 ;; set of replacements.
 (define merge-replacements (curry reps-union (mk-reps)))
-
 
 (define/test-contract (extend-replacements . repss)
   (-> replacements? ... replacements?)
@@ -219,8 +226,23 @@
                               (postprocess reps)
                               (cons rep2 (postprocess reps))))])
 
+  (define/test-contract (collapse-pass repss)
+    (-> (*list/c replacements?) (*list/c replacements?))
+    (match repss
+      [(cons reps1 (cons reps2 rest)) (cons (reps-union reps1 reps2)
+                                            (collapse-pass rest))]
+      [_ repss]))
+
+  (define (collapse repss)
+    (-> (*list/c replacements?) replacements?)
+    (match (collapse-pass repss)
+      [(list)      '()]
+      [(list reps) reps]
+      [x           (collapse x)]))
+
   ;; Combine all sets, then sort out internal consistency
-  (postprocess (merge-overlaps #f '() (append* repss))))
+  (postprocess #;(merge-overlaps #f '() (append* repss))
+               (collapse repss)))
 
 (module+ test
   (def-test-case "Extend one set of replacements with another"
