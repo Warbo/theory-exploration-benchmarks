@@ -1,0 +1,13 @@
+From: Chris Warburton
+Date: Mon, 10 Jul 2017 17:22:23 +0100
+State: new
+Subject: 'default' is a keyword
+Message-Id: <fe3e46579986066b-0-artemis@nixos>
+
+Pattern matches can include a 'default' case, which matches when the
+others don't.
+
+We don't currently handle this. Add tests which flag this behaviour,
+then fix.
+
+See tip2015/escape_Injective.smt2 as an example.
