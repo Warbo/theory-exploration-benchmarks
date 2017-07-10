@@ -98,7 +98,9 @@
     [(_           (list))      x]
     [((cons a as) (cons b bs)) (if (symbol<? a b)
                                    (cons a (merge as y))
-                                   (cons b (merge x  bs)))]))
+                                   (if (equal? a b)
+                                       (cons b (merge as bs))
+                                       (cons b (merge x  bs))))]))
 
 (define/test-contract (insert f x xs)
   (-> (-> any/c any/c boolean?) any/c (*list/c any/c) (*list/c any/c))
@@ -165,6 +167,28 @@
 (define (reps-equal? x y)
   (equal? (sort x rep<=?) (sort y rep<=?)))
 
+(define (merge-overlaps modified? acc reps)
+  (match reps
+    ;; Keep passing over the reps until no more modifications take place
+    [(list) (if modified?
+                (merge-overlaps #f '() acc)
+                acc)]
+    ;; Merge r into any overlaps in rs
+    [(cons r rs) (match (do-merge '() #f r rs)
+                   [(list rep new-rs mod?)
+
+                    (merge-overlaps (or modified? mod?)
+                                    (cons rep acc)
+                                    new-rs)])]))
+
+;; Merges rep into anything in reps that overlaps
+(define (do-merge acc mod? rep reps)
+  (match reps
+    [(list)      (list rep acc mod?)]
+    [(cons r rs) (if (disjoint? r rep)
+                     (do-merge (cons r acc) mod?          rep  rs)
+                     (do-merge         acc #t    (merge r rep) rs))]))
+
 (define (reps-insert-rep-acc acc-merge acc-reps rep reps)
   (match reps
     [(list)      (cons (foldl merge rep acc-merge) acc-reps)]
@@ -195,7 +219,17 @@
                               (cons rep2 (postprocess reps))))])
 
   ;; Combine all sets, then sort out internal consistency
-  (postprocess (merge-replacements (foldl reps-union (mk-reps) repss))))
+  ;(postprocess (merge-replacements (foldl reps-union (mk-reps) repss)))
+  (define (combine acc repss)
+    (match repss
+      [(list) acc]
+      [(cons (cons rep reps) rest) (let ([rep2 (skip-dupes rep)])
+                                     (combine (if (< 2 (length rep2))
+                                                  acc
+                                                  (cons rep2 acc))
+                                              (cons reps rest)))]))
+  (postprocess (merge-overlaps #f '() (append* repss)))
+  )
 
 (module+ test
   (def-test-case "Extend one set of replacements with another"
