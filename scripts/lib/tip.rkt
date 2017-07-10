@@ -464,7 +464,7 @@
 ;; be used for function types, use custom-=> for boolean implication.
 (define native-symbols
   '(ite Bool = distinct => ;; Should only appear as per strip-native.rkt
-        @ as forall assert-not lambda case match let
+        @ as forall assert-not lambda case match let default
           declare-datatypes define-fun define-fun-rec define-funs-rec par))
 
 ;; Given an arbitrary TIP (sub)expression, return the externally-visible symbols
@@ -477,14 +477,15 @@
       ;; Remove the symbols occuring in pat from body. This will remove fresh
       ;; variables, but may also remove constructors. That's fine though,
       ;; since we extract constructors separately anyway.
-      [(list 'case pat body) (remove* (flatten (if (list? pat)
-                                                   (cdr pat)
-                                                   '()))
-                                      (cons (if (list? pat)
-                                                (car pat)
-                                                pat)
-                                            (flatten (go body))))]
-      [_                     (error "Unexpected case form")]))
+      ;; Note that "default" will be removed anyway, since it's a native symbol
+      [(list 'case pat body)      (remove* (flatten (if (list? pat)
+                                                        (cdr pat)
+                                                        '()))
+                                           (cons (if (list? pat)
+                                                     (car pat)
+                                                     pat)
+                                                 (flatten (go body))))]
+      [_                          (error "Unexpected case form")]))
 
   (define (go exp)
     (match exp
@@ -515,7 +516,14 @@
                                (case bar      baz)
                                (case (quux x) (foo x baz)))))
      (set 'foo 'bar 'baz 'quux)
-     "Pattern matches"))
+     "Pattern matches")
+
+    (check-equal?
+     (list->set (symbols-in '(match foo
+                               (case default bar)
+                               (case baz     quux))))
+     (set 'foo 'bar 'baz 'quux)
+     "Default case"))
 
   (def-test-case "Symbols in theorems"
     (check-equal? (set 'Foo 'bar 'baz)
