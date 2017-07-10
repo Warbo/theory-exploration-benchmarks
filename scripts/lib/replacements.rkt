@@ -171,9 +171,9 @@
     [(cons r rs) (if (disjoint? r rep)
                      ;; Accumulate r and recurse over the tail
                      (reps-insert-rep-acc (cons r acc) rep rs)
-                     ;; Merge r into reps, and start again
-                     (reps-insert-rep-acc (mk-reps) (merge r rep)
-                                          (append rs acc)))]))
+                     ;; Merge r into rep, and try again
+                     (reps-insert-rep-acc acc (merge r rep)
+                                          rs))]))
 
 (define (reps-insert-rep rep reps)
   (reps-insert-rep-acc (mk-reps) rep reps))
