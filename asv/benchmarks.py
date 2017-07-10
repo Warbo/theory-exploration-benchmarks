@@ -11,6 +11,10 @@ def time_mk_defs():
     check_output(['mk_defs'])
 time_mk_defs.timer = default_timer
 
+def time_more_defs():
+    check_output(['more_defs'])
+time_more_defs.timer = default_timer
+
 def time_mk_thms():
     check_output(['mk_thms'])
 time_mk_thms.timer = default_timer

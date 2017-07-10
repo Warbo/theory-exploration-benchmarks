@@ -1,0 +1,29 @@
+{
+    "commit_hash": "93e6104b399b6c1b3788455861f70828eea04f30", 
+    "date": 1499568188000, 
+    "ended_at": {
+        "benchmarks.time_more_defs": 1499699002000
+    }, 
+    "env_name": "nix-py-dirnull", 
+    "params": {
+        "arch": "i686", 
+        "cpu": "Genuine Intel(R) CPU           L2400  @ 1.66GHz", 
+        "dir": "null", 
+        "machine": "nixos", 
+        "os": "Linux 4.4.52", 
+        "python": "", 
+        "ram": "3093764"
+    }, 
+    "profiles": {}, 
+    "python": "", 
+    "requirements": {
+        "dir": "null"
+    }, 
+    "results": {
+        "benchmarks.time_more_defs": null
+    }, 
+    "started_at": {
+        "benchmarks.time_more_defs": 1499698935000
+    }, 
+    "version": 1
+}

@@ -6,6 +6,7 @@
         "benchmarks.time_mk_fin_defs": 1499570231000, 
         "benchmarks.time_mk_sdata": 1499570240000, 
         "benchmarks.time_mk_thms": 1499570249000, 
+        "benchmarks.time_more_defs": 1499698930000, 
         "benchmarks.time_run_tests": 1499570364000
     }, 
     "env_name": "nix-py-dirnull", 
@@ -28,6 +29,7 @@
         "benchmarks.time_mk_fin_defs": 7.169291019439697, 
         "benchmarks.time_mk_sdata": 9.047123908996582, 
         "benchmarks.time_mk_thms": 7.90738582611084, 
+        "benchmarks.time_more_defs": null, 
         "benchmarks.time_run_tests": 114.67777705192566
     }, 
     "started_at": {
@@ -35,6 +37,7 @@
         "benchmarks.time_mk_fin_defs": 1499570224000, 
         "benchmarks.time_mk_sdata": 1499570231000, 
         "benchmarks.time_mk_thms": 1499570240000, 
+        "benchmarks.time_more_defs": 1499698862000, 
         "benchmarks.time_run_tests": 1499570249000
     }, 
     "version": 1
