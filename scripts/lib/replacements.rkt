@@ -208,6 +208,7 @@
 ;; set of replacements.
 (define merge-replacements (curry reps-union (mk-reps)))
 
+
 (define/test-contract (extend-replacements . repss)
   (-> replacements? ... replacements?)
 
@@ -219,17 +220,7 @@
                               (cons rep2 (postprocess reps))))])
 
   ;; Combine all sets, then sort out internal consistency
-  ;(postprocess (merge-replacements (foldl reps-union (mk-reps) repss)))
-  (define (combine acc repss)
-    (match repss
-      [(list) acc]
-      [(cons (cons rep reps) rest) (let ([rep2 (skip-dupes rep)])
-                                     (combine (if (< 2 (length rep2))
-                                                  acc
-                                                  (cons rep2 acc))
-                                              (cons reps rest)))]))
-  (postprocess (merge-overlaps #f '() (append* repss)))
-  )
+  (postprocess (merge-overlaps #f '() (append* repss))))
 
 (module+ test
   (def-test-case "Extend one set of replacements with another"
