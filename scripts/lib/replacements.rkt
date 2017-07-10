@@ -165,18 +165,17 @@
 (define (reps-equal? x y)
   (equal? (sort x rep<=?) (sort y rep<=?)))
 
-(define (reps-insert-rep-acc acc rep reps)
+(define (reps-insert-rep-acc acc-merge acc-reps rep reps)
   (match reps
-    [(list)      (cons rep acc)]
+    [(list)      (cons (foldl merge rep acc-merge) acc-reps)]
     [(cons r rs) (if (disjoint? r rep)
                      ;; Accumulate r and recurse over the tail
-                     (reps-insert-rep-acc (cons r acc) rep rs)
-                     ;; Merge r into rep, and try again
-                     (reps-insert-rep-acc acc (merge r rep)
-                                          rs))]))
+                     (reps-insert-rep-acc acc-merge (cons r acc-reps) rep rs)
+                     ;; Mark r for merging and continue
+                     (reps-insert-rep-acc (cons r acc-merge) acc-reps rep rs))]))
 
 (define (reps-insert-rep rep reps)
-  (reps-insert-rep-acc (mk-reps) rep reps))
+  (reps-insert-rep-acc '() (mk-reps) rep reps))
 
 (define reps-union (curry foldl reps-insert-rep))
 
