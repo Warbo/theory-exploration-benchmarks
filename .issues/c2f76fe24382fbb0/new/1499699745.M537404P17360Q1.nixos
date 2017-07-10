@@ -1,0 +1,15 @@
+From: Chris Warburton
+Date: Mon, 10 Jul 2017 16:14:04 +0100
+Subject: Re: Normalising is REALLY slow
+Message-Id: <c2f76fe24382fbb0-da44ee972832535c-artemis@nixos>
+References: <c2f76fe24382fbb0-0-artemis@nixos>
+In-Reply-To: <c2f76fe24382fbb0-0-artemis@nixos>
+
+After much faffing around, implementation switching, optimisation,
+etc. it's now taking 3m40s to reduce the whole lot on my Thinkpad.
+
+This number is similar to the best I've seen before, so I think that's
+about the limit of what we'll get from Racket.
+
+This number is acceptable for current purposes, so I'm closing this
+issue.

@@ -1,8 +1,9 @@
 From: Chris Warburton
 Date: Wed, 05 Jul 2017 17:13:28 +0100
-State: new
+State: resolved
 Subject: Normalising is REALLY slow
 Message-Id: <c2f76fe24382fbb0-0-artemis@nixos>
+resolution: fixed
 
 I'm seeing got 45 minutes of CPU time and counting; it's not even
 finished the first pass yet!
