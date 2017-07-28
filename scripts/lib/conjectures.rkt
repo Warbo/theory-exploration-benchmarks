@@ -749,6 +749,23 @@
    (conjectures-from-raw from-json
                          (find-eqs-intersection-raw from-json ground-truth))))
 
+(module+ test
+  (def-test-case "Find matches in example data"
+    (define result
+      (precision-recall-eqs-wrapper
+       (file->string (getenv "TEST_LIST_EQS"))
+       (getenv "TEST_LIST_TRUTH")
+       (file->string (getenv "TEST_LIST_TRUTH"))))
+
+    (define prec (hash-ref result 'precision))
+    (define rec  (hash-ref result 'recall))
+
+    (with-check-info
+      (('prec prec)
+       ('rec  rec))
+      (check-true (> prec 0) "Nonzero precision")
+      (check-true (> rec  0) "Nonzero recall"))))
+
 (define (fix-json-for-output jsexpr)
   (hash-update jsexpr
                'wanted
