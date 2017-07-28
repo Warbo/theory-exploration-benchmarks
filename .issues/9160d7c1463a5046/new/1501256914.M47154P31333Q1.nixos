@@ -1,0 +1,35 @@
+From: Chris Warburton
+Date: Fri, 28 Jul 2017 16:26:04 +0100
+Subject: Re: Fix false negatives in conjecture matching
+Message-Id: <9160d7c1463a5046-d2e552fbb3f51c1a-artemis@nixos>
+References: <9160d7c1463a5046-0-artemis@nixos>
+In-Reply-To: <9160d7c1463a5046-0-artemis@nixos>
+
+Looks like the problem was comparing variable types, which don't match
+between systems (QuickSpec adds its own variables, based on the Haskell
+types, whilst TIP/Isabelle use the arguments to their "forall"
+expressions).
+
+I've removed the comparison of variable types and removed a test which
+was ensuring that variable types were being checked.
+
+I've added a test for comparing a particular equation, taken from the
+list-full.smt ground truth (in s-expression form, which we convert to an
+equation during the test) and the output of QuickSpec running on the
+list-full theory (in JSON form, which we convert to an equation during
+the test). The debug info from this test shows that indeed the equations
+were only differing by their variable types (their indices were
+renumbered, the left and right were in lexicographic order, etc.). Added
+another test which mimics the precision_recall_eqs command, using real
+output saved from a QuickSpec run, and the real list-full ground truth.
+We check that precision and recall are non-zero, since they shouldn't be
+but were.
+
+Tests failed, made the change to remove variable type comparison and
+tests went green. All's good :)
+
+For extra comfort, I've made the equation matcher try matching the left
+of the first with the right of the second, and vice versa, as well as
+checking if the lefts match and the rights match. This isn't foolproof,
+since variable indices are chosen in left-to-right order of the
+equation, but it should give us a little more of a safety net.

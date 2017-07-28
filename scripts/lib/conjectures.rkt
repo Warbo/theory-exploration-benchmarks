@@ -656,8 +656,10 @@
     (match y
       [(list '~= l r) (values l r)]))
 
-  (and (expressions-match? x-l y-l)
-       (expressions-match? x-r y-r)))
+  (or (and (expressions-match? x-l y-l)
+           (expressions-match? x-r y-r))
+      (and (expressions-match? x-l y-r)
+           (expressions-match? x-r y-l))))
 
 (module+ test
     (def-test-case "Equation matching"
@@ -685,12 +687,6 @@
 
     (check-false (equations-match? '(~= (constant bar "foo")
                                         (variable 0   "foo"))
-                                   '(~= (constant bar "foo")
-                                        (variable 0   "baz")))
-                 "Different variable types don't match")
-
-    (check-false (equations-match? '(~= (constant bar "foo")
-                                        (variable 0   "foo"))
                                    '(~= (constant baz "foo")
                                         (variable 0   "foo")))
                  "Different constant names don't match")
@@ -707,10 +703,20 @@
   (-> expression? expression? boolean?)
 
   (match (list x y)
+    ;; Variable types should be consistent within an expression, so we can
+    ;; number them consistently, but may differ between expressions (e.g. if
+    ;; they come from different systems, which may have rewritten or processed
+    ;; the types). Hence we ignore the types when matching, and only compare the
+    ;; indices. This is fine, since we're assuming expressions are type-correct,
+    ;; and hence cannot differ *only* by variable type (as at least one would be
+    ;; ill typed; or else we're applying one variable to another, in which case
+    ;; we can hand-wave it away by saying "polymorphism").
+    ;; Note that we must still compare indices, since different variables of the
+    ;; same type can lead to different semantics; e.g. (= (plus x y) (plus y x))
+    ;; is different to (= (plus x x) (plus x x))
     [(list (list 'variable index1 type1)
            (list 'variable index2 type2))
-     (and (equal? index1 index2)
-          (equal? type1  type2))]
+     (equal? index1 index2)]
 
     ;; We don't currently infer types for TIP constants, so many will be
     ;; "unknown"; since overloading isn't allowed, we can rely on the names
@@ -748,6 +754,90 @@
   (fix-json-for-output
    (conjectures-from-raw from-json
                          (find-eqs-intersection-raw from-json ground-truth))))
+
+(module+ test
+  (def-test-case "Find matches in example data"
+    (begin
+      ;; These two should be found to match
+
+      (define want-eq
+        (first (theorem-to-equation
+                '(assert-not
+                  (par (i o) (forall ((a (=> i o)) (b (List i)) (c (List i)))
+                                     (= (append (map a b) (map a c))
+                                        (map a (append b c)))))))))
+
+      (define found-eq
+        (first
+         (parse-json-equation
+          "{ \"relation\": \"~=\",
+             \"lhs\": { \"role\": \"application\",
+                        \"lhs\": { \"role\": \"application\",
+                                   \"lhs\": { \"role\": \"constant\",
+                                              \"type\": \"List Integer -> List Integer -> List Integer\",
+                                              \"symbol\": \"append\" },
+                                   \"rhs\": { \"role\": \"application\",
+                                              \"lhs\": { \"role\": \"application\",
+                                                         \"lhs\": { \"role\": \"constant\",
+                                                                    \"type\": \"(Integer -> Integer) -> List Integer -> List Integer\",
+                                                                    \"symbol\": \"map\" },
+                                                         \"rhs\": { \"role\": \"variable\",
+                                                                    \"type\": \"Integer -> Integer\",
+                                                                    \"id\": 9 } },
+                                              \"rhs\": { \"role\": \"variable\",
+                                                         \"type\": \"List Integer\",
+                                                         \"id\": 3 } } },
+                        \"rhs\": { \"role\": \"application\",
+                                   \"lhs\": { \"role\": \"application\",
+                                              \"lhs\": { \"role\": \"constant\",
+                                                         \"type\": \"(Integer -> Integer) -> List Integer -> List Integer\",
+                                                         \"symbol\": \"map\" },
+                                              \"rhs\": { \"role\": \"variable\",
+                                                         \"type\": \"Integer -> Integer\",
+                                                         \"id\": 9 } },
+                                   \"rhs\": { \"role\": \"variable\",
+                                              \"type\": \"List Integer\",
+                                              \"id\": 4 } } },
+             \"rhs\": { \"role\": \"application\",
+                        \"lhs\": { \"role\": \"application\",
+                                   \"lhs\": { \"role\": \"constant\",
+                                              \"type\": \"(Integer -> Integer) -> List Integer -> List Integer\",
+                                              \"symbol\": \"map\" },
+                                   \"rhs\": { \"role\": \"variable\",
+                                              \"type\": \"Integer -> Integer\",
+                                              \"id\": 9 } },
+                        \"rhs\": { \"role\": \"application\",
+                                   \"lhs\": { \"role\": \"application\",
+                                              \"lhs\": { \"role\": \"constant\",
+                                                         \"type\": \"List Integer -> List Integer -> List Integer\",
+                                                         \"symbol\": \"append\" },
+                                              \"rhs\": { \"role\": \"variable\",
+                                                         \"type\": \"List Integer\",
+                                                         \"id\": 3 } },
+                                   \"rhs\": { \"role\": \"variable\",
+                                              \"type\": \"List Integer\",
+                                              \"id\": 4 } } } }")))
+
+      (with-check-info
+        (('want-eq  want-eq)
+         ('found-eq found-eq))
+        (check-true (equations-match? want-eq found-eq))))
+
+    (begin
+      (define result
+        (precision-recall-eqs-wrapper
+         (file->string (getenv "TEST_LIST_EQS"))
+         (getenv "TEST_LIST_TRUTH")
+         (file->string (getenv "TEST_LIST_TRUTH"))))
+
+      (define prec (hash-ref result 'precision))
+      (define rec  (hash-ref result 'recall))
+
+      (with-check-info
+        (('prec prec)
+         ('rec  rec))
+        (check-true (> prec 0) "Nonzero precision")
+        (check-true (> rec  0) "Nonzero recall")))))
 
 (define (fix-json-for-output jsexpr)
   (hash-update jsexpr
