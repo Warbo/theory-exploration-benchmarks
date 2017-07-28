@@ -1,8 +1,9 @@
 From: Chris Warburton
 Date: Fri, 28 Jul 2017 15:03:49 +0100
-State: new
+State: resolved
 Subject: Fix false negatives in conjecture matching
 Message-Id: <9160d7c1463a5046-0-artemis@nixos>
+resolution: fixed
 
 Our precision/recall is 0 for the list-full theory from Isabelle,
 despite a manual check finding almost 100% recall (and hence non-zero

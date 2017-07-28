@@ -1,0 +1,13 @@
+From: Chris Warburton
+Date: Fri, 28 Jul 2017 17:05:41 +0100
+Subject: Re: Fix false negatives in conjecture matching
+Message-Id: <9160d7c1463a5046-b1d52de0716cb220-artemis@nixos>
+References: <9160d7c1463a5046-0-artemis@nixos>
+In-Reply-To: <9160d7c1463a5046-0-artemis@nixos>
+
+Just checked, and this example is now giving:
+
+precision: 0.22857142857142856
+recall:    0.8888888888888888
+
+Looks about right :)
