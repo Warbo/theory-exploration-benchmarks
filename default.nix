@@ -180,7 +180,11 @@ with rec {
   };
 
   mkTestScript = vars: nix-config.wrap {
-    vars   = { TEST_DATA = ./test-data/nat-simple-raw.json; } // vars;
+    vars   = {
+      TEST_DATA       = ./test-data/nat-simple-raw.json;
+      TEST_LIST_EQS   = ./test-data/list-full-found.json;
+      TEST_LIST_TRUTH = ./test-data/list-full-ground-truth.smt2;
+    } // vars;
     paths  = [ env ];
     script = ''
       #!/usr/bin/env bash
