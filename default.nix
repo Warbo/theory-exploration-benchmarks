@@ -1,7 +1,8 @@
 { pkgsPath        ? <nixpkgs>,
   pkgsArgs        ? {},
   haskellPackages ? null,
-  nix-config-src  ? null }:
+  nix-config-src  ? null,
+  asv-nix         ? null }:
 
 with builtins;
 with { pkgs = import pkgsPath pkgsArgs; };
@@ -306,7 +307,9 @@ rec {
   };
 
   # Used for benchmarking the benchmark generation (yo dawg)
-  asv = nix-config.asv-nix;
+  asv = if asv-nix == null
+           then nix-config.asv-nix
+           else asv-nix;
 
   # Uses all benchmarks, for our actual results
   cache = mkCache tip-benchmarks;
