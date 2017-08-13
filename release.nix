@@ -3,8 +3,10 @@
 with builtins;
 with (import <nixpkgs> {}).lib;
 with rec {
-  forPkgs = pkgs:
+  forSys = system:
     with rec {
+      pkgs = import <nixpkgs> { inherit system; };
+
       # Add more versions to this list if we can get them to work
       hsVersions = filterAttrs (n: _: elem n [ "ghc7103" "ghc801" "ghc802" ])
                                pkgs.haskell.packages;
@@ -16,9 +18,9 @@ with rec {
                  { inherit (x.patchedHaskellPackages) tip-lib; };
    };
    mapAttrs (_: haskellPackages: strip (pkgs.callPackage ./. {
-                                         inherit haskellPackages pkgs;
+                                         inherit haskellPackages;
+                                         pkgsArgs = { inherit system; };
                                        }))
             hsVersions;
 };
-(import <nixpkgs> {}).lib.genAttrs supportedSystems
-  (system: forPkgs (import <nixpkgs> { inherit system; }))
+genAttrs supportedSystems forSys
