@@ -1,8 +1,9 @@
-{ pkgs            ? import <nixpkgs> {},
+{ pkgsPath        ? <nixpkgs>,
   haskellPackages ? null,
   nix-config-src  ? null }:
 
 with builtins;
+with { pkgs = import pkgsPath {}; };
 with pkgs;
 with lib;
 with rec {
@@ -27,7 +28,7 @@ with rec {
                       then nix-config-src-default
                       else nix-config-src;
     };
-    import <nixpkgs> { config = import "${config-src}/config.nix"; };
+    import pkgsPath { config = import "${config-src}/config.nix"; };
 
   # Take the given Haskell packages, but override some things which are known
   # to be broken on Hackage. TODO: Get upstream to upload non-broken packages!
