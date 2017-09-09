@@ -23,6 +23,9 @@
    '(declare-datatypes () ((CustomBool (CustomTrue) (CustomFalse))))
    '()))
 
+;; Note that we can't use custom-ite as a general replacement for if/then/else
+;; or match/case, since strict languages will evaluate both branch arguments,
+;; which will cause recursive definitions to diverge.
 (define custom-ite
   (list
    '(define-fun
@@ -43,22 +46,28 @@
 (define custom-and
   (list
    '(define-fun custom-and ((x CustomBool) (y CustomBool)) CustomBool
-      (custom-ite x y CustomFalse))
-   (list custom-bool custom-ite)))
+      (match x
+        (case CustomTrue  y)
+        (case CustomFalse CustomFalse)))
+   (list custom-bool)))
 
 (define custom-or
   (list
    '(define-fun custom-or ((x CustomBool) (y CustomBool)) CustomBool
-      (custom-ite x CustomTrue y))
-   (list custom-bool custom-ite)))
+      (match x
+        (case CustomTrue  CustomTrue)
+        (case CustomFalse y)))
+   (list custom-bool)))
 
 ;; NOTE: We can't just replace all occurrences of => with custom-=>, since that
 ;; symbol is also used for function types.
 (define custom-=>
   (list
    '(define-fun custom-=> ((x CustomBool) (y CustomBool)) CustomBool
-      (custom-ite x y CustomTrue))
-   (list custom-bool custom-ite)))
+      (match x
+        (case CustomTrue  y)
+        (case CustomFalse CustomTrue)))
+   (list custom-bool)))
 
 ;; NOTE: We must replace = to make conditional equations typecheck, e.g.
 ;; (custom-=> (= foo bar) (= foo baz)), since = returns a Bool and custom-=>
@@ -224,14 +233,16 @@
 (define custom-div
   (list
    '(define-fun-rec custom-div ((x CustomInt) (y CustomInt)) CustomInt
-      (custom-ite (custom-> (custom-abs y) (custom-abs x))
-                  CustomZero
-                  (custom-* (custom-sign x)
-                            (custom-* (custom-sign y)
-                                      (custom-inc (custom-div (custom-- (custom-abs x)
-                                                                        (custom-abs y))
-                                                              (custom-abs y)))))))
-   (list custom-int custom-ite custom-> custom-abs custom-* custom-sign
+      (match (custom-> (custom-abs y) (custom-abs x))
+        (case CustomTrue  CustomZero)
+        (case CustomFalse (custom-*
+                           (custom-sign x)
+                           (custom-*
+                            (custom-sign y)
+                            (custom-inc (custom-div (custom-- (custom-abs x)
+                                                              (custom-abs y))
+                                                    (custom-abs y))))))))
+   (list custom-bool custom-int custom-> custom-abs custom-* custom-sign
          custom-inc custom--)))
 
 (define custom-mod
