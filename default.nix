@@ -207,8 +207,9 @@ with rec {
       then
         "$script" || exit 1
         echo "passed" > "$out"
+      else
+        echo "skipped" > "$out"
       fi
-      echo "skipped" > "$out"
     '';
 
   env = buildEnv {

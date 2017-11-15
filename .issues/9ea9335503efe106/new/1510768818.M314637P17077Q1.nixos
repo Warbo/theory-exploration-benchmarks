@@ -1,0 +1,26 @@
+From: Chris Warburton
+Date: Wed, 15 Nov 2017 17:54:36 +0000
+State: new
+Subject: Handle 'lambda' and '@' in TIP theorems
+Message-Id: <9ea9335503efe106-0-artemis@nixos>
+
+See issue f5669cd4db415d36 of haskell-te
+
+Some TIP theorems contain things like lambda functions and applications
+'@' which aren't being handled properly.
+
+We should add tests to check the behaviour of various keywords appearing
+in theorem statements that we translate to JSON.
+
+In the case of 'lambda', it's currently reasonable to abort (produce no
+equation), since QuickSpec can't conjecture lambda functions anyway.
+
+In the case of '@', if it's fully-applied, i.e. '(@ f x)', we should
+simplify it away to get '(f x)', since in this case '@' is acting merely
+as an annotation, to aid translation between TIP and languages which may
+treat functions in some peculiar way (e.g. 2-lisps like Common Lisp,
+where we might have to say '(funcall 'f x)' instead of just '(f x)' like
+we can say in 1-lisps like Scheme).
+
+I'm not sure if '@' appears without being fully-applied. Try grepping
+the TIP benchmarks to see.
