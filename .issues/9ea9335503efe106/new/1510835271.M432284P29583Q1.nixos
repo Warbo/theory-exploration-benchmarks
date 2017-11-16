@@ -1,0 +1,16 @@
+From: Chris Warburton
+Date: Thu, 16 Nov 2017 12:26:17 +0000
+Subject: Re: Handle 'lambda' and '@' in TIP theorems
+Message-Id: <9ea9335503efe106-88d110e29232005c-artemis@nixos>
+References: <9ea9335503efe106-0-artemis@nixos>
+In-Reply-To: <9ea9335503efe106-0-artemis@nixos>
+
+Added fix and regression tests for simplifying (@ f x) to just (f x) in
+theorem statements.
+
+This only applies to two theorems:
+
+ - tip2015/list_return_1.smt2
+ - tip2015/list_assoc.smt2
+
+The latter also contains a lambda, so it's ruled out anyway.

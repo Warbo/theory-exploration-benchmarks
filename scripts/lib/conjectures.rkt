@@ -352,23 +352,38 @@
       [(list 'constant _ _) (list x)]
       [(list 'apply    _ _) (list x)]
 
+      ;; (@ f x) is equivalent to (f x), so avoid the indirection. If any
+      ;; 2-lisps need such indirection, like Common Lisp's funcall, they can
+      ;; infer it as needed by e.g. spotting when the lhs of an apply is a
+      ;; variable.
+      [(list '@ a b) (to-expression (list a b))]
+
       ;; Assume that any other symbol is a constant. We don't handle types yet,
       ;; so no need to bother inferring one.
-      [(? symbol?)              (list (list 'constant x "unknown"))]
+      [(? symbol?) (list (list 'constant x "unknown"))]
 
       ;; Catch-all for lists; try to convert all elements into expressions, if
       ;; that succeeds then collect up the results and insert-applies.
-      [(? list?)                (match (concat-first-elements
-                                        '() (map to-expression x))
-                                  ['() '()]
-                                  [(list exprs) (list (insert-applies exprs))])]))
+      [(? list?) (match (concat-first-elements
+                         '() (map to-expression x))
+                   ['() '()]
+                   [(list exprs) (list (insert-applies exprs))])]))
 
 (module+ test
   (def-test-case "Check expression lambdas"
     (define expr
       '(lambda ((x a)) (bind (@ f x) g)))
 
-    (check-equal? (to-expression expr) '())))
+    (check-equal? (to-expression expr) '()))
+
+  (def-test-case "Check expression @s"
+    (define expr
+      (make-variables '((x a) (f (=> a (list b))))
+                      '(foo (@ f x))))
+
+    (check-equal? (to-expression expr)
+                  '((apply (constant foo "unknown")
+                            (apply (variable 0 "(=> a (list b))") (variable 0 "a")))))))
 
 (define (next-index-for body type)
   (define indices
@@ -454,7 +469,22 @@
                      (= (dropWhile (lambda ((x a)) false) xs) xs)))))
 
     (check-equal? (theorem-to-equation thm1) '())
-    (check-equal? (theorem-to-equation thm2) '())))
+    (check-equal? (theorem-to-equation thm2) '()))
+
+  (def-test-case "Check theorem @s"
+    (define thm
+      '(assert-not
+        (par (a b)
+             (forall ((x a) (f (=> a (list b))))
+                     (= (bind (return x) f) (@ f x))))))
+
+    ;; Sides swapped due to lexical ordering
+    (check-equal? (theorem-to-equation thm)
+                  '((~= (apply (apply (constant bind "unknown")
+                                      (apply (constant return "unknown")
+                                             (variable 0 "a")))
+                               (variable 0 "(=> a (list b))"))
+                        (apply (variable 0 "(=> a (list b))") (variable 0 "a")))))))
 
 ;; Try to parse the given string as a JSON representation of an equation, e.g.
 ;; from reduce-equations. Returns a list containing the result on success, or an
