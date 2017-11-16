@@ -1,0 +1,44 @@
+From: Chris Warburton
+Date: Thu, 16 Nov 2017 01:31:19 +0000
+Subject: Re: Handle 'lambda' and '@' in TIP theorems
+Message-Id: <9ea9335503efe106-9306ec82301f4b49-artemis@nixos>
+References: <9ea9335503efe106-0-artemis@nixos>
+In-Reply-To: <9ea9335503efe106-0-artemis@nixos>
+
+I've grepped through the benchmarks and there are no theorems
+containing:
+
+ - declare
+ - define
+ - case
+ - match
+
+The following contain lambda:
+
+  $ grep -A 20 -r 'assert-not' . | grep lambda
+  ./tip2015/escape_NoSpecial.smt2
+  ./tip2015/list_SelectPermutations.smt2
+  ./tip2015/list_Select.smt2
+  ./tip2015/tree_Flatten1List.smt2
+  ./tip2015/propositional_Okay.smt2
+  ./tip2015/propositional_Sound.smt2
+  ./tip2015/list_return_2.smt2
+  ./tip2015/list_PairEvens.smt2
+  ./tip2015/list_PairOdds.smt2
+  ./tip2015/list_assoc.smt2
+  ./tip2015/subst_SubstFreeYes.smt2
+  ./tip2015/list_SelectPermutations'.smt2
+  ./isaplanner/prop_35.smt2
+  ./isaplanner/prop_36.smt2
+
+All of them are used in ways that QuickSpec can't generate, so avoiding
+lambdas in general is a fine strategy for now.
+
+I've added a check for whether 'lambda appears in the symbols of a
+theorem; if so, it's not turned into an expression, or hence an
+equation.
+
+I've added regression tests for this, with real theorems, for both
+equation and expression transformation. I've confirmed that they failed
+to pass with the existing code, and pass with the new changes (red/green
+cycle).

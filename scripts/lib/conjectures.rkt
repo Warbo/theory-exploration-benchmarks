@@ -293,6 +293,9 @@
                     ;; Equations must contain =
                     [(not (member '= (flatten thm))) #f]
 
+                    ;; Lambdas aren't vars, (named) constants or applications
+                    [(member 'lambda (flatten thm))  #f]
+
                     ;; If we see a '=> before a '= then *either* the equation is
                     ;; conditional, *or* there's a function type somewhere in
                     ;; the arguments. We strip off arguments functions to
@@ -343,11 +346,11 @@
                                    (rest lst)))))
 
     (match x
-      [(list '= _ _)            '()]
-      [(list 'lambda vars body) (to-expression (make-variables vars body))]
-      [(list 'variable _ _)     (list x)]
-      [(list 'constant _ _)     (list x)]
-      [(list 'apply    _ _)     (list x)]
+      [(list '=        _ _) '()     ]
+      [(list 'lambda   _ _) '()     ]
+      [(list 'variable _ _) (list x)]
+      [(list 'constant _ _) (list x)]
+      [(list 'apply    _ _) (list x)]
 
       ;; Assume that any other symbol is a constant. We don't handle types yet,
       ;; so no need to bother inferring one.
@@ -359,6 +362,13 @@
                                         '() (map to-expression x))
                                   ['() '()]
                                   [(list exprs) (list (insert-applies exprs))])]))
+
+(module+ test
+  (def-test-case "Check expression lambdas"
+    (define expr
+      '(lambda ((x a)) (bind (@ f x) g)))
+
+    (check-equal? (to-expression expr) '())))
 
 (define (next-index-for body type)
   (define indices
@@ -427,6 +437,24 @@
                (not (member (first x) native-symbols))))) '()]
 
     [x (error (string-append "Unhandled case: " (~a x)))]))
+
+(module+ test
+  (def-test-case "Check theorem lambdas"
+    (define thm1
+      '(assert-not
+        (par (a b c)
+             (forall ((m (list a)) (f (=> a (list b))) (g (=> b (list c))))
+                     (= (bind (bind m f) g)
+                        (bind m (lambda ((x a)) (bind (@ f x) g))))))))
+
+    (define thm2
+      '(assert-not
+        (par (a)
+             (forall ((xs (list a)))
+                     (= (dropWhile (lambda ((x a)) false) xs) xs)))))
+
+    (check-equal? (theorem-to-equation thm1) '())
+    (check-equal? (theorem-to-equation thm2) '())))
 
 ;; Try to parse the given string as a JSON representation of an equation, e.g.
 ;; from reduce-equations. Returns a list containing the result on success, or an
