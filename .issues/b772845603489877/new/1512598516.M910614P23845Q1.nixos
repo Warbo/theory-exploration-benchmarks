@@ -1,0 +1,7 @@
+From: Chris Warburton
+Date: Wed, 06 Dec 2017 22:14:31 +0000
+State: new
+Subject: Remove generating? cruft
+Message-Id: <b772845603489877-0-artemis@nixos>
+
+It should hopefully not be needed now we're using Nix to cache
