@@ -145,20 +145,26 @@
     (check-true  (equation? '(~= (apply (constant f "Int -> Int")
                                         (variable 0 "Int"))
                                  (apply (constant g "Bool -> Int")
-                                        (variable 0 "Bool"))))
+                                        (variable 1 "Bool"))))
                  "Valid equation accepted")
 
     (check-false (equation? '(~= (apply (constant b "Int -> Int")
                                         (variable 0 "Int"))
                                  (apply (constant a "Bool -> Int")
-                                        (variable 0 "Bool"))))
+                                        (variable 1 "Bool"))))
                  "Reject expressions in non-lexicographical order")
 
     (check-false (equation? '(~= (apply (constant f "Int -> Int")
                                         (variable 1 "Int"))
                                  (apply (constant g "Bool -> Int")
-                                        (variable 1 "Bool"))))
+                                        (variable 0 "Bool"))))
                  "Reject variables not starting from 0")
+
+    (check-false (equation? '(~= (apply (constant f "Int -> Int")
+                                        (variable 0 "Int"))
+                                 (apply (constant g "Bool -> Int")
+                                        (variable 0 "Bool"))))
+                 "Reject variables with mismatched types")
 
     (check-false (equation? '(~= (apply (apply (constant f "Int -> Int -> Bool")
                                                (variable 1 "Int"))
@@ -170,19 +176,35 @@
 ;; Check if an equation's variable indices are in canonical order
 (define (canonical-variables? eq)
   (match eq
-    [(list '~= lhs rhs) (foldl (lambda (type so-far)
-                                 (and so-far
-                                      (canonical-variables-for-type? eq type)))
-                               #t
-                               (remove-duplicates
-                                (append (all-variable-types-of lhs)
-                                        (all-variable-types-of rhs))))]))
+    [(list '~= lhs rhs)
+     (let* ((vars        (remove-duplicates (append (all-variables-in lhs)
+                                                    (all-variables-in rhs))))
+            (types-match (foldl (lambda (var so-far)
+                                  (match (list var so-far)
+                                    [(list (list 'variable index type)
+                                           (list ok types))
+                                     (let ((found (hash-ref types index type)))
+                                       (list (and ok (equal? type found))
+                                             (hash-set types index type)))]))
+                                (list #t (hash))
+                                vars))
+            (in-order    (equal? (map (lambda (var)
+                                        (match var
+                                          [(list 'variable index _) index]))
+                                      vars)
+                                 (range 0 (length vars)))))
+       (and in-order
+            (first types-match)))]))
 
-;; Whether the variables of the given type, appearing in the given equation,
-;; have their indices in canonical order
-(define (canonical-variables-for-type? eq type)
-  (define indices (indices-of eq type))
-  (equal? indices (range (length indices))))
+(define (all-variables-in expr)
+  (remove-duplicates
+   (match expr
+     [(list 'variable _ _)  (list expr)]
+     [(list 'apply lhs rhs) (append (all-variables-in lhs)
+                                    (all-variables-in rhs))]
+     [(list '~= lhs rhs)    (append (all-variables-in lhs)
+                                    (all-variables-in rhs))]
+     [_                     '()])))
 
 ;; All variable indices of the given type which occur in the given equation, in
 ;; post-order of their first occurrence
@@ -252,21 +274,21 @@
                                    (apply (apply (constant ,(nn 'isaplanner/prop_44.smt2zip) "unknown")
                                                  (apply (apply (constant ,(nn 'isaplanner/prop_01.smt2take) "unknown")
                                                                (apply (constant ,(nn 'isaplanner/prop_15.smt2len) "unknown")
-                                                                      (variable 0 "(grammars/packrat_unambigPackrat.smt2list b)")))
+                                                                      (variable 1 "(grammars/packrat_unambigPackrat.smt2list b)")))
                                                         (variable 0 "(grammars/packrat_unambigPackrat.smt2list a)")))
-                                          (variable 0 "(grammars/packrat_unambigPackrat.smt2list b)")))
+                                          (variable 1 "(grammars/packrat_unambigPackrat.smt2list b)")))
                             (apply (apply (constant ,(nn 'isaplanner/prop_44.smt2zip) "unknown")
                                           (apply (apply (constant ,(nn 'isaplanner/prop_01.smt2drop) "unknown")
                                                         (apply (constant ,(nn 'isaplanner/prop_15.smt2len) "unknown")
-                                                               (variable 0 "(grammars/packrat_unambigPackrat.smt2list b)")))
+                                                               (variable 1 "(grammars/packrat_unambigPackrat.smt2list b)")))
                                                  (variable 0 "(grammars/packrat_unambigPackrat.smt2list a)")))
-                                   (variable 1 "(grammars/packrat_unambigPackrat.smt2list b)")))
+                                   (variable 2 "(grammars/packrat_unambigPackrat.smt2list b)")))
 
                      (apply (apply (constant ,(nn 'isaplanner/prop_44.smt2zip) "unknown")
                                    (variable 0 "(grammars/packrat_unambigPackrat.smt2list a)"))
                             (apply (apply (constant ,(nn 'grammars/packrat_unambigPackrat.smt2append) "unknown")
-                                          (variable 0 "(grammars/packrat_unambigPackrat.smt2list b)"))
-                                   (variable 1 "(grammars/packrat_unambigPackrat.smt2list b)")))))
+                                          (variable 1 "(grammars/packrat_unambigPackrat.smt2list b)"))
+                                   (variable 2 "(grammars/packrat_unambigPackrat.smt2list b)")))))
 
                   "Theorem which is equation gets converted")
 
@@ -345,29 +367,29 @@
             (concat-first-elements (append acc (first lst))
                                    (rest lst)))))
 
-    (match x
-      [(list '=        _ _) '()     ]
-      [(list 'lambda   _ _) '()     ]
-      [(list 'variable _ _) (list x)]
-      [(list 'constant _ _) (list x)]
-      [(list 'apply    _ _) (list x)]
+  (match x
+    [(list '=        _ _) '()     ]
+    [(list 'lambda   _ _) '()     ]
+    [(list 'variable _ _) (list x)]
+    [(list 'constant _ _) (list x)]
+    [(list 'apply    _ _) (list x)]
 
-      ;; (@ f x) is equivalent to (f x), so avoid the indirection. If any
-      ;; 2-lisps need such indirection, like Common Lisp's funcall, they can
-      ;; infer it as needed by e.g. spotting when the lhs of an apply is a
-      ;; variable.
-      [(list '@ a b) (to-expression (list a b))]
+    ;; (@ f x) is equivalent to (f x), so avoid the indirection. If any
+    ;; 2-lisps need such indirection, like Common Lisp's funcall, they can
+    ;; infer it as needed by e.g. spotting when the lhs of an apply is a
+    ;; variable.
+    [(list '@ a b) (to-expression (list a b))]
 
-      ;; Assume that any other symbol is a constant. We don't handle types yet,
-      ;; so no need to bother inferring one.
-      [(? symbol?) (list (list 'constant x "unknown"))]
+    ;; Assume that any other symbol is a constant. We don't handle types yet,
+    ;; so no need to bother inferring one.
+    [(? symbol?) (list (list 'constant x "unknown"))]
 
-      ;; Catch-all for lists; try to convert all elements into expressions, if
-      ;; that succeeds then collect up the results and insert-applies.
-      [(? list?) (match (concat-first-elements
-                         '() (map to-expression x))
-                   ['() '()]
-                   [(list exprs) (list (insert-applies exprs))])]))
+    ;; Catch-all for lists; try to convert all elements into expressions, if
+    ;; that succeeds then collect up the results and insert-applies.
+    [(? list?) (match (concat-first-elements
+                       '() (map to-expression x))
+                 ['() '()]
+                 [(list exprs) (list (insert-applies exprs))])]))
 
 (module+ test
   (def-test-case "Check expression lambdas"
@@ -383,15 +405,8 @@
 
     (check-equal? (to-expression expr)
                   '((apply (constant foo "unknown")
-                            (apply (variable 0 "(=> a (list b))") (variable 0 "a")))))))
-
-(define (next-index-for body type)
-  (define indices
-    (filter integer? (all-indices-of body type)))
-
-  (if (empty? indices)
-      0
-      (+ 1 (apply max indices))))
+                           (apply (variable 1 "(=> a (list b))")
+                                  (variable 0 "a")))))))
 
 ;; Replaces occurrences of the variables VARS in BODY with variables suitable
 ;; for use in an equation
@@ -401,7 +416,7 @@
              (format "~s" (second var)))
 
            (define idx
-             (next-index-for body type))
+             (next-var-index body))
 
            (replace-in (first var)
                        (list 'variable idx type)
@@ -409,8 +424,19 @@
          body
          vars))
 
-;; To to convert the given theorem expression into an equation. Returns an empty
-;; list on failure, or a single-element list on success.
+(define (next-var-index expr)
+  (match expr
+    [(list '~=    lhs rhs) (max (next-var-index lhs)
+                                (next-var-index rhs))]
+    [(list 'apply lhs rhs) (max (next-var-index lhs)
+                                (next-var-index rhs))]
+    [(list 'variable i _)  (+ 1 i)]
+    [(cons x y)            (max (next-var-index x)
+                                (next-var-index y))]
+    [_                     0]))
+
+;; Try to convert the given theorem expression into an equation. Returns an
+;; empty list on failure, or a single-element list on success.
 (define (theorem-to-equation expr)
   (match expr
     ;; Unwrap assert-not
@@ -483,8 +509,9 @@
                   '((~= (apply (apply (constant bind "unknown")
                                       (apply (constant return "unknown")
                                              (variable 0 "a")))
-                               (variable 0 "(=> a (list b))"))
-                        (apply (variable 0 "(=> a (list b))") (variable 0 "a")))))))
+                               (variable 1 "(=> a (list b))"))
+                        (apply (variable 1 "(=> a (list b))")
+                               (variable 0 "a")))))))
 
 ;; Try to parse the given string as a JSON representation of an equation, e.g.
 ;; from reduce-equations. Returns a list containing the result on success, or an
@@ -632,33 +659,33 @@
 
     (list (make-normal-equation lhs rhs))))
 
-(define (make-normal-equation lhs rhs)
-
-  ;; Re-numbers the variables in an equation to count 0, 1, 2, ...
-  (define (renumber eq)
-    ;; Loop through each variable type, renumbering variables of that type
-    (foldl (lambda (type eq)
-             ;; Replace all variables of this type with temporary values, to
-             ;; avoid having mixtures of old and new indices
-             (define temp
-               (foldl (lambda (idx eq)
-                        (replace-in `(variable ,idx                    ,type)
-                                    `(variable ,(format "temp-~a" idx) ,type)
-                                    eq))
-                      eq
-                      (indices-of eq type)))
-
-             ;; Replace temporary values with sequential numbers
-             (foldl (lambda (temp-var eq)
-                      (replace-in `(variable ,temp-var ,type)
-                                  `(variable ,(next-index-for eq type) ,type)
-                                  eq))
-                    temp
-                    (indices-of temp type)))
+;; Re-numbers the variables in an equation to count 0, 1, 2, ...
+(define (renumber eq)
+  ;; Replace all variables with temporary values, to avoid having mixtures of
+  ;; old and new indices
+  (define temp
+    (foldl (lambda (var eq)
+             (match var
+               [(list 'variable index type)
+                (replace-in var
+                            (list 'variable (format "temp-~a" index) type)
+                            eq)]))
            eq
-           (append (all-variable-types-of (second eq))
-                   (all-variable-types-of (third  eq)))))
+           (remove-duplicates (all-variables-in eq))))
 
+  ;; Replace temporary values with sequential numbers
+  (first (foldl (lambda (temp-var result)
+                  (match (list temp-var result)
+                    [(list (list 'variable index type)
+                           (list eq next))
+                     (list (replace-in temp-var
+                                       (list 'variable next type)
+                                       eq)
+                           (+ 1 next))]))
+                (list temp 0)
+                (remove-duplicates (all-variables-in temp)))))
+
+(define (make-normal-equation lhs rhs)
   (define renumbered-1
     (renumber `(~= ,lhs ,rhs)))
 
@@ -668,7 +695,16 @@
   (cond
     [(lex<=? (second renumbered-1) (third renumbered-1)) renumbered-1]
     [(lex<=? (second renumbered-2) (third renumbered-2)) renumbered-2]
-    [else (error (format "Couldn't sort equation ~s" `(~= lhs rhs)))]))
+    [else (error (format "Couldn't sort equation ~s" `(~= ,lhs ,rhs)))]))
+
+(module+ test
+  (def-test-case "Normalised equations"
+    (check-equal? (make-normal-equation '(variable 3 "Bool")
+                                        '(apply (constant foo "unknown")
+                                                (variable 2 "Int")))
+                  '(~= (apply (constant foo "unknown")
+                              (variable 0 "Int"))
+                       (variable 1 "Bool")))))
 
 (define (parse-json-equations str)
   (with-handlers ([exn:fail:read? (lambda (e) '())])
@@ -879,7 +915,38 @@
       (with-check-info
         (('want-eq  want-eq)
          ('found-eq found-eq))
-        (check-true (equations-match? want-eq found-eq))))
+        (check-true (equations-match? want-eq found-eq)
+                    "Found expected equation")))
+
+    (begin
+      (define want-eq2
+        '(~= (apply (constant f "Int -> Bool")
+                    (variable 0 "Int"))
+             (variable 1 "Bool")))
+
+      (define found-eq2
+        (first (parse-json-equation
+                "{\"relation\": \"~=\",
+                  \"lhs\": {
+                     \"role\": \"application\",
+                     \"lhs\":  {
+                       \"role\":   \"constant\",
+                       \"symbol\": \"f\",
+                       \"type\":   \"Int -> Bool\"},
+                     \"rhs\":  {
+                       \"role\": \"variable\",
+                       \"id\":   0,
+                       \"type\": \"Int\"}},
+                  \"rhs\": {
+                    \"role\": \"variable\",
+                    \"id\":   0,
+                    \"type\": \"Bool\"}}")))
+
+      (with-check-info
+        (('want-eq  want-eq2)
+         ('found-eq found-eq2))
+        (check-true (equations-match? want-eq2 found-eq2)
+                    "Parsed vars distinct if types differ, even if ids don't")))
 
     (begin
       (define result
