@@ -274,20 +274,20 @@
                                    (apply (apply (constant ,(nn 'isaplanner/prop_44.smt2zip) "unknown")
                                                  (apply (apply (constant ,(nn 'isaplanner/prop_01.smt2take) "unknown")
                                                                (apply (constant ,(nn 'isaplanner/prop_15.smt2len) "unknown")
-                                                                      (variable 1 "(grammars/packrat_unambigPackrat.smt2list b)")))
-                                                        (variable 0 "(grammars/packrat_unambigPackrat.smt2list a)")))
-                                          (variable 1 "(grammars/packrat_unambigPackrat.smt2list b)")))
+                                                                      (variable 0 "(grammars/packrat_unambigPackrat.smt2list b)")))
+                                                        (variable 1 "(grammars/packrat_unambigPackrat.smt2list a)")))
+                                          (variable 0 "(grammars/packrat_unambigPackrat.smt2list b)")))
                             (apply (apply (constant ,(nn 'isaplanner/prop_44.smt2zip) "unknown")
                                           (apply (apply (constant ,(nn 'isaplanner/prop_01.smt2drop) "unknown")
                                                         (apply (constant ,(nn 'isaplanner/prop_15.smt2len) "unknown")
-                                                               (variable 1 "(grammars/packrat_unambigPackrat.smt2list b)")))
-                                                 (variable 0 "(grammars/packrat_unambigPackrat.smt2list a)")))
+                                                               (variable 0 "(grammars/packrat_unambigPackrat.smt2list b)")))
+                                                 (variable 1 "(grammars/packrat_unambigPackrat.smt2list a)")))
                                    (variable 2 "(grammars/packrat_unambigPackrat.smt2list b)")))
 
                      (apply (apply (constant ,(nn 'isaplanner/prop_44.smt2zip) "unknown")
-                                   (variable 0 "(grammars/packrat_unambigPackrat.smt2list a)"))
+                                   (variable 1 "(grammars/packrat_unambigPackrat.smt2list a)"))
                             (apply (apply (constant ,(nn 'grammars/packrat_unambigPackrat.smt2append) "unknown")
-                                          (variable 1 "(grammars/packrat_unambigPackrat.smt2list b)"))
+                                          (variable 0 "(grammars/packrat_unambigPackrat.smt2list b)"))
                                    (variable 2 "(grammars/packrat_unambigPackrat.smt2list b)")))))
 
                   "Theorem which is equation gets converted")
@@ -452,11 +452,11 @@
     ;; We've found an equation, convert the inner terms
     [(list '= lhs rhs) (let ([x (to-expression lhs)]
                              [y (to-expression rhs)])
-                         (if (or (empty? x) (empty? y))
-                             '()
-                             (if (lex<=? (first x) (first y))
-                                 (list (list '~= (first x) (first y)))
-                                 (list (list '~= (first y) (first x))))))]
+                         (match (list x y)
+                           [(list '() _) '()]
+                           [(list _ '()) '()]
+                           [(list (list x) (list y))
+                            (list (make-normal-equation x y))]))]
 
     ;; Non-equations; some of these could be solved by, e.g., an SMT solver
 
@@ -511,7 +511,20 @@
                                              (variable 0 "a")))
                                (variable 1 "(=> a (list b))"))
                         (apply (variable 1 "(=> a (list b))")
-                               (variable 0 "a")))))))
+                               (variable 0 "a"))))))
+
+  (def-test-case "Check theorem sorting"
+    (check-equal? (theorem-to-equation '(assert-not
+                                         (forall ((x t1) (y t2)) (= x y))))
+                  '((~= (variable 0 "t1")
+                        (variable 1 "t2")))
+                  "Renumbered variables ordered by type")
+
+    (check-equal? (theorem-to-equation '(assert-not
+                                         (forall ((x t2) (y t1)) (= x y))))
+                  '((~= (variable 0 "t1")
+                        (variable 1 "t2")))
+                  "Sides switched into order and variables renumbered")))
 
 ;; Try to parse the given string as a JSON representation of an equation, e.g.
 ;; from reduce-equations. Returns a list containing the result on success, or an
@@ -692,10 +705,9 @@
   (define renumbered-2
     (renumber `(~= ,rhs ,lhs)))
 
-  (cond
-    [(lex<=? (second renumbered-1) (third renumbered-1)) renumbered-1]
-    [(lex<=? (second renumbered-2) (third renumbered-2)) renumbered-2]
-    [else (error (format "Couldn't sort equation ~s" `(~= ,lhs ,rhs)))]))
+  (if (lex<=? (second renumbered-1) (second renumbered-2))
+      renumbered-1
+      renumbered-2))
 
 (module+ test
   (def-test-case "Normalised equations"
@@ -741,19 +753,17 @@
 
 (define/test-contract (equations-match? x y)
   (-> equation? equation? boolean?)
-
-  (define-values (x-l x-r)
-    (match x
-      [(list '~= l r) (values l r)]))
-
-  (define-values (y-l y-r)
-    (match y
-      [(list '~= l r) (values l r)]))
-
-  (or (and (expressions-match? x-l y-l)
-           (expressions-match? x-r y-r))
-      (and (expressions-match? x-l y-r)
-           (expressions-match? x-r y-l))))
+  ;; FIXME: Replace any occurrences of 'constructor-foo' with 'foo' (including if
+  ;; they're encoded), in both equations, before renumbering and comparing
+  (match (list x y)
+    [(list (list '~= x-l x-r)
+           (list '~= y-l y-r))
+     (match (list (make-normal-equation x-l x-r)
+                  (make-normal-equation y-l y-r))
+       [(list (list '~= xl xr)
+              (list '~= yl yr))
+        (and (expressions-match? xl yl)
+             (expressions-match? xr yr))])]))
 
 (module+ test
     (def-test-case "Equation matching"
