@@ -751,11 +751,38 @@
                   (lhs      . ,(expression-to-jsexpr lhs))
                   (rhs      . ,(expression-to-jsexpr rhs))))]))
 
+(define (strip-cons-des-prefix s)
+  (define (strip-prefix upper? pre str)
+    (let* ((glob (if upper? "Global" "global"))
+           (enc  (string-append "global" (encode16 pre))))
+      (cond
+        [(string-prefix? str pre) (substring str (string-length pre))]
+        [(string-prefix? str enc)
+         (string-append glob      (substring str (string-length enc)))]
+        [#t str])))
+
+  (if (symbol? s)
+      (string->symbol (strip-prefix #f "destructor-"
+                                    (strip-prefix #t "constructor-"
+                                                  (symbol->string s))))
+      s))
+
+(define (cons-des-funcs-to-raw expr)
+  (match expr
+    [(list '~= lhs rhs)   (map cons-des-funcs-to-raw expr)]
+    [(list 'constant f t) (list 'constant (strip-cons-des-prefix f) t)]
+    [(list 'variable _ _) expr]
+    [(list 'apply f x)    (map cons-des-funcs-to-raw expr)]
+    [(cons x y)           (cons (cons-des-funcs-to-raw x)
+                                (cons-des-funcs-to-raw y))]
+    [_                    expr]))
+
 (define/test-contract (equations-match? x y)
   (-> equation? equation? boolean?)
-  ;; FIXME: Replace any occurrences of 'constructor-foo' with 'foo' (including if
-  ;; they're encoded), in both equations, before renumbering and comparing
-  (match (list x y)
+  ;; Replace 'constructor-foo' with 'foo' and 'destructor-bar' with 'bar' (even
+  ;; if hex encoded), since they're eta-equivalent so should match if needed.
+  (match (list (cons-des-funcs-to-raw x)
+               (cons-des-funcs-to-raw y))
     [(list (list '~= x-l x-r)
            (list '~= y-l y-r))
      (match (list (make-normal-equation x-l x-r)
@@ -766,7 +793,7 @@
              (expressions-match? xr yr))])]))
 
 (module+ test
-    (def-test-case "Equation matching"
+  (def-test-case "Equation matching"
     (check-true (equations-match? '(~= (constant bar "foo")
                                        (variable 0   "foo"))
                                   '(~= (constant bar "foo")
@@ -801,7 +828,39 @@
                                    '(~= (apply (variable 0   "Int -> Bool")
                                                (variable 0   "foo"))
                                         (constant bar "foo")))
-                 "Different structures don't match")))
+                 "Different structures don't match")
+
+    (check-true (equations-match? '(~= (constant constructor-foo "t1")
+                                       (constant bar "t1"))
+                                  '(~= (constant bar "unknown")
+                                       (constant foo "unknown")))
+                "Constructors match their expansions")
+
+    (check-true (equations-match? '(~= (constant destructor-foo "unknown")
+                                       (constant bar "t1"))
+                                  '(~= (constant foo "t1")
+                                       (constant bar "unknown")))
+                "Destructors match their expansions")
+
+    (check-true (equations-match?
+                 '(~= (constant global636f6e7374727563746f722d666f6f "t1")
+                      (constant bar "t1"))
+                 '(~= (constant Global666f6f "t1")
+                      (constant bar "t1")))
+                "Encoded constructor-foo matches encoded foo")
+
+    (check-true (equations-match?
+                 '(~= (constant global64657374727563746f722d666f6f "t1")
+                      (constant bar "t1"))
+                 '(~= (constant global666f6f "t1")
+                      (constant bar "t1")))
+                "Encoded destructor-foo matches encoded foo")
+
+    (check-false (equations-match? '(~= (constant constructor-foo "t1")
+                                        (constant bar "t1"))
+                                   '(~= (constant baz "t1")
+                                        (constant bar "t1")))
+                 "Constructor function names must still match")))
 
 (define/test-contract (expressions-match? x y)
   (-> expression? expression? boolean?)
