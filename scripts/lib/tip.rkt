@@ -12,7 +12,7 @@
          files-to-hashes get-def-s lowercase-names names-in
          native-symbols path-end symbols-in theorem? theorem-files
          theorem-hashes theorem-ids tip-benchmarks? tip-path?
-         toplevel-function-defs-of toplevel-names-in
+         toplevel-function-defs-of toplevel-function-names-in toplevel-names-in
          uppercase-names)
 
 (module+ test
