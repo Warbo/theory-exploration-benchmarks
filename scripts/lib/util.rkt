@@ -1,6 +1,6 @@
 #lang racket
 
-(provide as-str
+(provide any->bool as-str
          decode16 define/test-contract
          encode16 format-symbols hash-foldl
          map-set prefix-name
@@ -139,3 +139,7 @@
            (f (car kv) (cdr kv) result))
          init
          (hash->list h)))
+
+(define/test-contract (any->bool x)
+  (-> any/c boolean?)
+  (not (not x)))

@@ -157,10 +157,6 @@
      (list (mk-rep 'A 'B)                        ;; Not a set of replacements
            (mk-reps (mk-rep 'B 'A) (mk-rep 'B 'C))))))  ;; Duplicate values not allowed
 
-(define/test-contract (any->bool x)
-  (-> any/c boolean?)
-  (not (not x)))
-
 (define (rep-equal? x y)
   (equal? x y))
 
