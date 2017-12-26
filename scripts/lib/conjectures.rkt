@@ -10,8 +10,8 @@
 (require "util.rkt")
 
 (provide conjectures-admitted-by-sample-wrapper
-         conjectures-for-sample-wrapper eqs-to-json-wrapper
-         precision-recall-eqs-wrapper)
+         conjectures-for-sample-wrapper equation-to-jsexpr eqs-to-json-wrapper
+         parse-json-equation parse-json-equations precision-recall-eqs-wrapper)
 
 (module+ test
   (require "testing.rkt"))
