@@ -1,0 +1,9 @@
+From: Chris Warburton
+Date: Tue, 26 Dec 2017 20:00:56 +0000
+Subject: Re: Don't include destructors in samples
+Message-Id: <dc84cd7449d525db-f41e5e25d486a2d4-artemis@nixos>
+References: <dc84cd7449d525db-0-artemis@nixos>
+In-Reply-To: <dc84cd7449d525db-0-artemis@nixos>
+
+Added some tests for this ("Only functions get sampled"), which are
+currently red.

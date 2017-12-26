@@ -1,0 +1,14 @@
+From: Chris Warburton
+Date: Mon, 25 Dec 2017 21:51:12 +0000
+State: new
+Subject: Don't include destructors in samples
+Message-Id: <dc84cd7449d525db-0-artemis@nixos>
+
+The choose_sample command currently invokes (eventually, nested some
+layers down) the lowercase-names function. This extracts all function
+names *and* destructor names, even though the latter will never
+contribute to any theorem, since we replace references to constructors
+and destructors with their 'constructor-' and 'destructor-' wrappers.
+
+We *might* be able to just rip the destructors stuff out of
+lowercase-names, but we should check where else it's used.

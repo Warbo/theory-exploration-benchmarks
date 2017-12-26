@@ -5,6 +5,7 @@
 (require "impure.rkt")
 (require "normalise.rkt")
 (require "theorems.rkt")
+(require "tip.rkt")
 (require "lists.rkt")
 (require "util.rkt")
 
@@ -327,4 +328,59 @@
                                                 n o p q r s t u v w x y z))
                                       (list deps))
                               "Sampling with one deps constraint returns deps"))
-              (all-theorem-deps))))
+              (all-theorem-deps)))
+
+  (def-test-case "Only functions get sampled"
+    (define all-functions
+      (map decode-name (append-map toplevel-function-names-in
+                                   (final-benchmark-defs))))
+
+    (define (strip-matching-prefix p)
+      ;; Remove the prefix 'p' from the start of each result
+      (map (lambda (name)
+             (string->symbol
+              (substring (symbol->string name)
+                         (string-length p))))
+
+           ;; The results are those names beginning with 'p'
+           (filter (lambda (name)
+                     (string-prefix? (symbol->string name) p))
+                   all-functions)))
+
+    (define all-constructors
+      (strip-matching-prefix "constructor-"))
+
+    (define all-destructors
+      (strip-matching-prefix "destructor-"))
+
+    (for-each (lambda (rep)
+                (for-each (lambda (encoded)
+                            (define name (decode-name encoded))
+
+                            (with-check-info
+                              (('encoded           encoded)
+                               ('name              name)
+                               ('some-constructors (take all-constructors 5)))
+                              (check-false
+                               (member name all-constructors)
+                               "Shouldn't sample constructors"))
+
+                            (with-check-info
+                              (('encoded           encoded)
+                               ('name              name)
+                               ('some-destructors (take all-destructors 5)))
+                              (check-false
+                               (member name all-destructors)
+                               "Shouldn't sample destructors"))
+
+                            (with-check-info
+                              (('encoded        encoded)
+                               ('name           name)
+                               ('some-functions (take all-functions 5)))
+                              (check-true
+                               (any->bool (member name all-functions))
+                               "Sample should be function names")))
+
+                          ;; We want a whole bunch of names, so we pick 50
+                          (set->list (sample-from-benchmarks 50 rep))))
+              (range 0 100))))
