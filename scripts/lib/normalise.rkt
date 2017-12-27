@@ -1184,7 +1184,7 @@
                       (error "No BENCHMARKS_NORMALISED_DEFINITIONS"))))
 
 (define (mk-final-defs)
-  (show (final-benchmark-defs)))
+  (list->lines (final-benchmark-defs)))
 
 ;; Takes a hashmap of filename->content and returns a combined, normalised TIP
 ;; benchmark

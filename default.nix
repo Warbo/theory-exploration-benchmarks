@@ -397,14 +397,29 @@ rec {
     '';
   });
 
-  tip-benchmark-smtlib = stdenv.mkDerivation {
-    inherit (cache) BENCHMARKS_FINAL_BENCHMARK_DEFS;
-    name         = "tip-benchmark-smtlib";
-    buildInputs  = [ tools ];
-    buildCommand = ''
-      mk_final_defs > "$out"
-    '';
+  runRacket = name: paths: vars: script: stdenv.mkDerivation {
+    inherit name;
+    builder = wrap {
+      inherit paths;
+      name   = "${name}.rkt";
+      vars   = { PLTCOLLECTS = ":${./scripts}"; } // vars;
+      script = ''
+        #!/usr/bin/env racket
+        #lang racket
+        ${script}
+      '';
+    };
   };
+
+  tip-benchmark-smtlib = runRacket "tip-benchmark-smtlib"
+    [ racketWithPkgs ]
+    { inherit (cache) BENCHMARKS BENCHMARKS_FINAL_BENCHMARK_DEFS; }
+    ''
+      (require lib/normalise)
+      (require lib/impure)
+
+      (write-to-out (mk-final-defs))
+    '';
 
   tip-benchmark-haskell = stdenv.mkDerivation {
     inherit (cache) BENCHMARKS_FINAL_BENCHMARK_DEFS;

@@ -2,7 +2,7 @@
 
 (provide any->bool as-str
          decode16 define/test-contract
-         encode16 format-symbols hash-foldl
+         encode16 format-symbols hash-foldl list->lines
          map-set prefix-name
          read-benchmark replace-strings
          show string-reverse)
@@ -36,8 +36,10 @@
 
 ;; Format a list of expressions to a string, with one expression per line. The
 ;; list's parens aren't included.
-(define (format-symbols syms)
-  (string-join (map ~s syms) "\n"))
+(define (list->lines lst)
+  (string-join (map ~s lst) "\n"))
+
+(define format-symbols list->lines)
 
 ;; Print a list of expressions to (current-output-port)
 (define (show x)

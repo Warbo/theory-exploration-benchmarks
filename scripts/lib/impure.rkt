@@ -6,7 +6,7 @@
 
 (provide benchmark-file benchmark-files benchmark-dir in-temp-dir msg
          parameterize-env pipe quiet read-from-cache!
-         set-theorem-files! theorem-files temp-file-prefix)
+         set-theorem-files! theorem-files temp-file-prefix write-to-out)
 
 (module+ test
   ;; Don't use testing.rkt, as that would cause a circular dependency
@@ -116,3 +116,8 @@
     (error (string-append "No " cache " given")))
 
   (with-input-from-string (file->string cache-path) read))
+
+(define (write-to-out str)
+  (call-with-output-file* (getenv "out")
+                          (lambda (out)
+                            (write-string str out))))
