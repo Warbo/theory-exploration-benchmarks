@@ -120,4 +120,5 @@
 (define (write-to-out str)
   (call-with-output-file* (getenv "out")
                           (lambda (out)
-                            (write-string str out))))
+                            (write-string str out)))
+  (void))  ;; Don't return anything, since top-level return values get printed
