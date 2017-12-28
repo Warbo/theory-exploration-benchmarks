@@ -288,11 +288,37 @@
                    (list->set (second t-d)))
                  (assoc-get 'theorem-deps data))))
 
+  (define all-constructors
+    (strip-matching-prefix all-canonical-function-names "constructor-"))
+
+  (define all-destructors
+    (strip-matching-prefix all-canonical-function-names "destructor-"))
+
+  ;; TODO: Rather than filtering out constructors and destructors, we shouldn't
+  ;; be including them in the first place. In particular, the naming is pretty
+  ;; deceptive.
+
+  (define only-function-names
+    (remove* (append all-constructors all-destructors)
+             all-canonical-function-names))
+
   (define sampled
-    (sample size rep all-canonical-function-names theorem-deps))
+    (sample size rep only-function-names theorem-deps))
 
   ;; Hex encode sample so it's usable with e.g. Haskell translation
   (map-set encode-lower-name sampled))
+
+(define (strip-matching-prefix names p)
+  ;; Remove the prefix 'p' from the start of each result
+  (map (lambda (name)
+         (string->symbol
+          (substring (symbol->string name)
+                     (string-length p))))
+
+       ;; The results are those names beginning with 'p'
+       (filter (lambda (name)
+                 (string-prefix? (symbol->string name) p))
+               names)))
 
 (module+ test
   (def-test-case "Smart sampling"
@@ -335,23 +361,11 @@
       (map decode-name (append-map toplevel-function-names-in
                                    (final-benchmark-defs))))
 
-    (define (strip-matching-prefix p)
-      ;; Remove the prefix 'p' from the start of each result
-      (map (lambda (name)
-             (string->symbol
-              (substring (symbol->string name)
-                         (string-length p))))
-
-           ;; The results are those names beginning with 'p'
-           (filter (lambda (name)
-                     (string-prefix? (symbol->string name) p))
-                   all-functions)))
-
     (define all-constructors
-      (strip-matching-prefix "constructor-"))
+      (strip-matching-prefix all-functions "constructor-"))
 
     (define all-destructors
-      (strip-matching-prefix "destructor-"))
+      (strip-matching-prefix all-functions "destructor-"))
 
     (for-each (lambda (rep)
                 (for-each (lambda (encoded)
