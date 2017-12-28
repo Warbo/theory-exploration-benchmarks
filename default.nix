@@ -359,6 +359,8 @@ rec {
     # Require (quick) tests to pass before attempting to install
     inherit quickToolTest;
 
+    inherit choose_sample;
+
     name = "te-benchmark";
     src  = ./scripts;
 
@@ -394,14 +396,53 @@ rec {
           --set BENCHMARKS_NORMALISED_THEOREMS "$BENCHMARKS_NORMALISED_THEOREMS" \
           --set BENCHMARKS                     "$BENCHMARKS"
       done
+
+      ln -s "$choose_sample" "$out/bin/choose_sample"
     '';
   });
+
+  choose_sample = wrap {
+    name   = "choose_sample";
+    paths  = [ racketWithPkgs ];
+    vars   = {
+      inherit (cache) BENCHMARKS BENCHMARKS_CACHE;
+      PLTCOLLECTS = ":${./scripts}";
+      usage       = ''
+        Usage: choose_sample <size> <index>
+
+        Where size and index are natural numbers.
+
+        size determines how many names will be included in the sample, whilst
+        different index values give rise to different samples (using the same
+        index will give out the same sample).
+      '';
+    };
+    script = ''
+      #!/usr/bin/env racket
+      #lang racket
+
+      (require lib/impure)
+      (require lib/sampling)
+
+      (match (map string->number
+                  (vector->list (current-command-line-arguments)))
+        [(list #f   _)   (error  "size parameter should be a natural number")]
+        [(list _    #f)  (error "index parameter should be a natural number")]
+        [(list size rep) (display
+                           (string-join (map symbol->string
+                                             (set->list
+                                               (sample-from-benchmarks size
+                                                                       rep)))
+                                        "\n"))]
+        [_               (error (getenv "usage"))])
+    '';
+  };
 
   runRacket = name: paths: vars: script: stdenv.mkDerivation {
     inherit name;
     builder = wrap {
-      inherit paths;
       name   = "${name}.rkt";
+      paths  = [ racketWithPkgs ] ++ paths;
       vars   = { PLTCOLLECTS = ":${./scripts}"; } // vars;
       script = ''
         #!/usr/bin/env racket
@@ -412,7 +453,7 @@ rec {
   };
 
   tip-benchmark-smtlib = runRacket "tip-benchmark-smtlib"
-    [ racketWithPkgs ]
+    []
     { inherit (cache) BENCHMARKS BENCHMARKS_FINAL_BENCHMARK_DEFS; }
     ''
       (require lib/normalise)
