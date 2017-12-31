@@ -1,8 +1,8 @@
 #!/usr/bin/env racket
 #lang racket
 
-(require "lib/normalise.rkt")
-(require "lib/tip.rkt")
+(require lib/normalise)
+(require lib/tip)
 
 (module+ main
   (when (getenv "BENCHMARKS_FINAL_BENCHMARK_DEFS")

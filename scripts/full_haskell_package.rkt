@@ -1,5 +1,5 @@
 #!/usr/bin/env racket
 #lang racket
 
-(require "lib/sigs.rkt")
+(require lib/sigs)
 (full-haskell-package)

@@ -2,7 +2,7 @@
 #lang racket
 
 (require json)
-(require "lib/conjectures.rkt")
+(require lib/conjectures)
 
 (write-json
  (precision-recall-eqs-wrapper (port->string)
