@@ -68,37 +68,12 @@ with rec {
        else trace "WARNING: Broken 'racket'; falling back to 16.09"
             nixpkgs1609.racket;
 
-  # Racket's 'launcher' system hard-codes PATH to "/bin:/usr/bin" for no good
-  # reason, which breaks under Nix. We patch it away.
-  patchedRacket = runCommand "patched-racket"
-    {
-      inherit workingRacket;
-      buildInputs = [ replace ];
-      file        = "share/racket/collects/launcher/launcher.rkt";
-    }
-    ''
-      cp -r "$workingRacket" "$out"
-      chmod +w -R "$out"
-
-      echo "Hard-coding tool checks" 1>&2
-      for TOOL in "readlink" "dirname" "basename" "ls" "sed"
-      do
-        sed -e "s@(has-exe? \"$TOOL\")@#t@g" -i "$out/$file"
-      done
-
-      echo "Removing PATH-replacement junk" 1>&2
-      sed -e 's@.*"PATH=.*@@g' -i "$out/$file"
-
-      echo "Replacing all references to unpatched Racket '$workingRacket'" 1>&2
-      find . -type f | xargs -L 1 replace "$workingRacket" "$out" --
-    '';
-
   racketWithPkgs =
     with rec {
       racketWithDeps = deps: stdenv.mkDerivation {
         name = "racket-with-deps";
 
-        buildInputs = [ makeWrapper patchedRacket ];
+        buildInputs = [ makeWrapper workingRacket ];
 
         inherit deps;
           buildCommand = ''
@@ -133,7 +108,7 @@ with rec {
 
           # Provide Racket binaries patched to use our modified HOME and scripts
           mkdir -p "$out/bin"
-          for PROG in "${patchedRacket}"/bin/*
+          for PROG in "${workingRacket}"/bin/*
           do
             NAME=$(basename "$PROG")
             makeWrapper "$PROG" "$out/bin/$NAME"     \
