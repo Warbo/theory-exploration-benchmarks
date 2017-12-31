@@ -395,8 +395,6 @@ rec {
     # Require (quick) tests to pass before attempting to install
     inherit quickToolTest;
 
-    inherit choose_sample;
-
     name = "te-benchmark";
     src  = ./scripts;
 
@@ -432,21 +430,9 @@ rec {
           --set BENCHMARKS_NORMALISED_THEOREMS "$BENCHMARKS_NORMALISED_THEOREMS" \
           --set BENCHMARKS                     "$BENCHMARKS"
       done
-
-      ln -s "$choose_sample" "$out/bin/choose_sample"
     '';
   });
 
-  choose_sample = wrap {
-    name   = "choose_sample";
-    paths  = [ racketWithPkgs ];
-    vars   = {
-      inherit (cache) BENCHMARKS BENCHMARKS_CACHE;
-      PLTCOLLECTS = ":${./scripts}";
-      usage       = ''
-        Usage: choose_sample <size> <index>
-
-        Where size and index are natural numbers.
   compileRacketScript = name: vars: script: wrap {
     inherit name;
     paths = [ racketWithPkgs ];
@@ -470,35 +456,14 @@ rec {
       ''
         echo "Compiling '$raw' to '$out'" 1>&2
 
-        size determines how many names will be included in the sample, whilst
-        different index values give rise to different samples (using the same
-        index will give out the same sample).
         # The '--gui' flag somehow works around this problem with 'raco exe'
         # https://github.com/NixOS/nixpkgs/issues/11698
         # Apparently newer Racket releases don't have this problem, but we need
         # x86 compatibility which the newer releases drop (in Nixpkgs, at least)
         raco exe --gui -o "$out" "$raw"
       '';
-    };
-    script = ''
-      #!/usr/bin/env racket
-      #lang racket
   };
 
-      (require lib/impure)
-      (require lib/sampling)
-
-      (match (map string->number
-                  (vector->list (current-command-line-arguments)))
-        [(list #f   _)   (error  "size parameter should be a natural number")]
-        [(list _    #f)  (error "index parameter should be a natural number")]
-        [(list size rep) (display
-                           (string-join (map symbol->string
-                                             (set->list
-                                               (sample-from-benchmarks size
-                                                                       rep)))
-                                        "\n"))]
-        [_               (error (getenv "usage"))])
   compileTest = runCommand "compile-test"
     {
       buildInputs = [ fail ];
