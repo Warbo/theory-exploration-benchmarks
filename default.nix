@@ -41,6 +41,8 @@ with rec {
       config = import "${config-src}/config.nix";
     });
 
+  inherit (nix-config) attrsToDirs fail replace wrap;
+
   # Take the given Haskell packages, but override some things which are known
   # to be broken on Hackage. TODO: Get upstream to upload non-broken packages!
   patchedHaskellPackages =
@@ -192,7 +194,7 @@ with rec {
       '';
   };
 
-  mkTestScript = vars: nix-config.wrap {
+  mkTestScript = vars: wrap {
     vars   = {
       TEST_DATA       = ./test-data/nat-simple-raw.json;
       TEST_LIST_EQS   = ./test-data/list-full-found.json;
