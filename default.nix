@@ -46,14 +46,15 @@ with rec {
   patchedHaskellPackages =
     with rec {
       hsPkgs = if haskellPackages == null
-                  then pkgs.haskellPackages
+                  then pkgs.haskell.packages.ghc7103
                   else haskellPackages;
 
       overrides = self: super:
         genAttrs [ "tip-lib" "geniplate" ]
                  (name: self.callPackage (overriddenHaskell name) {});
 
-      overriddenHaskell = name: nix-config.haskellPackages."${name}".src;
+      overriddenHaskell = name:
+        nix-config.haskell.packages.ghc7103."${name}".src;
     };
     hsPkgs.override { inherit overrides; };
 
