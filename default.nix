@@ -29,8 +29,8 @@ with rec {
     with rec {
       nix-config-src-default = fetchgit {
         url    = "http://chriswarbo.net/git/nix-config.git";
-        rev    = "83b4add";
-        sha256 = "1zvlr804pkm8pfn7idaygw5japzq0ggk30h2wjq9hj8jb5fkf96g";
+        rev    = "15e860d";
+        sha256 = "18x4cq2cl8dmw8zkk4a4kryh53bj98n61ydj1472ywhmvkanw944";
       };
 
       config-src = if nix-config-src == null
