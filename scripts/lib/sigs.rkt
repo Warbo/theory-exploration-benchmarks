@@ -1,16 +1,16 @@
 #lang racket
 
 (require shell/pipeline)
-(require "impure.rkt")
-(require "lists.rkt")
-(require "normalise.rkt")
-(require "tip.rkt")
-(require "util.rkt")
+(require lib/impure)
+(require lib/lists)
+(require lib/normalise)
+(require lib/tip)
+(require lib/util)
 
 (provide full-haskell-package tip-haskell-package)
 
 (module+ test
-  (require "testing.rkt")
+  (require lib/testing)
 
   (define (defs-to-sig x)
     (mk-signature-s (format-symbols (mk-final-defs-hash (files-to-hashes x)))))

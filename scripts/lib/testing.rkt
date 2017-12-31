@@ -3,7 +3,7 @@
 ;; Helper functions/macros for tests. Also re-exports things from RackUnit.
 
 (require rackunit)
-(require "impure.rkt")
+(require lib/impure)
 
 (provide check-equal? check-exn check-false
          check-not-equal? check-pred check-true constructorS constructorZ

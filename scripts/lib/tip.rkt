@@ -2,11 +2,11 @@
 
 ;; Helpers for manipulating TIP benchmarks
 
-(require "compare.rkt")
-(require "impure.rkt")
-(require "lists.rkt")
-(require "memo.rkt")
-(require "util.rkt")
+(require lib/compare)
+(require lib/impure)
+(require lib/lists)
+(require lib/memo)
+(require lib/util)
 
 (provide definition? expression-constructors expression-destructors
          files-to-hashes get-def-s lowercase-names names-in
@@ -16,7 +16,7 @@
          uppercase-names)
 
 (module+ test
-  (require "testing.rkt"))
+  (require lib/testing))
 
 ;; Predicates, types and contracts
 

@@ -3,16 +3,16 @@
 ;; Sets of replacements to make, due to definitions being alpha-equivalent.
 
 (require racket/trace)
-(require "compare.rkt")
-(require "lists.rkt")
-(require "sets.rkt")
-(require "util.rkt")
+(require lib/compare)
+(require lib/lists)
+(require lib/sets)
+(require lib/util)
 
 (provide count-replacements extend-replacements finalise-replacements new-of
          old-of replace replacement replacements?)
 
 (module+ test
-  (require "testing.rkt"))
+  (require lib/testing))
 
 ;; A replacement is a set of symbols. The smallest value in the set is the one
 ;; we'll use (the "new"), all the rest will be replaced (the "old").

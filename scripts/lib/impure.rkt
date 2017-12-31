@@ -1,8 +1,8 @@
 #lang racket
 
 (require shell/pipeline)
-(require "memo.rkt")
-(require "util.rkt")
+(require lib/memo)
+(require lib/util)
 
 (provide benchmark-file benchmark-files benchmark-dir in-temp-dir msg
          parameterize-env pipe quiet read-from-cache!

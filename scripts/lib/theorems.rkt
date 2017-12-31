@@ -1,17 +1,17 @@
 #lang racket
 
-(require "impure.rkt")
-(require "lists.rkt")
-(require "memo.rkt")
-(require "normalise.rkt")
-(require "replacements.rkt")
-(require "tip.rkt")
-(require "util.rkt")
+(require lib/impure)
+(require lib/lists)
+(require lib/memo)
+(require lib/normalise)
+(require lib/replacements)
+(require lib/tip)
+(require lib/util)
 
 (provide all-theorem-deps normalised-theorems normed-theorem-of theorem-deps-of)
 
 (module+ test
-  (require "testing.rkt"))
+  (require lib/testing))
 
 ;; Extracts a list of theorem statements from a given benchmark file. For real
 ;; TIP benchmarks this should contain a single theorem, so we enforce this in

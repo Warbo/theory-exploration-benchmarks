@@ -1,20 +1,20 @@
 #lang racket
 
 (require json)
-(require "compare.rkt")
-(require "lists.rkt")
-(require "normalise.rkt")
-(require "sampling.rkt")
-(require "theorems.rkt")
-(require "tip.rkt")
-(require "util.rkt")
+(require lib/compare)
+(require lib/lists)
+(require lib/normalise)
+(require lib/sampling)
+(require lib/theorems)
+(require lib/tip)
+(require lib/util)
 
 (provide conjectures-admitted-by-sample-wrapper
          conjectures-for-sample-wrapper equation-to-jsexpr eqs-to-json-wrapper
          parse-json-equation parse-json-equations precision-recall-eqs-wrapper)
 
 (module+ test
-  (require "testing.rkt"))
+  (require lib/testing))
 
 (define (find-eqs-intersection found sample)
   (find-eqs-intersection-raw

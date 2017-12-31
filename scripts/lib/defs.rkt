@@ -7,10 +7,10 @@
 (require racket/match)
 (require racket/trace)
 (require shell/pipeline)
-(require "compare.rkt")
-(require "impure.rkt")
-(require "memo.rkt")
-(require "util.rkt")
+(require lib/compare)
+(require lib/impure)
+(require lib/memo)
+(require lib/util)
 
 ;; General infrastructure setup, not problem-specific
 
@@ -19,7 +19,7 @@
 ;; definition and documentation. All testing goes in the 'test' submodule.
 (module+ test
   (require rackunit)
-  (require "testing.rkt"))
+  (require lib/testing))
 
 ;; Globals
 

@@ -1,18 +1,18 @@
 #lang racket
 
 (require grommet/crypto/hash/sha256)
-(require "compare.rkt")
-(require "impure.rkt")
-(require "normalise.rkt")
-(require "theorems.rkt")
-(require "tip.rkt")
-(require "lists.rkt")
-(require "util.rkt")
+(require lib/compare)
+(require lib/impure)
+(require lib/normalise)
+(require lib/theorems)
+(require lib/tip)
+(require lib/lists)
+(require lib/util)
 
 (provide get-sampling-data make-sampling-data sample-from-benchmarks)
 
 (module+ test
-  (require "testing.rkt"))
+  (require lib/testing))
 
 ;; Does S contain all dependencies required by some theorem statement?
 (define (sample-admits-conjecture? s)

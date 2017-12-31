@@ -2,11 +2,11 @@
 
 ;; Functions for operating on sets (unordered lists with no duplicates)
 
-(require "util.rkt")
+(require lib/util)
 (provide precision recall set-filter set-foldl set-map)
 
 (module+ test
-  (require "testing.rkt"))
+  (require lib/testing))
 
 ;; Map a function F over the elements of a set S. This shadows Racket's built-in
 ;; set-map, which unhelpfully returns a list (and has dodgy argument order)

@@ -3,14 +3,14 @@
 ;; Normalise TIP definitions
 
 (require racket/trace)
-(require "compare.rkt")
-(require "impure.rkt")
-(require "lists.rkt")
-(require "memo.rkt")
-(require "replacements.rkt")
-(require "tip.rkt")
-(require "util.rkt")
 (require "../strip-native.rkt")
+(require lib/compare)
+(require lib/impure)
+(require lib/lists)
+(require lib/memo)
+(require lib/replacements)
+(require lib/tip)
+(require lib/util)
 
 (provide all-constructor-function-replacements all-replacements-closure
          decode-name
@@ -23,7 +23,7 @@
          replace-names unqualify)
 
 (module+ test
-  (require "testing.rkt"))
+  (require lib/testing))
 
 ;; Unencoded names. Strictly speaking, we should allow such names in case the
 ;; user actually fed in such definitions; however, in practice this is a good
