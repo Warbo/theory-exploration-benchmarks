@@ -3,7 +3,6 @@
 ;; Normalise TIP definitions
 
 (require racket/trace)
-(require "../strip-native.rkt")
 (require lib/compare)
 (require lib/impure)
 (require lib/lists)
@@ -11,6 +10,7 @@
 (require lib/replacements)
 (require lib/tip)
 (require lib/util)
+(require lib/strip-native)
 
 (provide all-constructor-function-replacements all-replacements-closure
          decode-name
