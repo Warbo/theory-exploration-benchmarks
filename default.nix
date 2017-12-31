@@ -421,15 +421,43 @@ rec {
         Usage: choose_sample <size> <index>
 
         Where size and index are natural numbers.
+  compileRacketScript = name: vars: script: wrap {
+    inherit name;
+    paths = [ racketWithPkgs ];
+    vars  = {
+      inherit PLTCOLLECTS;
+      PLT_COMPILED_FILE_CHECK = "exists";
+    } // vars;
+    file = runCommand "compiled-${name}"
+      {
+        inherit PLTCOLLECTS;
+        buildInputs = [ racketWithPkgs ];
+        fileName    = name;
+        raw         = if typeOf script == "path" || hasPrefix "/" script
+                         then script
+                         else writeScript "${name}.rkt" ''
+                           #!/usr/bin/env racket
+                           #lang racket
+                           ${script}
+                         '';
+      }
+      ''
+        echo "Compiling '$raw' to '$out'" 1>&2
 
         size determines how many names will be included in the sample, whilst
         different index values give rise to different samples (using the same
         index will give out the same sample).
+        # The '--gui' flag somehow works around this problem with 'raco exe'
+        # https://github.com/NixOS/nixpkgs/issues/11698
+        # Apparently newer Racket releases don't have this problem, but we need
+        # x86 compatibility which the newer releases drop (in Nixpkgs, at least)
+        raco exe --gui -o "$out" "$raw"
       '';
     };
     script = ''
       #!/usr/bin/env racket
       #lang racket
+  };
 
       (require lib/impure)
       (require lib/sampling)
@@ -445,8 +473,19 @@ rec {
                                                                        rep)))
                                         "\n"))]
         [_               (error (getenv "usage"))])
+  compileTest = runCommand "compile-test"
+    {
+      buildInputs = [ fail ];
+      cmd = compileRacketScript "test-script" {} ''
+        (display "Compiled Racket scripts work")
+      '';
+    }
+    ''
+      set -e
+      OUTPUT=$("$cmd") || fail "Compiled script failed"
+      echo "$OUTPUT" | grep 'work' || fail "Didn't output correctly"
+      mkdir "$out"
     '';
-  };
 
   runRacket = name: paths: vars: script: stdenv.mkDerivation {
     inherit name;
