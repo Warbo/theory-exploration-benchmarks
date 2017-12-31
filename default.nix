@@ -131,12 +131,14 @@ with rec {
           # Compile registered packages
           raco setup --avoid-main -x -D
 
-          # Provide Racket binaries patched to use our modified HOME
+          # Provide Racket binaries patched to use our modified HOME and scripts
           mkdir -p "$out/bin"
           for PROG in "${patchedRacket}"/bin/*
           do
             NAME=$(basename "$PROG")
-            makeWrapper "$PROG" "$out/bin/$NAME" --set HOME "$out/etc"
+            makeWrapper "$PROG" "$out/bin/$NAME"     \
+                        --set HOME        "$out/etc" \
+                        --set PLTCOLLECTS "${PLTCOLLECTS}"
           done
         '';
       };
@@ -173,6 +175,8 @@ with rec {
     rev    = "fae25da";
     sha256 = "08zm9a8dlwqm6bnd5z8714j5365pklwh4lkgcnhq0ns1lq0njp3l";
   };
+
+  PLTCOLLECTS = ":${./scripts}";
 
   # Generates all the intermediate steps of the transformation
   mkCache = BENCHMARKS: rec {
@@ -403,10 +407,12 @@ rec {
     installPhase = ''
       # Install Racket scripts
       mkdir "$out"
-      cp -r . "$out/scripts"
+      cp -r "$src" "$out/scripts"
+      chmod +w -R  "$out/scripts"
 
       # Compile Racket to bytecode for speed
-      raco make "$out/scripts/"*.rkt "$out/scripts/lib/"*.rkt
+      raco make "$out/scripts/"*.rkt
+      #"$out/scripts/lib/"*.rkt
 
       # For each script, add a wrapper to PATH, without the .rkt suffix
       mkdir -p "$out/bin"
