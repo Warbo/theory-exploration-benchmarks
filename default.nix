@@ -1,22 +1,29 @@
-{ pkgsPath        ? <nixpkgs>,
-  pkgsArgs        ? {},
+{ pkgsPath        ? null,
+  pkgsArgs        ? { config = {}; },
   haskellPackages ? null,
   nix-config-src  ? null,
   asv-nix         ? null }:
 
 with builtins;
-with { pkgs = import pkgsPath pkgsArgs; };
-with pkgs;
-with lib;
 with rec {
   # Known-good version of nixpkgs
-  nixpkgs1609 = import (fetchFromGitHub {
+  repo1609 = (import <nixpkgs> {}).fetchFromGitHub {
     owner  = "NixOS";
     repo   = "nixpkgs";
     rev    = "f22817d";
     sha256 = "1cx5cfsp4iiwq8921c15chn1mhjgzydvhdcmrvjmqzinxyz71bzh";
-  }) {};
+  };
 
+  nixpkgs1609 = import repo1609 pkgsArgs;
+};
+with {
+  pkgs = if pkgsPath == null
+            then nixpkgs1609
+            else import pkgsPath pkgsArgs;
+};
+with pkgs;
+with lib;
+with rec {
   # Custom packages, overrides, etc.
   nix-config =
     with rec {
@@ -30,7 +37,7 @@ with rec {
                       then nix-config-src-default
                       else nix-config-src;
     };
-    import pkgsPath (pkgsArgs // {
+    import (if pkgsPath == null then repo1609 else pkgsPath) (pkgsArgs // {
       config = import "${config-src}/config.nix";
     });
 
