@@ -41,7 +41,7 @@ with rec {
       config = import "${config-src}/config.nix";
     });
 
-  inherit (nix-config) attrsToDirs fail replace wrap;
+  inherit (nix-config) attrsToDirs fail replace withDeps wrap;
 
   # Take the given Haskell packages, but override some things which are known
   # to be broken on Hackage. TODO: Get upstream to upload non-broken packages!
@@ -60,19 +60,45 @@ with rec {
     };
     hsPkgs.override { inherit overrides; };
 
+  # Racket may be disabled ( https://github.com/NixOS/nixpkgs/pull/23542 )
+  workingRacket =
+    with (tryEval pkgs.racket);
+    if success
+       then value
+       else trace "WARNING: Broken 'racket'; falling back to 16.09"
+            nixpkgs1609.racket;
+
+  # Racket's 'launcher' system hard-codes PATH to "/bin:/usr/bin" for no good
+  # reason, which breaks under Nix. We patch it away.
+  patchedRacket = runCommand "patched-racket"
+    {
+      inherit workingRacket;
+      buildInputs = [ replace ];
+      file        = "share/racket/collects/launcher/launcher.rkt";
+    }
+    ''
+      cp -r "$workingRacket" "$out"
+      chmod +w -R "$out"
+
+      echo "Hard-coding tool checks" 1>&2
+      for TOOL in "readlink" "dirname" "basename" "ls" "sed"
+      do
+        sed -e "s@(has-exe? \"$TOOL\")@#t@g" -i "$out/$file"
+      done
+
+      echo "Removing PATH-replacement junk" 1>&2
+      sed -e 's@.*"PATH=.*@@g' -i "$out/$file"
+
+      echo "Replacing all references to unpatched Racket '$workingRacket'" 1>&2
+      find . -type f | xargs -L 1 replace "$workingRacket" "$out" --
+    '';
+
   racketWithPkgs =
     with rec {
-      # Racket may be disabled ( https://github.com/NixOS/nixpkgs/pull/23542 )
-      racket = with (tryEval pkgs.racket);
-               if success
-                  then value
-                  else trace "WARNING: Broken 'racket'; falling back to 16.09"
-                             nixpkgs1609.racket;
-
       racketWithDeps = deps: stdenv.mkDerivation {
         name = "racket-with-deps";
 
-        buildInputs = [ makeWrapper racket ];
+        buildInputs = [ makeWrapper patchedRacket ];
 
         inherit deps;
           buildCommand = ''
@@ -107,7 +133,7 @@ with rec {
 
           # Provide Racket binaries patched to use our modified HOME
           mkdir -p "$out/bin"
-          for PROG in "${racket}"/bin/*
+          for PROG in "${patchedRacket}"/bin/*
           do
             NAME=$(basename "$PROG")
             makeWrapper "$PROG" "$out/bin/$NAME" --set HOME "$out/etc"
