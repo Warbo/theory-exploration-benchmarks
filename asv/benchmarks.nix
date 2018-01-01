@@ -29,34 +29,12 @@ with rec {
 
   deps = attrsToDirs {
     bin = {
-      run_tests   = testScript;
+      run_tests = testScript;
 
-      mk_defs     = profileWith { inherit BENCHMARKS; }
-                                "make_normalised_definitions.rkt";
-
-      more_defs   = profileWith { BENCHMARKS = runCommand "larger-test"
-                                    { inherit (cache) BENCHMARKS; }
-                                    ''
-                                      find "$BENCHMARKS" -type f -o -type l |
-                                      head -n100                            |
-                                      while read -r F
-                                      do
-                                        DIR=$(basename "$(dirname "$F")")
-                                        mkdir -p "$out/$DIR"
-                                        cp -s "$F" "$out/$DIR"/
-                                      done
-                                    ''; }
-                                "make_normalised_definitions.rkt";
-
-      mk_thms     = profileWith { inherit BENCHMARKS_CACHE
-                                          BENCHMARKS
-                                          BENCHMARKS_NORMALISED_DEFINITIONS; }
-                                "make_normalised_theorems.rkt";
-
-      mk_sdata    = profileWith { inherit BENCHMARKS
-                                          BENCHMARKS_FINAL_BENCHMARK_DEFS
-                                          BENCHMARKS_NORMALISED_DEFINITIONS; }
-                                "make_sampling_data.rkt";
+      mk_sdata  = profileWith { inherit BENCHMARKS
+                                        BENCHMARKS_FINAL_BENCHMARK_DEFS
+                                        BENCHMARKS_NORMALISED_DEFINITIONS; }
+                              "make_sampling_data.rkt";
     };
   };
 };

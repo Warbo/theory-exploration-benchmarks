@@ -85,14 +85,15 @@ with rec {
         "$src/make_sampling_data.rkt" > "$out"
       '';
 
-    BENCHMARKS_NORMALISED_THEOREMS = runCommand "normalised-theorems"
-      {
-        inherit BENCHMARKS_CACHE BENCHMARKS BENCHMARKS_NORMALISED_DEFINITIONS;
-        src         = ./scripts;
-        buildInputs = [ env ];
-      }
+    BENCHMARKS_NORMALISED_THEOREMS = runRacket "normalised-theorems"
+      [ env ]
+      { inherit BENCHMARKS_CACHE BENCHMARKS BENCHMARKS_NORMALISED_DEFINITIONS; }
       ''
-        "$src/make_normalised_theorems.rkt" > "$out"
+        ;; Replaced (assoc-get 'normalised-theorems (get-sampling-data))
+        ;; Write normalised-theorems return value to BENCHMARKS_NORMALISED_THEOREMS
+        (require lib/impure)
+        (require lib/theorems)
+        (write-to-out (format "~s" (normalised-theorems)))
       '';
 
     BENCHMARKS_NORMALISED_DEFINITIONS = runRacket "normalised-definitions"
@@ -296,7 +297,6 @@ rec {
         "choose_sample" "conjectures_admitted_by_sample"
         "conjectures_for_sample" "decode" "eqs_to_json" "full_haskell_package"
       ] ++ map (s: trace "FIXME ${s}" s) [
-        "make_normalised_theorems"
         "make_sampling_data"
         "precision_recall_eqs"
         "strip-native"
