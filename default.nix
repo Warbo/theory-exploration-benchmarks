@@ -44,7 +44,7 @@ with rec {
   inherit (nix-config) attrsToDirs fail replace withDeps wrap;
 
   inherit (nix-config.callPackage ./racket.nix { inherit pkgs nixpkgs1609; })
-    compileRacketScript racketWithPkgs;
+    compileRacketScript racketWithPkgs runRacket;
 
   # Take the given Haskell packages, but override some things which are known
   # to be broken on Hackage. TODO: Get upstream to upload non-broken packages!
@@ -95,24 +95,27 @@ with rec {
         "$src/make_normalised_theorems.rkt" > "$out"
       '';
 
-    BENCHMARKS_NORMALISED_DEFINITIONS = runCommand "normalised-definitions"
-      {
-        inherit BENCHMARKS;
-        src         = ./scripts;
-        buildInputs = [ env ];
-      }
+    BENCHMARKS_NORMALISED_DEFINITIONS = runRacket "normalised-definitions"
+      [ env ]
+      { inherit BENCHMARKS; }
       ''
-        "$src/make_normalised_definitions.rkt" > "$out"
+        (require lib/impure)
+        (require lib/normalise)
+        (write-to-out
+          (format "~s"
+            (gen-normed-and-replacements)))
       '';
 
-    BENCHMARKS_FINAL_BENCHMARK_DEFS = runCommand "final-defs"
-      {
-        inherit BENCHMARKS BENCHMARKS_NORMALISED_DEFINITIONS;
-        src         = ./scripts;
-        buildInputs = [ env ];
-      }
+    BENCHMARKS_FINAL_BENCHMARK_DEFS = runRacket "final-defs"
+      [ env ]
+      { inherit BENCHMARKS BENCHMARKS_NORMALISED_DEFINITIONS; }
       ''
-        "$src/gen_final_benchmark_defs.rkt" > "$out"
+        (require lib/impure)
+        (require lib/normalise)
+        (require lib/tip)
+        (write-to-out
+          (format "~s"
+            (prepare (first (normed-and-replacements-cached)))))
       '';
   };
 
@@ -288,7 +291,17 @@ rec {
   # get cached data baked into them, which makes them slow to install but fast
   # to run.
   tools = attrsToDirs {
-    bin = genAttrs [ "choose_sample" "conjectures_admitted_by_sample" ]
+    bin = genAttrs
+      ([
+        "choose_sample" "conjectures_admitted_by_sample"
+        "conjectures_for_sample" "decode" "eqs_to_json" "full_haskell_package"
+      ] ++ map (s: trace "FIXME ${s}" s) [
+        "make_normalised_theorems"
+        "make_sampling_data"
+        "precision_recall_eqs"
+        "strip-native"
+        "tip_haskell_package"
+      ])
       (n: compileRacketScript n cache (./scripts + "/${n}.rkt"));
   };
   tools2 = stdenv.mkDerivation (cache // rec {

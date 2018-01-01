@@ -57,10 +57,6 @@ with rec {
                                           BENCHMARKS_FINAL_BENCHMARK_DEFS
                                           BENCHMARKS_NORMALISED_DEFINITIONS; }
                                 "make_sampling_data.rkt";
-
-      mk_fin_defs = profileWith { inherit BENCHMARKS
-                                          BENCHMARKS_NORMALISED_DEFINITIONS; }
-                                "gen_final_benchmark_defs.rkt";
     };
   };
 };
