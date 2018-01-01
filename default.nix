@@ -303,48 +303,6 @@ rec {
         "tip_haskell_package"
       ])
       (n: compileRacketScript n cache (./scripts + "/${n}.rkt"));
-  tools2 = stdenv.mkDerivation (cache // rec {
-    # Require (quick) tests to pass before attempting to install
-    inherit quickToolTest;
-
-    name = "te-benchmark";
-    src  = ./scripts;
-
-    buildInputs = [ env makeWrapper ];
-
-    installPhase = ''
-      # Install Racket scripts
-      mkdir "$out"
-      cp -r "$src" "$out/scripts"
-      chmod +w -R  "$out/scripts"
-
-      # Compile Racket to bytecode for speed
-      raco make "$out/scripts/"*.rkt
-      #"$out/scripts/lib/"*.rkt
-
-      # For each script, add a wrapper to PATH, without the .rkt suffix
-      mkdir -p "$out/bin"
-      for F in "$out/scripts/"*.rkt
-      do
-        NAME=$(basename "$F" .rkt)
-
-        # Write a one-liner to invoke this script, since shebangs don't seem to
-        # use the bytecode
-        printf '#!/usr/bin/env bash\nexec racket "%s" "$@"' \
-               "$F" > "$out/bin/$NAME"
-        chmod +x "$out/bin/$NAME"
-
-        # Wrap the one-liner so we can provide an appropriate environment.
-        # Set PLT_COMPILED_FILE_CHECK to avoid checking bytecode timestamps.
-        wrapProgram "$out/bin/$NAME"                                             \
-          --prefix PATH : "${env}/bin"                                           \
-          --set PWD                            "$out/scripts"                    \
-          --set PLT_COMPILED_FILE_CHECK        exists                            \
-          --set BENCHMARKS_CACHE               "$BENCHMARKS_CACHE"               \
-          --set BENCHMARKS_NORMALISED_THEOREMS "$BENCHMARKS_NORMALISED_THEOREMS" \
-          --set BENCHMARKS                     "$BENCHMARKS"
-      done
-    '';
   });
 
   tip-benchmark-smtlib = runRacket "tip-benchmark-smtlib"
