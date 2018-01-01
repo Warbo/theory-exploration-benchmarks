@@ -180,8 +180,6 @@ rec {
       repo = tip-repo;
     }
     ''
-      SOURCE="$PWD/benchmarks" \
-      DESTINATION="$PWD/transformed" racket "${./scripts/strip-native.rkt}"
       (require lib/strip-native)
 
       (define out-dir (getenv "out"))
@@ -192,44 +190,55 @@ rec {
       (define source
         (string-append (getenv "repo") "/benchmarks"))
 
-      (define input-files
-        (filter (lambda (x) (string-suffix? x ".smt2"))
-                (map (lambda (x)
-                       (string-trim (path->string x)
-                                    (string-append source "/")
-                                    #:left? #t
+      (define (is-tip? x)
+        (string-suffix? x ".smt2"))
+
+      (define (in-source x)
+        (string-trim (path->string x)
+                     (string-append source   "/")
+                                    #:left?  #t
                                     #:right? #f))
-                     (sequence->list (in-directory source)))))
+
+      (define input-files
+        (filter is-tip? (map in-source
+                             (sequence->list (in-directory source)))))
+
+      (define (read-source f)
+        (read (open-input-string
+                (string-append "(\n"
+                               (file->string (string-append source "/" f))
+                               "\n)"))))
+
+      (define (destination-path f)
+        (apply build-path
+               (cons destination (start (explode-path f)))))
 
       (for-each (lambda (f)
-                  (display (format "Stripping native symbols from ~a\n" f)
-                           (current-error-port))
-                  ;; Read in the raw TIP benchmark, as a list of s-expressions
-                  (define input
-                    (string-append "(\n"
-                                   (file->string (string-append source "/" f))
-                                   "\n)"))
+                  (eprintf (format "Stripping native symbols from ~a\n" f))
 
-                  (define raw
-                    (let ([in (open-input-string input)])
-                      (read in)))
+                  ;; Read in the raw TIP benchmark, as a list of s-expressions,
+                  ;; and replace int, bool, etc. with our custom versions
+                  (define result (replace-all-native (read-source f)))
 
-                  ;; Write out the replaced versions, unwrapping the list
-                  (define result (replace-all-native raw))
+                  ;; Write out the altered s-expressions
 
-                  (make-directory* (apply build-path (cons destination
-                                                             (start (explode-path f)))))
-                  (let ([out-string (open-output-string)]
-                        [out-file   (open-output-file (string-append destination
-                                                                     "/"
-                                                                     f)
-                                                      #:exists 'replace)])
-                    (for-each (lambda (expr)
-                                (write expr out-string)
-                                (display "\n" out-string))
-                              result)
-                    (display (get-output-string out-string) out-file)
-                    (close-output-port out-file)))
+                  (make-directory* (destination-path f))
+
+                  (define out-string (open-output-string))
+
+                  (define out-file
+                    (open-output-file (string-append destination
+                                                     "/"
+                                                     f)
+                                      #:exists
+                                      'replace))
+
+                  (for-each (lambda (expr)
+                              (write expr out-string)
+                              (display "\n" out-string))
+                            result)
+                  (display (get-output-string out-string) out-file)
+                  (close-output-port out-file))
                 input-files)
     '';
 
