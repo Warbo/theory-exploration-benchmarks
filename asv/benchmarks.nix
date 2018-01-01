@@ -27,16 +27,7 @@ with rec {
     script = runner "${scripts}/${script}";
   };
 
-  deps = attrsToDirs {
-    bin = {
-      run_tests = testScript;
-
-      mk_sdata  = profileWith { inherit BENCHMARKS
-                                        BENCHMARKS_FINAL_BENCHMARK_DEFS
-                                        BENCHMARKS_NORMALISED_DEFINITIONS; }
-                              "make_sampling_data.rkt";
-    };
-  };
+  deps = attrsToDirs { bin = { run_tests = testScript; }; };
 };
 attrsToDirs {
   bin = {

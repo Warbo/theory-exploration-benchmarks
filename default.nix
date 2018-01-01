@@ -74,15 +74,19 @@ with rec {
   mkCache = BENCHMARKS: rec {
     inherit BENCHMARKS;
 
-    BENCHMARKS_CACHE = runCommand "benchmarks-cache"
+    BENCHMARKS_CACHE = runRacket "benchmarks-cache"
+      [ env ]
       {
         inherit BENCHMARKS BENCHMARKS_FINAL_BENCHMARK_DEFS
                 BENCHMARKS_NORMALISED_DEFINITIONS;
-        src         = ./scripts;
-        buildInputs = [ env ];
       }
       ''
-        "$src/make_sampling_data.rkt" > "$out"
+        (require lib/impure)
+        (require lib/sampling)
+
+        ;; Generates data about renaming, etc. which can be cached and re-used
+        ;; to make sampling and querying quicker.
+        (write-to-out (format "~s" (make-sampling-data)))
       '';
 
     BENCHMARKS_NORMALISED_THEOREMS = runRacket "normalised-theorems"
@@ -297,7 +301,6 @@ rec {
         "choose_sample" "conjectures_admitted_by_sample"
         "conjectures_for_sample" "decode" "eqs_to_json" "full_haskell_package"
       ] ++ map (s: trace "FIXME ${s}" s) [
-        "make_sampling_data"
         "precision_recall_eqs"
         "strip-native"
         "tip_haskell_package"
