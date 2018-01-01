@@ -290,7 +290,7 @@ rec {
   # Installs tools for translating, sampling, etc. the benchmark. These tools
   # get cached data baked into them, which makes them slow to install but fast
   # to run.
-  tools = attrsToDirs {
+  tools = withDeps [ quickToolTest ] (attrsToDirs {
     bin = genAttrs
       ([
         "choose_sample" "conjectures_admitted_by_sample"
@@ -303,7 +303,6 @@ rec {
         "tip_haskell_package"
       ])
       (n: compileRacketScript n cache (./scripts + "/${n}.rkt"));
-  };
   tools2 = stdenv.mkDerivation (cache // rec {
     # Require (quick) tests to pass before attempting to install
     inherit quickToolTest;
