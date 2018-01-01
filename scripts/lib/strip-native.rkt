@@ -1,5 +1,9 @@
 #lang racket
 
+;; Since this module is used (among other things) to generate BENCHMARKS, it
+;; shouldn't depend on anything which needs to read cached data from the
+;; environment.
+
 (require racket/match)
 
 (provide custom-bool custom-ite custom-not custom-and custom-or custom-=>
