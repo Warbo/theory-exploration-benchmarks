@@ -6,11 +6,12 @@
 
 (require racket/match)
 
-(provide custom-bool custom-ite custom-not custom-and custom-or custom-=>
-         custom-bool-converter custom-nat custom-int custom-plus custom-inc
-         custom-dec custom-invert custom-abs custom-sign custom-+ custom--
-         custom-* custom-nat-> custom-> custom-div custom-mod custom-< custom->=
-         custom-<= replace-all-native start)
+(provide benchmark-tests custom-bool custom-ite custom-not custom-and custom-or
+         custom-=> custom-bool-converter custom-nat custom-int custom-plus
+         custom-inc custom-dec custom-invert custom-abs custom-sign custom-+
+         custom-- custom-* custom-nat-> custom-> custom-div custom-mod custom-<
+         custom->= custom-<= mk-source process-tip-file! replace-all-native
+         start tip-files-in)
 
 (define (dump x)
   (write x (current-error-port))
@@ -480,3 +481,70 @@
   (remove-duplicates
    (remove 'te-sentinel-value
            (append raw-deps (first replaced)))))
+
+(define (mk-source repo-dir)
+  (string-append repo-dir "/benchmarks"))
+
+(define (is-tip? x)
+  (string-suffix? x ".smt2"))
+
+(define ((in-source source) x)
+  (string-trim (path->string x)
+               (string-append source "/")
+               #:left?  #t
+               #:right? #f))
+
+(define (tip-files-in source)
+  (filter is-tip? (map (in-source source)
+                       (sequence->list (in-directory source)))))
+
+(define (read-source source f)
+  (read (open-input-string
+         (string-append "(\n"
+                        (file->string (string-append source "/" f))
+                        "\n)"))))
+
+(define (destination-path destination f)
+  (apply build-path
+         (cons destination (start (explode-path f)))))
+
+(define (get-result source f)
+  (string-join (map (curry format "~s")
+                    (replace-all-native (read-source source f)))
+               "\n"))
+
+(define ((process-tip-file! source destination) f)
+  (eprintf (format "Stripping native symbols from ~a\n" f))
+
+  ;; Read in the raw TIP benchmark, as a list of s-expressions,
+  ;; and replace int, bool, etc. with our custom versions.
+
+  (define result
+    (get-result source f))
+
+  ;; Write out the altered s-expression
+  (make-directory* (destination-path destination f))
+
+  (with-output-to-file (string-append destination "/" f)
+    (lambda () (display result))
+    #:exists 'replace))
+
+;; Tests
+
+(define (same-files? source dest)
+  (define in-source (sort (tip-files-in source) string<=?))
+  (define in-dest   (sort (tip-files-in dest)   string<=?))
+  (unless (equal? in-source in-dest)
+    (error (format "~s" `((error "Different file lists")
+                          (in-source ,in-source)
+                          (in-dest   ,in-dest))))))
+
+#;(define (no-native-symbols dest)
+  (for-each (lambda (f)
+              )
+            (tip-files-in dest)))
+
+(define (benchmark-tests source dest)
+  (eprintf "Checking results\n")
+
+  (same-files? source dest))

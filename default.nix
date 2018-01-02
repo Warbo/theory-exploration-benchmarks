@@ -175,85 +175,25 @@ rec {
 
   # Take benchmarks from git, but transform them to replace "built-in"
   # definitions like "Bool" and "<" with explicitly defined versions.
-  tip-benchmarks = runRacket "tip-benchmarks" [ env ]
-    {
-      repo = tip-repo;
-    }
-    ''
-      (require lib/strip-native)
+  tip-benchmarks = runRacket "tip-benchmarks" [ env ] { repo = tip-repo; } ''
+    (require lib/strip-native)
 
-      (define out-dir (getenv "out"))
+    (define source
+      (mk-source (getenv "repo")))
 
-      (define destination
-        (string-append out-dir "/transformed"))
+    (define destination
+      (getenv "out"))
 
-      (define source
-        (string-append (getenv "repo") "/benchmarks"))
+    (define input-files
+      (tip-files-in source))
 
-      (define (is-tip? x)
-        (string-suffix? x ".smt2"))
+    (for-each (process-tip-file! source destination)
+              input-files)
 
-      (define (in-source x)
-        (string-trim (path->string x)
-                     (string-append source   "/")
-                                    #:left?  #t
-                                    #:right? #f))
+    (benchmark-tests source destination)
+  '';
 
-      (define input-files
-        (filter is-tip? (map in-source
-                             (sequence->list (in-directory source)))))
-
-      (define (read-source f)
-        (read (open-input-string
-                (string-append "(\n"
-                               (file->string (string-append source "/" f))
-                               "\n)"))))
-
-      (define (destination-path f)
-        (apply build-path
-               (cons destination (start (explode-path f)))))
-
-      (for-each (lambda (f)
-                  (eprintf (format "Stripping native symbols from ~a\n" f))
-
-                  ;; Read in the raw TIP benchmark, as a list of s-expressions,
-                  ;; and replace int, bool, etc. with our custom versions
-                  (define result (replace-all-native (read-source f)))
-
-                  ;; Write out the altered s-expressions
-
-                  (make-directory* (destination-path f))
-
-                  (define out-string (open-output-string))
-
-                  (define out-file
-                    (open-output-file (string-append destination
-                                                     "/"
-                                                     f)
-                                      #:exists
-                                      'replace))
-
-                  (for-each (lambda (expr)
-                              (write expr out-string)
-                              (display "\n" out-string))
-                            result)
-                  (display (get-output-string out-string) out-file)
-                  (close-output-port out-file))
-                input-files)
-    '';
-
-    doCheck = true;
     checkPhase = ''
-      set -e
-      GIVEN=$(find ./benchmarks  -type f | wc -l)
-       MADE=$(find ./transformed -type f | wc -l)
-
-      if [[ "$GIVEN" -ne "$MADE" ]]
-      then
-        echo "Given $GIVEN benchmarks, outputted $MADE benchmarks" 1>&2
-        exit 1
-      fi
-
       # We can't check for '=>' since it's both implication and a function type
       echo "Ensuring there are no native operators..." 1>&2
       while read -r BENCHMARK
@@ -296,9 +236,6 @@ rec {
         }
       done < <(find ./transformed -type f)
     '';
-
-    installPhase = ''cp -r ./transformed "$out"'';
-  };
 
   # Used for benchmarking the benchmark generation (yo dawg)
   asv = if asv-nix == null
@@ -355,7 +292,6 @@ rec {
         "conjectures_for_sample" "decode" "eqs_to_json" "full_haskell_package"
       ] ++ map (s: trace "FIXME ${s}" s) [
         "precision_recall_eqs"
-        "strip-native"
         "tip_haskell_package"
       ])
       (n: compileRacketScript n cache (./scripts + "/${n}.rkt"));
