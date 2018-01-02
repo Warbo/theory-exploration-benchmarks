@@ -198,21 +198,6 @@ rec {
       echo "Ensuring there are no native operators..." 1>&2
       while read -r BENCHMARK
       do
-        for OP in ite and false not or true True False Bool Int "[+]" "[*]" \
-                  div mod ">" "<" ">=" "<="
-        do
-          # Look for this operator, but avoid matching parts of other symbols
-          # (e.g. thinking that "opposite" is "ite") by disallowing characters
-          # before/after which are valid in names. Note that we don't check the
-          # definition of custom-bool-converter since ite and Bool are
-          # unavoidable there.
-          if grep -v '(define-fun custom-bool-converter ' < "$BENCHMARK" |
-             grep "[^><=a-zA-Z0-9-]$OP[^><=a-zA-Z0-9-]"
-          then
-            echo "Operator '$OP' should have been replaced in '$BENCHMARK'" 1>&2
-            exit 1
-          fi
-        done
 
         # Make sure all calls to = and distinct use custom-bool-converter
         for OP in = distinct

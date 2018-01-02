@@ -531,20 +531,49 @@
 
 ;; Tests
 
+(define (err . args)
+  (error (format "~s" args)))
+
 (define (same-files? source dest)
   (define in-source (sort (tip-files-in source) string<=?))
   (define in-dest   (sort (tip-files-in dest)   string<=?))
   (unless (equal? in-source in-dest)
-    (error (format "~s" `((error "Different file lists")
-                          (in-source ,in-source)
-                          (in-dest   ,in-dest))))))
+    (err `((error     "Different file lists")
+           (in-source ,in-source)
+           (in-dest   ,in-dest)))))
 
-#;(define (no-native-symbols dest)
-  (for-each (lambda (f)
-              )
-            (tip-files-in dest)))
+(define (no-native-symbols dest)
+  (define name-chars
+    "[^><=a-zA-Z0-9-]")
+
+  (for-each
+   (lambda (f)
+     (for-each
+      (lambda (symbol)
+        ;; Look for this operator, but avoid matching parts of other symbols
+        ;; (e.g. thinking that "opposite" is "ite") by disallowing
+        ;; characters before/after which are valid in names. Note that we
+        ;; don't check the definition of custom-bool-converter since ite and
+        ;; Bool are unavoidable there.
+        (for-each
+         (lambda (line)
+           (unless (regexp-match "[(]define-fun custom-bool-converter " line)
+             (when (regexp-match (string-append name-chars symbol name-chars)
+                                 line)
+               (err `((error  "Operator should have been replaced")
+                      (symbol ,symbol)
+                      (file   ,f))))))
+         (file->lines (string-append dest "/" f))))
+
+      ;; We can't check for '=>' since it's both implication and a function
+      ;; type
+      '("ite" "and" "false" "not" "or" "true" "True" "False" "Bool" "Int"
+        "[+]" "[*]" "div" "mod" ">" "<" ">=" "<=")))
+   (tip-files-in dest)))
 
 (define (benchmark-tests source dest)
   (eprintf "Checking results\n")
 
-  (same-files? source dest))
+  (same-files? source dest)
+
+  (no-native-symbols dest))
