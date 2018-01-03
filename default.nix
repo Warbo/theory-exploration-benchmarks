@@ -71,8 +71,8 @@ with rec {
   };
 
   # Generates all the intermediate steps of the transformation
-  mkCache = BENCHMARKS: rec {
-    inherit BENCHMARKS;
+  cache = rec {
+    BENCHMARKS = tip-benchmarks;
 
     BENCHMARKS_CACHE = runRacket "benchmarks-cache"
       [ env ]
@@ -197,9 +197,6 @@ rec {
   asv = if asv-nix == null
            then nix-config.asv-nix
            else asv-nix;
-
-  # Uses all benchmarks, for our actual results
-  cache = mkCache tip-benchmarks;
 
   testScript = mkTestScript cache;
 
