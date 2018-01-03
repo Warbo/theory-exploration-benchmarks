@@ -542,12 +542,20 @@
            (in-source ,in-source)
            (in-dest   ,in-dest)))))
 
-(define (no-native-symbols dest)
-  (define name-chars
-    "[^><=a-zA-Z0-9-]")
+(define name-chars
+  "[^><=a-zA-Z0-9-]")
 
-  (for-each
-   (lambda (f)
+(define (for-each-benchmark-line dest proc)
+  (for-each (lambda (f)
+              (for-each (lambda (line)
+                          (proc f line))
+                        (file->lines (string-append dest "/" f))))
+            (tip-files-in dest)))
+
+(define (no-native-symbols dest)
+  (for-each-benchmark-line
+   dest
+   (lambda (file line)
      (for-each
       (lambda (symbol)
         ;; Look for this operator, but avoid matching parts of other symbols
@@ -555,25 +563,55 @@
         ;; characters before/after which are valid in names. Note that we
         ;; don't check the definition of custom-bool-converter since ite and
         ;; Bool are unavoidable there.
-        (for-each
-         (lambda (line)
-           (unless (regexp-match "[(]define-fun custom-bool-converter " line)
-             (when (regexp-match (string-append name-chars symbol name-chars)
-                                 line)
-               (err `((error  "Operator should have been replaced")
-                      (symbol ,symbol)
-                      (file   ,f))))))
-         (file->lines (string-append dest "/" f))))
+        (unless (regexp-match "[(]define-fun custom-bool-converter " line)
+          (when (regexp-match (string-append name-chars symbol name-chars)
+                              line)
+            (err `((error  "Operator should have been replaced")
+                   (symbol ,symbol)
+                   (file   ,file))))))
 
       ;; We can't check for '=>' since it's both implication and a function
       ;; type
       '("ite" "and" "false" "not" "or" "true" "True" "False" "Bool" "Int"
-        "[+]" "[*]" "div" "mod" ">" "<" ">=" "<=")))
-   (tip-files-in dest)))
+        "[+]" "[*]" "div" "mod" ">" "<" ">=" "<=")))))
+
+(define (equations-use-bool-converter dest)
+  (for-each-benchmark-line
+   dest
+   (lambda (file line)
+     (for-each
+      (lambda (symbol)
+        (when (and (not (regexp-match (string-append
+                                       "[(]custom-bool-converter [(]" symbol)
+                                      line))
+                   (regexp-match (string-append name-chars symbol name-chars)
+                                 line))
+          (err `((error  "Operator should be guarded by custom-bool-converter")
+                 (symbol ,symbol)
+                 (file   ,file)))))
+      '("=" "distinct")))))
+
+(define (files-are-parseable dest)
+  (for-each-benchmark-line
+   dest
+   (lambda (file line)
+     (let* ((works #f)
+            (path  (string-append "\"" dest "/" file "\""))
+            (str   (with-output-to-string
+                     (lambda ()
+                       (set! works
+                         (system (string-append "tip < " path)))))))
+       (unless works
+         (err `((error  "Command 'tip' failed to read file")
+                (file   ,file)
+                (path   ,path)
+                (output ,str)
+                (works  ,works))))))))
 
 (define (benchmark-tests source dest)
   (eprintf "Checking results\n")
 
-  (same-files? source dest)
-
-  (no-native-symbols dest))
+  (same-files?           source dest)
+  (no-native-symbols            dest)
+  (equations-use-bool-converter dest)
+  (files-are-parseable          dest))

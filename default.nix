@@ -193,35 +193,6 @@ rec {
     (benchmark-tests source destination)
   '';
 
-    checkPhase = ''
-      # We can't check for '=>' since it's both implication and a function type
-      echo "Ensuring there are no native operators..." 1>&2
-      while read -r BENCHMARK
-      do
-
-        # Make sure all calls to = and distinct use custom-bool-converter
-        for OP in = distinct
-        do
-          if grep -v "(custom-bool-converter ($OP" < "$BENCHMARK" |
-             grep "[^><=a-zA-Z0-9-]$OP[^><=a-zA-Z0-9-]"
-          then
-            echo "Unguarded '$OP' in '$BENCHMARK'" 1>&2
-            exit 1
-          fi
-        done
-      done < <(find ./transformed -type f)
-
-      echo "Checking all benchmarks are parseable by tip" 1>&2
-      while read -r BENCHMARK
-      do
-        OUTPUT=$(tip < "$BENCHMARK") || {
-          echo "Error sending $BENCHMARK through tip" 1>&2
-          echo "$OUTPUT" 1>&2
-          exit 1
-        }
-      done < <(find ./transformed -type f)
-    '';
-
   # Used for benchmarking the benchmark generation (yo dawg)
   asv = if asv-nix == null
            then nix-config.asv-nix
@@ -282,8 +253,7 @@ rec {
       (n: compileRacketScript n cache (./scripts + "/${n}.rkt"));
   });
 
-  tip-benchmark-smtlib = runRacket "tip-benchmark-smtlib"
-    []
+  tip-benchmark-smtlib = runRacket "tip-benchmark-smtlib" []
     { inherit (cache) BENCHMARKS BENCHMARKS_FINAL_BENCHMARK_DEFS; }
     ''
       (require lib/normalise)
