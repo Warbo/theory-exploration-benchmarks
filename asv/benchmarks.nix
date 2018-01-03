@@ -6,13 +6,6 @@
 with import dir {};
 with nix-config;
 with rec {
-  inherit (cache)
-    BENCHMARKS
-    BENCHMARKS_CACHE
-    BENCHMARKS_FINAL_BENCHMARK_DEFS
-    BENCHMARKS_NORMALISED_DEFINITIONS
-    BENCHMARKS_NORMALISED_THEOREMS;
-
   # Take these from root so we can measure performance across revisions
   scripts = root + "/scripts";
 
