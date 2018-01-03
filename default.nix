@@ -201,27 +201,7 @@ rec {
   # Uses all benchmarks, for our actual results
   cache = mkCache tip-benchmarks;
 
-  testCache =
-    with rec {
-      testFiles = import ./test-data/test-files.nix;
-
-      testDir = runCommand "test-dir"
-        {
-          inherit testFiles;
-          base = tip-benchmarks;
-        }
-        ''
-          for F in $testFiles
-          do
-            GO="$out/$F"
-            mkdir -p "$(dirname "$GO")"
-            ln -s "$base/$F" "$GO"
-          done
-        '';
-    };
-    mkCache testDir;
-
-  testScript = mkTestScript testCache;
+  testScript = mkTestScript cache;
 
   # Standalone to allow separate testing and to avoid requiring expensive caches
   quickToolTest = runTestScript { script = testScript; };

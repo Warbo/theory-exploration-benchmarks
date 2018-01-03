@@ -6,7 +6,7 @@
 with import dir {};
 with nix-config;
 with rec {
-  inherit (testCache)
+  inherit (cache)
     BENCHMARKS
     BENCHMARKS_CACHE
     BENCHMARKS_FINAL_BENCHMARK_DEFS
