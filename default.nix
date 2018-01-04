@@ -205,8 +205,6 @@ rec {
   fullToolTest = runTestScript {
     inherit quickToolTest;
 
-    BENCHMARKS_TEST_ALL = "1";
-
     # Check contracts while testing; it's disabled by default for being too slow
     PLT_TR_CONTRACTS    = "1";
   };
