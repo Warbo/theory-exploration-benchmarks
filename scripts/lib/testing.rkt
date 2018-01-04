@@ -23,7 +23,7 @@
 ;; otherwise. Use this in favour of raw rackunit, so tests are skippable.
 (define-syntax-rule (def-test-case name body ...)
   (when (regexp-match? test-case-regex name)
-    (eprintf (string-append name "\n"))
+    (eprintf (format "~a ~a\n" (current-seconds) name))
     (test-case name body ...)))
 
 ;; Suppress progress info during tests, as it's verbose and confusing. This can
