@@ -1438,7 +1438,7 @@
                                                         (symbol->string raw)))))
                                         (zip raw-def-names normal-def-names))))
                           normal-names))
-              raw-names)
+              (take (shuffle raw-names) 30))
 
     (check-equal? (finalise-replacements
                    (extend-replacements
