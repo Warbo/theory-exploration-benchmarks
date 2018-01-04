@@ -542,76 +542,74 @@
            (in-source ,in-source)
            (in-dest   ,in-dest)))))
 
-(define name-chars
-  "[^><=a-zA-Z0-9-]")
-
-(define (for-each-benchmark-line dest proc)
-  (for-each (lambda (f)
-              (for-each (lambda (line)
-                          (proc f line))
-                        (file->lines (string-append dest "/" f))))
-            (tip-files-in dest)))
-
-(define (no-native-symbols dest)
-  (for-each-benchmark-line
-   dest
-   (lambda (file line)
-     (for-each
-      (lambda (symbol)
-        ;; Look for this operator, but avoid matching parts of other symbols
-        ;; (e.g. thinking that "opposite" is "ite") by disallowing
-        ;; characters before/after which are valid in names. Note that we
-        ;; don't check the definition of custom-bool-converter since ite and
-        ;; Bool are unavoidable there.
-        (unless (regexp-match "[(]define-fun custom-bool-converter " line)
-          (when (regexp-match (string-append name-chars symbol name-chars)
-                              line)
-            (err `((error  "Operator should have been replaced")
-                   (symbol ,symbol)
-                   (file   ,file))))))
-
-      ;; We can't check for '=>' since it's both implication and a function
-      ;; type
-      '("ite" "and" "false" "not" "or" "true" "True" "False" "Bool" "Int"
-        "[+]" "[*]" "div" "mod" ">" "<" ">=" "<=")))))
-
-(define (equations-use-bool-converter dest)
-  (for-each-benchmark-line
-   dest
-   (lambda (file line)
-     (for-each
-      (lambda (symbol)
-        (when (and (not (regexp-match (string-append
-                                       "[(]custom-bool-converter [(]" symbol)
-                                      line))
-                   (regexp-match (string-append name-chars symbol name-chars)
-                                 line))
-          (err `((error  "Operator should be guarded by custom-bool-converter")
-                 (symbol ,symbol)
-                 (file   ,file)))))
-      '("=" "distinct")))))
-
-(define (files-are-parseable dest)
-  (for-each-benchmark-line
-   dest
-   (lambda (file line)
-     (let* ((works #f)
-            (path  (string-append "\"" dest "/" file "\""))
-            (str   (with-output-to-string
-                     (lambda ()
-                       (set! works
-                         (system (string-append "tip < " path)))))))
-       (unless works
-         (err `((error  "Command 'tip' failed to read file")
-                (file   ,file)
-                (path   ,path)
-                (output ,str)
-                (works  ,works))))))))
+;; IMHO it's easier to read loops over one-liner lists if the list comes first
+(define (loop-through lst proc)
+  (for-each proc lst))
 
 (define (benchmark-tests source dest)
   (eprintf "Checking results\n")
 
-  (same-files?           source dest)
-  (no-native-symbols            dest)
-  (equations-use-bool-converter dest)
-  (files-are-parseable          dest))
+  (same-files? source dest)
+
+  (define name-chars
+    "[^><=a-zA-Z0-9-]")
+
+  (define files-in-dest
+    (tip-files-in dest))
+
+  (let ((counter (length files-in-dest)))
+    (loop-through
+     files-in-dest
+     (lambda (file)
+       (eprintf (format "~a files to go\n" counter))
+       (set! counter (- counter 1))
+
+       (loop-through
+        (file->lines (string-append dest "/" file))
+        (lambda (line)
+          ;; Ensure = and distinct use custom-bool-converter
+          (loop-through
+           '("=" "distinct")
+           (lambda (symbol)
+             (when (and (not (regexp-match (string-append
+                                            "[(]custom-bool-converter [(]" symbol)
+                                           line))
+                        (regexp-match (string-append name-chars symbol name-chars)
+                                      line))
+               (err `((error  "Operator should be guarded by custom-bool-converter")
+                      (symbol ,symbol)
+                      (file   ,file))))))
+
+          ;; Ensure tip command can read file
+          (let* ((works #f)
+                 (path  (string-append "\"" dest "/" file "\""))
+                 (str   (with-output-to-string
+                          (lambda ()
+                            (set! works
+                              (system (string-append "tip < " path)))))))
+            (unless works
+              (err `((error  "Command 'tip' failed to read file")
+                     (file   ,file)
+                     (path   ,path)
+                     (output ,str)
+                     (works  ,works)))))
+
+          ;; Ensure built-in symbols have been replaced
+          (loop-through
+           ;; We can't check for '=>' since it's both implication and a function
+           ;; type
+           '("ite" "and" "false" "not" "or" "true" "True" "False" "Bool" "Int"
+             "[+]" "[*]" "div" "mod" ">" "<" ">=" "<=")
+
+           (lambda (symbol)
+             ;; Look for this operator, but avoid matching parts of other symbols
+             ;; (e.g. thinking that "opposite" is "ite") by disallowing
+             ;; characters before/after which are valid in names. Note that we
+             ;; don't check the definition of custom-bool-converter since ite and
+             ;; Bool are unavoidable there.
+             (unless (regexp-match "[(]define-fun custom-bool-converter " line)
+               (when (regexp-match (string-append name-chars symbol name-chars)
+                                   line)
+                 (err `((error  "Operator should have been replaced")
+                        (symbol ,symbol)
+                        (file   ,file)))))))))))))
