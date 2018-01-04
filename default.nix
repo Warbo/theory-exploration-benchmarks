@@ -199,20 +199,18 @@ rec {
            else asv-nix;
 
   # Standalone to allow separate testing and to avoid requiring expensive caches
-  quickToolTest = runTestScript {};
+  withTests = withDeps [ (runTestScript {}) ];
 
   # Standalone since it's too slow to use as a dependency of tools
-  fullToolTest = runTestScript {
-    inherit quickToolTest;
-
+  fullToolTest = withTests (runTestScript {
     # Check contracts while testing; it's disabled by default for being too slow
-    PLT_TR_CONTRACTS    = "1";
-  };
+    PLT_TR_CONTRACTS = "1";
+  });
 
   # Installs tools for translating, sampling, etc. the benchmark. These tools
   # get cached data baked into them, which makes them slow to install but fast
   # to run.
-  tools = withDeps [ quickToolTest ] (attrsToDirs {
+  tools = withTests (attrsToDirs {
     bin = genAttrs
       ([
         "choose_sample" "conjectures_admitted_by_sample"
