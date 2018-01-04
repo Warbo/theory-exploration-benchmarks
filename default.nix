@@ -142,12 +142,12 @@ with rec {
       '';
   };
 
-  mkTestScript = vars: wrap {
+  testScript = wrap {
     vars   = {
       TEST_DATA       = ./test-data/nat-simple-raw.json;
       TEST_LIST_EQS   = ./test-data/list-full-found.json;
       TEST_LIST_TRUTH = ./test-data/list-full-ground-truth.smt2;
-    } // vars;
+    } // cache;
     paths  = [ env ];
     script = ''
       #!/usr/bin/env bash
@@ -157,13 +157,15 @@ with rec {
 
   runTestScript = given: runCommand "run-test"
     (given // {
+      inherit testScript;
+
       # Allow testing to be skipped, as it can take a few minutes
       doCheck = if getEnv "SKIP_TESTS" == "" then "true" else "false";
     })
     ''
       if $doCheck
       then
-        "$script" || exit 1
+        "$testScript" || exit 1
         echo "passed" > "$out"
       else
         echo "skipped" > "$out"
@@ -189,24 +191,19 @@ with rec {
   };
 };
 rec {
-  inherit env patchedHaskellPackages nix-config;
-
+  inherit env patchedHaskellPackages nix-config testScript;
 
   # Used for benchmarking the benchmark generation (yo dawg)
   asv = if asv-nix == null
            then nix-config.asv-nix
            else asv-nix;
 
-  testScript = mkTestScript cache;
-
   # Standalone to allow separate testing and to avoid requiring expensive caches
-  quickToolTest = runTestScript { script = testScript; };
+  quickToolTest = runTestScript {};
 
   # Standalone since it's too slow to use as a dependency of tools
   fullToolTest = runTestScript {
     inherit quickToolTest;
-
-    script = mkTestScript cache;
 
     BENCHMARKS_TEST_ALL = "1";
 
