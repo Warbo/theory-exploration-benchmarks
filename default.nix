@@ -72,10 +72,29 @@ with rec {
 
   # Generates all the intermediate steps of the transformation
   cache = rec {
-    BENCHMARKS = tip-benchmarks;
+    # Take benchmarks from git, but transform them to replace "built-in"
+    # definitions like "Bool" and "<" with explicitly defined versions.
+    BENCHMARKS = runRacket "tip-benchmarks" [ env ] { repo = tip-repo; } ''
+      (require lib/strip-native)
 
-    BENCHMARKS_CACHE = runRacket "benchmarks-cache"
-      [ env ]
+      (define source
+        (mk-source (getenv "repo")))
+
+      (define destination
+        (getenv "out"))
+
+      (define input-files
+        (tip-files-in source))
+
+      ;; Generate actual output
+      (for-each (process-tip-file! source destination)
+                input-files)
+
+      ;; Check the output, and error-out if dodgy
+      (benchmark-tests source destination)
+    '';
+
+    BENCHMARKS_CACHE = runRacket "benchmarks-cache" [ env ]
       {
         inherit BENCHMARKS BENCHMARKS_FINAL_BENCHMARK_DEFS
                 BENCHMARKS_NORMALISED_DEFINITIONS;
@@ -89,8 +108,7 @@ with rec {
         (write-to-out (format "~s" (make-sampling-data)))
       '';
 
-    BENCHMARKS_NORMALISED_THEOREMS = runRacket "normalised-theorems"
-      [ env ]
+    BENCHMARKS_NORMALISED_THEOREMS = runRacket "normalised-theorems" [ env ]
       { inherit BENCHMARKS_CACHE BENCHMARKS BENCHMARKS_NORMALISED_DEFINITIONS; }
       ''
         ;; Replaced (assoc-get 'normalised-theorems (get-sampling-data))
@@ -173,25 +191,6 @@ with rec {
 rec {
   inherit env patchedHaskellPackages nix-config;
 
-  # Take benchmarks from git, but transform them to replace "built-in"
-  # definitions like "Bool" and "<" with explicitly defined versions.
-  tip-benchmarks = runRacket "tip-benchmarks" [ env ] { repo = tip-repo; } ''
-    (require lib/strip-native)
-
-    (define source
-      (mk-source (getenv "repo")))
-
-    (define destination
-      (getenv "out"))
-
-    (define input-files
-      (tip-files-in source))
-
-    (for-each (process-tip-file! source destination)
-              input-files)
-
-    (benchmark-tests source destination)
-  '';
 
   # Used for benchmarking the benchmark generation (yo dawg)
   asv = if asv-nix == null
