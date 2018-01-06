@@ -210,7 +210,7 @@ rec {
   # Installs tools for translating, sampling, etc. the benchmark. These tools
   # get cached data baked into them, which makes them slow to install but fast
   # to run.
-  tools = withTests (attrsToDirs {
+  tools = attrsToDirs {
     bin = genAttrs
       ([
         "choose_sample" "conjectures_admitted_by_sample"
@@ -219,8 +219,10 @@ rec {
         "precision_recall_eqs"
         "tip_haskell_package"
       ])
-      (n: compileRacketScript n cache (./scripts + "/${n}.rkt"));
-  });
+      (n: compileRacketScript n
+            (cache // { testsPass = runTestScript {}; })
+            (./scripts + "/${n}.rkt"));
+  };
 
   tip-benchmark-smtlib = runRacket "tip-benchmark-smtlib" []
     { inherit (cache) BENCHMARKS BENCHMARKS_FINAL_BENCHMARK_DEFS; }
