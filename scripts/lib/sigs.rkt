@@ -7,7 +7,7 @@
 (require lib/tip)
 (require lib/util)
 
-(provide full-haskell-package tip-haskell-package)
+(provide full-haskell-package full-haskell-package-s)
 
 (module+ test
   (require lib/testing)
@@ -285,12 +285,6 @@ library
 (define (full-haskell-package)
   (full-haskell-package-s (port->string (current-input-port))
                           (getenv "OUT_DIR")))
-
-(define (tip-haskell-package-s out-dir)
-  (full-haskell-package-s (format-symbols (final-benchmark-defs)) out-dir))
-
-(define (tip-haskell-package)
-  (tip-haskell-package-s (getenv "OUT_DIR")))
 
 (module+ test
   (define sig (string-to-haskell mut))

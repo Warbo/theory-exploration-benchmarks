@@ -217,7 +217,6 @@ rec {
         "conjectures_for_sample" "decode" "eqs_to_json" "full_haskell_package"
       ] ++ map (s: trace "FIXME ${s}" s) [
         "precision_recall_eqs"
-        "tip_haskell_package"
       ])
       (n: compileRacketScript n
             (cache // { testsPass = runTestScript {}; })
@@ -233,13 +232,19 @@ rec {
       (write-to-out (mk-final-defs))
     '';
 
-  tip-benchmark-haskell = stdenv.mkDerivation {
-    inherit (cache) BENCHMARKS_FINAL_BENCHMARK_DEFS;
-    name         = "tip-benchmark-haskell";
-    buildInputs  = [ tools ];
-    buildCommand = ''
-      mkdir "$out"
-      OUT_DIR="$out" tip_haskell_package
-    '';
-  };
+  tip-benchmark-haskell = runRacket "tip-benchmark-haskell" [ env ] cache ''
+    (require lib/impure)
+    (require lib/normalise)
+    (require lib/sigs)
+    (require lib/util)
+
+    (define out (getenv "out"))
+    (make-directory* out)
+
+    (parameterize-env `([#"OUT_DIR" ,(string->bytes/utf-8 out)])
+                      (lambda ()
+                        (full-haskell-package-s
+                          (format-symbols (final-benchmark-defs))
+                          out)))
+  '';
 }
