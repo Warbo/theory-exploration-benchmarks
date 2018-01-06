@@ -223,14 +223,12 @@ rec {
             (./scripts + "/${n}.rkt"));
   };
 
-  tip-benchmark-smtlib = runRacket "tip-benchmark-smtlib" []
-    { inherit (cache) BENCHMARKS BENCHMARKS_FINAL_BENCHMARK_DEFS; }
-    ''
-      (require lib/normalise)
-      (require lib/impure)
+  tip-benchmark-smtlib = runRacket "tip-benchmark-smtlib" [] cache ''
+    (require lib/normalise)
+    (require lib/impure)
 
-      (write-to-out (mk-final-defs))
-    '';
+    (write-to-out (mk-final-defs))
+  '';
 
   tip-benchmark-haskell = runRacket "tip-benchmark-haskell" [ env ] cache ''
     (require lib/impure)

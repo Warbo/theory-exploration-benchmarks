@@ -107,7 +107,10 @@
   (define patched3
     (string-replace patched2
                     "import qualified Prelude as P"
-                    "import qualified Prelude as P\nimport qualified GHC.Generics\nimport qualified Data.Serialize"))
+                    (string-join '("import qualified Prelude as P"
+                                   "import qualified GHC.Generics"
+                                   "import qualified Data.Serialize")
+                                 "\n")))
 
   ;; Derive Serialize instances for all types. `tip` will give us instances like
   ;;
@@ -195,7 +198,7 @@ library
   (define test-benchmark-defs
     (final-benchmark-defs))
 
-  (def-test-case "Module tests"
+  (def-test-case "Haskell package made"
     (define files
       (string-join (theorem-files) "\n"))
 
