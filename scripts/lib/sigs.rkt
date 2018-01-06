@@ -249,40 +249,7 @@ library
               ('stdout  (get-output-string stdout))
               ('stderr  (get-output-string stderr))
               ('message "Module imported successfully"))
-             (check-false (string-contains? output "class Functor"))))))))
-
-  (def-test-case "Haskell package made"
-    (in-temp-dir
-     (lambda (out-dir)
-       (parameterize-env `([#"FILES"   ,(string->bytes/utf-8
-                                         (string-join (theorem-files) "\n"))]
-                           [#"OUT_DIR" ,(string->bytes/utf-8
-                                         (path->string out-dir))]
-                           [#"HOME"    ,(string->bytes/utf-8
-                                         (path->string out-dir))])
-         (lambda ()
-           (tip-haskell-package-s (path->string out-dir))
-
-           (parameterize ([current-directory out-dir])
-
-             (check-true (directory-exists? "src"))
-
-             (check-true (file-exists? "src/A.hs"))
-
-             (check-true (file-exists? "tip-benchmark-sig.cabal"))
-
-             (check-true (file-exists? "LICENSE"))
-
-             (run-pipeline/out '(cabal configure))
-
-             (define out
-               (run-pipeline/out '(echo -e "import A\n:browse")
-                                 '(cabal repl -v0)))
-
-             ;; If the import fails, we're stuck with
-             ;; the Prelude, which contains classes
-             (check-false (string-contains? out
-                                            "class Functor")))))))))
+             (check-false (string-contains? output "class Functor")))))))))
 
 ;; Commandline wrapper around full-haskell-package-s using stdio and env vars
 (define (full-haskell-package)
