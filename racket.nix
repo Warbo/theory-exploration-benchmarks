@@ -101,7 +101,7 @@ rec {
           PLT_COMPILED_FILE_CHECK = "exists";
         } // vars;
         file = runCommand "compiled-${name}"
-          {
+          ({
             inherit PLTCOLLECTS;
             buildInputs = [ racketWithPkgs ];
             fileName    = name;
@@ -112,7 +112,7 @@ rec {
                                #lang racket
                                ${script}
                              '';
-          }
+          } // vars)  # Adding vars here lets us run tests before compiling
           ''
             echo "Compiling '$raw' to '$out'" 1>&2
 
