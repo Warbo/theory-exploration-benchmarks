@@ -354,7 +354,8 @@
                                                 n o p q r s t u v w x y z))
                                       (list deps))
                               "Sampling with one deps constraint returns deps"))
-              (all-theorem-deps)))
+              (quick-or-full (take (shuffle (all-theorem-deps)) 10)
+                             (all-theorem-deps))))
 
   (def-test-case "Only functions get sampled"
     (define all-functions
@@ -396,5 +397,6 @@
                                "Sample should be function names")))
 
                           ;; We want a whole bunch of names, so we pick 50
-                          (set->list (sample-from-benchmarks 50 rep))))
-              (range 0 100))))
+                          (set->list
+                           (sample-from-benchmarks (quick-or-full 5 50) rep))))
+              (range 0 (quick-or-full 5 100)))))

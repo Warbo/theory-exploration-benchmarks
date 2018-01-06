@@ -375,17 +375,21 @@ library
   (def-test-case "Name preservation"
     (define test-benchmark-lower-names
       ;; A selection of names, which will be lowercase in Haskell
-      (foldl (lambda (def result)
-               (append result (lowercase-names def)))
-             null
-             test-benchmark-defs))
+      ((quick-or-full (lambda (lst) (take (shuffle lst) 10))
+                      (lambda (lst) lst))
+       (foldl (lambda (def result)
+                (append result (lowercase-names def)))
+              null
+              test-benchmark-defs)))
 
     (define test-benchmark-upper-names
       ;; A selection of names, which will be uppercase in Haskell
-      (foldl (lambda (def result)
-               (append result (uppercase-names def)))
-             null
-             test-benchmark-defs))
+      ((quick-or-full (lambda (lst) (take (shuffle lst) 10))
+                      (lambda (lst) lst))
+       (foldl (lambda (def result)
+                (append result (uppercase-names def)))
+              null
+              test-benchmark-defs)))
 
     (define (tip-lower-rename name)
       "Given a function name NAME, returns TIP's renamed version"

@@ -557,59 +557,57 @@
   (define files-in-dest
     (tip-files-in dest))
 
-  (let ((counter (length files-in-dest)))
-    (loop-through
-     files-in-dest
-     (lambda (file)
-       (eprintf (format "~a files to go\n" counter))
-       (set! counter (- counter 1))
+  (loop-through
+   (if (equal? (getenv "PLT_TR_CONTRACTS") "1")
+       files-in-dest
+       (take (shuffle files-in-dest) 10))
+   (lambda (file)
+     (loop-through
+      (file->lines (string-append dest "/" file))
+      (lambda (line)
+        ;; Ensure = and distinct use custom-bool-converter
+        (loop-through
+         '("=" "distinct")
+         (lambda (symbol)
+           (when (and (not (regexp-match (string-append
+                                          "[(]custom-bool-converter [(]" symbol)
+                                         line))
+                      (regexp-match (string-append name-chars symbol name-chars)
+                                    line))
+             (err `((error  "Operator should be guarded by custom-bool-converter")
+                    (symbol ,symbol)
+                    (file   ,file))))))
 
-       (loop-through
-        (file->lines (string-append dest "/" file))
-        (lambda (line)
-          ;; Ensure = and distinct use custom-bool-converter
-          (loop-through
-           '("=" "distinct")
-           (lambda (symbol)
-             (when (and (not (regexp-match (string-append
-                                            "[(]custom-bool-converter [(]" symbol)
-                                           line))
-                        (regexp-match (string-append name-chars symbol name-chars)
-                                      line))
-               (err `((error  "Operator should be guarded by custom-bool-converter")
+        ;; Ensure tip command can read file
+        (let* ((works #f)
+               (path  (string-append "\"" dest "/" file "\""))
+               (str   (with-output-to-string
+                        (lambda ()
+                          (set! works
+                            (system (string-append "tip < " path)))))))
+          (unless works
+            (err `((error  "Command 'tip' failed to read file")
+                   (file   ,file)
+                   (path   ,path)
+                   (output ,str)
+                   (works  ,works)))))
+
+        ;; Ensure built-in symbols have been replaced
+        (loop-through
+         ;; We can't check for '=>' since it's both implication and a function
+         ;; type
+         '("ite" "and" "false" "not" "or" "true" "True" "False" "Bool" "Int"
+           "[+]" "[*]" "div" "mod" ">" "<" ">=" "<=")
+
+         (lambda (symbol)
+           ;; Look for this operator, but avoid matching parts of other symbols
+           ;; (e.g. thinking that "opposite" is "ite") by disallowing
+           ;; characters before/after which are valid in names. Note that we
+           ;; don't check the definition of custom-bool-converter since ite and
+           ;; Bool are unavoidable there.
+           (unless (regexp-match "[(]define-fun custom-bool-converter " line)
+             (when (regexp-match (string-append name-chars symbol name-chars)
+                                 line)
+               (err `((error  "Operator should have been replaced")
                       (symbol ,symbol)
-                      (file   ,file))))))
-
-          ;; Ensure tip command can read file
-          (let* ((works #f)
-                 (path  (string-append "\"" dest "/" file "\""))
-                 (str   (with-output-to-string
-                          (lambda ()
-                            (set! works
-                              (system (string-append "tip < " path)))))))
-            (unless works
-              (err `((error  "Command 'tip' failed to read file")
-                     (file   ,file)
-                     (path   ,path)
-                     (output ,str)
-                     (works  ,works)))))
-
-          ;; Ensure built-in symbols have been replaced
-          (loop-through
-           ;; We can't check for '=>' since it's both implication and a function
-           ;; type
-           '("ite" "and" "false" "not" "or" "true" "True" "False" "Bool" "Int"
-             "[+]" "[*]" "div" "mod" ">" "<" ">=" "<=")
-
-           (lambda (symbol)
-             ;; Look for this operator, but avoid matching parts of other symbols
-             ;; (e.g. thinking that "opposite" is "ite") by disallowing
-             ;; characters before/after which are valid in names. Note that we
-             ;; don't check the definition of custom-bool-converter since ite and
-             ;; Bool are unavoidable there.
-             (unless (regexp-match "[(]define-fun custom-bool-converter " line)
-               (when (regexp-match (string-append name-chars symbol name-chars)
-                                   line)
-                 (err `((error  "Operator should have been replaced")
-                        (symbol ,symbol)
-                        (file   ,file)))))))))))))
+                      (file   ,file))))))))))))

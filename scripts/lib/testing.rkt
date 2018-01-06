@@ -8,7 +8,7 @@
 (provide check-equal? check-exn check-false
          check-not-equal? check-pred check-true constructorS constructorZ
          custom-bool custom-int custom-ite custom-nat def-test-case form
-         form-with-deps mut nat-def redundancies
+         form-with-deps mut nat-def quick-or-full redundancies
          testing-file with-check-info)
 
 ;; Selects specific test-cases based on a regex from the environment
@@ -63,18 +63,18 @@
                          "tip2015/sort_NStoogeSort2Permutes.smt2"
                          "tip2015/tree_sort_SortPermutes'.smt2")))
 
-    ;; Override theorem-files to return these chosen files, if no BENCHMARKS
-    ;; were given explicitly
-    #;(when (member (getenv "BENCHMARKS") '(#f ""))
-      (set-theorem-files! (lambda ()
-                            required-testing-files)))
-
     ;; The definition of testing-file; checks if the given file is in our
     ;; selected list.
     (lambda (f)
       (unless (member (benchmark-file f) required-testing-files)
         (error "Testing file not in required list" f))
       f)))
+
+;; Run full if we're doing a thorough check, or quick for faster routine checks
+(define-syntax-rule (quick-or-full quick full)
+  (if (equal? (getenv "PLT_TR_CONTRACTS") "1")
+      full
+      quick))
 
 ;; Example data, useful across a variety of tests
 

@@ -88,7 +88,8 @@
                                 (check-not-equal? #f (member c eqs)
                                                   "All equations are found")))
                             conjectures)))
-                (theorem-ids))))
+              (quick-or-full (take (shuffle (theorem-ids)) 10)
+                             (theorem-ids)))))
 
 (define (conjectures-admitted-by-sample-wrapper)
   (define sample (read-benchmark (port->string)))

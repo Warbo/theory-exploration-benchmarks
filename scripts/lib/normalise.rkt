@@ -1105,7 +1105,8 @@
                                ('replaced replaced))
                               (check-equal? norm-new replaced)))
                           (old-of rep)))
-              test-replacements)))
+              (quick-or-full (take (shuffle test-replacements) 10)
+                             test-replacements))))
 
 ;; Do the actual normalisation, to populate the cache
 (define (gen-normed-and-replacements)
@@ -1438,7 +1439,8 @@
                                                         (symbol->string raw)))))
                                         (zip raw-def-names normal-def-names))))
                           normal-names))
-              (take (shuffle raw-names) 30))
+              (quick-or-full (take (shuffle raw-names) 10)
+                             raw-names))
 
     (check-equal? (finalise-replacements
                    (extend-replacements
