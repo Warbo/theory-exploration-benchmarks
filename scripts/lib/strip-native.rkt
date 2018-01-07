@@ -580,14 +580,17 @@
        (loop-through
         '("=" "distinct")
         (lambda (symbol)
-          (when (and (not (regexp-match (string-append
-                                         "[(]custom-bool-converter [(]" symbol)
-                                        line))
-                     (regexp-match (string-append name-chars symbol name-chars)
-                                   line))
-            (err `((error  "Operator should be guarded by custom-bool-converter")
-                   (symbol ,symbol)
-                   (file   ,file)))))))))
+          (unless (regexp-match (string-append
+                                 "[(]custom-bool-converter [(]" symbol)
+                                line)
+            (with-check-info
+             (('symbol symbol)
+              ('file   file))
+             (check-false (regexp-match (string-append name-chars
+                                                       symbol
+                                                       name-chars)
+                                        line)
+                          "No operators unguarded by custom-bool-converter"))))))))
 
   (def-test-case "Ensure tip command can read files"
     (loop-through-files
@@ -597,11 +600,12 @@
                        (lambda ()
                          (set! works
                            (system (string-append "tip < \"" file "\"")))))))
-         (unless works
-           (err `((error  "Command 'tip' failed to read file")
-                  (file   ,file)
-                  (output ,str)
-                  (works  ,works))))))))
+         (with-check-info
+          (('file   file)
+           ('output str)
+           ('works  works))
+          (check-true works
+                      "Command 'tip' can parse file"))))))
 
   (def-test-case "Ensure built-in symbols have been replaced"
     (loop-through-lines
@@ -619,8 +623,11 @@
           ;; don't check the definition of custom-bool-converter since ite and
           ;; Bool are unavoidable there.
           (unless (regexp-match "[(]define-fun custom-bool-converter " line)
-            (when (regexp-match (string-append name-chars symbol name-chars)
-                                line)
-              (err `((error  "Operator should have been replaced")
-                     (symbol ,symbol)
-                     (file   ,file)))))))))))
+            (with-check-info
+             (('symbol symbol)
+              ('file   file))
+             (check-false (regexp-match (string-append name-chars
+                                                       symbol
+                                                       name-chars)
+                                        line)
+                          "Operator should have been replaced")))))))))
