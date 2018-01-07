@@ -89,9 +89,6 @@ with rec {
       ;; Generate actual output
       (for-each (process-tip-file! source destination)
                 input-files)
-
-      ;; Check the output, and error-out if dodgy
-      (benchmark-tests source destination)
     '';
 
     BENCHMARKS_CACHE = runRacket "benchmarks-cache" [ env ]
@@ -144,9 +141,10 @@ with rec {
 
   testScript = wrap {
     vars   = {
-      TEST_DATA       = ./test-data/nat-simple-raw.json;
-      TEST_LIST_EQS   = ./test-data/list-full-found.json;
-      TEST_LIST_TRUTH = ./test-data/list-full-ground-truth.smt2;
+      TEST_DATA         = ./test-data/nat-simple-raw.json;
+      TEST_LIST_EQS     = ./test-data/list-full-found.json;
+      TEST_LIST_TRUTH   = ./test-data/list-full-ground-truth.smt2;
+      BENCHMARKS_SOURCE = tip-repo + "/benchmarks";
     } // cache;
     paths  = [ env ];
     script = ''

@@ -6,12 +6,12 @@
 
 (require racket/match)
 
-(provide benchmark-tests custom-bool custom-ite custom-not custom-and custom-or
-         custom-=> custom-bool-converter custom-nat custom-int custom-plus
-         custom-inc custom-dec custom-invert custom-abs custom-sign custom-+
-         custom-- custom-* custom-nat-> custom-> custom-div custom-mod custom-<
-         custom->= custom-<= mk-source process-tip-file! replace-all-native
-         start tip-files-in)
+(provide custom-bool custom-ite custom-not custom-and custom-or custom-=>
+         custom-bool-converter custom-nat custom-int custom-plus custom-inc
+         custom-dec custom-invert custom-abs custom-sign custom-+ custom--
+         custom-* custom-nat-> custom-> custom-div custom-mod custom-< custom->=
+         custom-<= mk-source process-tip-file! replace-all-native start
+         tip-files-in)
 
 (define (dump x)
   (write x (current-error-port))
@@ -546,10 +546,15 @@
 (define (loop-through lst proc)
   (for-each proc lst))
 
-(define (benchmark-tests source dest)
-  (eprintf "Checking results\n")
+(module+ test
+  (require lib/testing)
+  (require lib/impure)
 
-  (same-files? source dest)
+  (define source (getenv "BENCHMARKS_SOURCE"))
+  (define dest   (getenv "BENCHMARKS"))
+
+  (def-test-case "Pre-processed benchmarks match original"
+    (same-files? source dest))
 
   (define name-chars
     "[^><=a-zA-Z0-9-]")
@@ -557,57 +562,65 @@
   (define files-in-dest
     (tip-files-in dest))
 
-  (loop-through
-   (if (equal? (getenv "PLT_TR_CONTRACTS") "1")
-       files-in-dest
-       (take (shuffle files-in-dest) 10))
-   (lambda (file)
-     (loop-through
-      (file->lines (string-append dest "/" file))
-      (lambda (line)
-        ;; Ensure = and distinct use custom-bool-converter
-        (loop-through
-         '("=" "distinct")
-         (lambda (symbol)
-           (when (and (not (regexp-match (string-append
-                                          "[(]custom-bool-converter [(]" symbol)
-                                         line))
-                      (regexp-match (string-append name-chars symbol name-chars)
-                                    line))
-             (err `((error  "Operator should be guarded by custom-bool-converter")
-                    (symbol ,symbol)
-                    (file   ,file))))))
+  (define (loop-through-files proc)
+    (loop-through (quick-or-full files-in-dest
+                                 (take (shuffle files-in-dest) 10))
+                  (lambda (file)
+                    (proc (string-append dest "/" file)))))
 
-        ;; Ensure tip command can read file
-        (let* ((works #f)
-               (path  (string-append "\"" dest "/" file "\""))
-               (str   (with-output-to-string
-                        (lambda ()
-                          (set! works
-                            (system (string-append "tip < " path)))))))
-          (unless works
-            (err `((error  "Command 'tip' failed to read file")
-                   (file   ,file)
-                   (path   ,path)
-                   (output ,str)
-                   (works  ,works)))))
+  (define (loop-through-lines proc)
+    (loop-through-files
+     (lambda (file)
+       (loop-through (file->lines file)
+                     (curry proc file)))))
 
-        ;; Ensure built-in symbols have been replaced
-        (loop-through
-         ;; We can't check for '=>' since it's both implication and a function
-         ;; type
-         '("ite" "and" "false" "not" "or" "true" "True" "False" "Bool" "Int"
-           "[+]" "[*]" "div" "mod" ">" "<" ">=" "<=")
+  (def-test-case "Ensure = and distinct use custom-bool-converter"
+    (loop-through-lines
+     (lambda (file line)
+       (loop-through
+        '("=" "distinct")
+        (lambda (symbol)
+          (when (and (not (regexp-match (string-append
+                                         "[(]custom-bool-converter [(]" symbol)
+                                        line))
+                     (regexp-match (string-append name-chars symbol name-chars)
+                                   line))
+            (err `((error  "Operator should be guarded by custom-bool-converter")
+                   (symbol ,symbol)
+                   (file   ,file)))))))))
 
-         (lambda (symbol)
-           ;; Look for this operator, but avoid matching parts of other symbols
-           ;; (e.g. thinking that "opposite" is "ite") by disallowing
-           ;; characters before/after which are valid in names. Note that we
-           ;; don't check the definition of custom-bool-converter since ite and
-           ;; Bool are unavoidable there.
-           (unless (regexp-match "[(]define-fun custom-bool-converter " line)
-             (when (regexp-match (string-append name-chars symbol name-chars)
-                                 line)
-               (err `((error  "Operator should have been replaced")
-                      (symbol ,symbol)
-                      (file   ,file))))))))))))
+  (def-test-case "Ensure tip command can read files"
+    (loop-through-files
+     (lambda (file)
+       (let* ((works #f)
+              (str   (with-output-to-string
+                       (lambda ()
+                         (set! works
+                           (system (string-append "tip < \"" file "\"")))))))
+         (unless works
+           (err `((error  "Command 'tip' failed to read file")
+                  (file   ,file)
+                  (output ,str)
+                  (works  ,works))))))))
+
+  (def-test-case "Ensure built-in symbols have been replaced"
+    (loop-through-lines
+     (lambda (file line)
+       (loop-through
+        ;; We can't check for '=>' since it's both implication and a function
+        ;; type
+        '("ite" "and" "false" "not" "or" "true" "True" "False" "Bool" "Int"
+          "[+]" "[*]" "div" "mod" ">" "<" ">=" "<=")
+
+        (lambda (symbol)
+          ;; Look for this operator, but avoid matching parts of other symbols
+          ;; (e.g. thinking that "opposite" is "ite") by disallowing
+          ;; characters before/after which are valid in names. Note that we
+          ;; don't check the definition of custom-bool-converter since ite and
+          ;; Bool are unavoidable there.
+          (unless (regexp-match "[(]define-fun custom-bool-converter " line)
+            (when (regexp-match (string-append name-chars symbol name-chars)
+                                line)
+              (err `((error  "Operator should have been replaced")
+                     (symbol ,symbol)
+                     (file   ,file)))))))))))

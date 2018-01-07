@@ -11,6 +11,7 @@
 (require (submod lib/sets         test))
 (require (submod lib/defs         test))
 (require (submod lib/util         test))
+(require (submod lib/strip-native test))
 (require (submod lib/replacements test))
 (require (submod lib/tip          test))
 (require (submod lib/normalise    test))
