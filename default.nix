@@ -5,43 +5,14 @@
   asv-nix         ? null }:
 
 with builtins;
-with rec {
-  # Known-good version of nixpkgs
-  repo1609 = (import <nixpkgs> {}).fetchFromGitHub {
-    owner  = "NixOS";
-    repo   = "nixpkgs";
-    rev    = "f22817d";
-    sha256 = "1cx5cfsp4iiwq8921c15chn1mhjgzydvhdcmrvjmqzinxyz71bzh";
-  };
-
-  nixpkgs1609 = import repo1609 pkgsArgs;
-};
-with {
-  pkgs = if pkgsPath == null
-            then nixpkgs1609
-            else import pkgsPath pkgsArgs;
-};
+with import ./pkgs.nix { inherit nix-config-src pkgsArgs pkgsPath; };
 with pkgs;
 with lib;
 with rec {
-  # Custom packages, overrides, etc.
-  nix-config =
-    with rec {
-      nix-config-src-default = fetchgit {
-        url    = "http://chriswarbo.net/git/nix-config.git";
-        rev    = "15e860d";
-        sha256 = "18x4cq2cl8dmw8zkk4a4kryh53bj98n61ydj1472ywhmvkanw944";
-      };
+with {
+  inherit (nix-config) attrsToDirs callPackage fail replace withDeps wrap;
+};
 
-      config-src = if nix-config-src == null
-                      then nix-config-src-default
-                      else nix-config-src;
-    };
-    import (if pkgsPath == null then repo1609 else pkgsPath) (pkgsArgs // {
-      config = import "${config-src}/config.nix";
-    });
-
-  inherit (nix-config) attrsToDirs fail replace withDeps wrap;
 
   inherit (nix-config.callPackage ./racket.nix { inherit pkgs nixpkgs1609; })
     compileRacketScript racketWithPkgs runRacket;
