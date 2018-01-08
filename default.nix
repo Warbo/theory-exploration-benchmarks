@@ -139,7 +139,7 @@ with rec {
       '';
   };
 
-  runTestScript = { full ? false }: runCommand "run-test"
+  tests = { full ? false }: runCommand "run-tests"
     # Check contracts while testing; it's disabled by default for being too slow
     ((if full then { PLT_TR_CONTRACTS = "1"; } else {}) // cache // {
       TEST_DATA         = ./test-data/nat-simple-raw.json;
@@ -199,21 +199,25 @@ rec {
            else asv-nix;
 
   # Standalone since it's too slow to use as a dependency of tools
-  fullToolTest = runTestScript { full = true; };
+  fullToolTest = tests { full = true; };
 
   # Installs tools for translating, sampling, etc. the benchmark. These tools
-  # get cached data baked into them, which makes them slow to install but fast
-  # to run.
+  # get cached data baked into them, which makes them slow to build but fast to
+  # run.
   tools = attrsToDirs {
     bin = genAttrs
       [
         "choose_sample" "conjectures_admitted_by_sample"
         "conjectures_for_sample" "decode" "eqs_to_json" "full_haskell_package"
         "precision_recall_eqs"
-      (n: compileRacketScript n
-            (cache // { testsPass = runTestScript { full = false; }; })
-            (./scripts + "/${n}.rkt"));
       ]
+      (n: compileRacketScript n (cache // {
+                                  # Put the test results in the environment, so
+                                  # the tests will run before we start compiling
+                                  # anything. If the test fail, we abort early.
+                                  testsPass = tests { full = false; };
+                                })
+                                (./scripts + "/${n}.rkt"));
   };
 
   tip-benchmark-smtlib = runRacket "tip-benchmark-smtlib" [] cache ''
