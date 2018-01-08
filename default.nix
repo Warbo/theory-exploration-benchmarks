@@ -4,42 +4,20 @@
   nix-config-src  ? null,
   asv-nix         ? null }:
 
+# Bring in the general builders, helpers, etc. that we need, allowing overrides.
 with builtins;
 with import ./pkgs.nix { inherit nix-config-src pkgsArgs pkgsPath; };
 with pkgs;
 with lib;
-with rec {
 with {
   inherit (nix-config) attrsToDirs callPackage fail replace withDeps wrap;
 };
 
+# Bring in bespoke definitions needed for this project
 
-  inherit (nix-config.callPackage ./racket.nix { inherit pkgs nixpkgs1609; })
+with rec {
+  inherit (callPackage ./racket.nix { inherit pkgs nixpkgs1609; })
     compileRacketScript racketWithPkgs runRacket;
-
-  # Take the given Haskell packages, but override some things which are known
-  # to be broken on Hackage. TODO: Get upstream to upload non-broken packages!
-  patchedHaskellPackages =
-    with rec {
-      hsPkgs = if haskellPackages == null
-                  then pkgs.haskell.packages.ghc7103
-                  else haskellPackages;
-
-      overrides = self: super:
-        genAttrs [ "tip-lib" "geniplate" ]
-                 (name: self.callPackage (overriddenHaskell name) {});
-
-      overriddenHaskell = name:
-        nix-config.haskell.packages.ghc7103."${name}".src;
-    };
-    hsPkgs.override { inherit overrides; };
-
-  tip-repo = fetchFromGitHub {
-    owner  = "tip-org";
-    repo   = "benchmarks";
-    rev    = "fae25da";
-    sha256 = "08zm9a8dlwqm6bnd5z8714j5365pklwh4lkgcnhq0ns1lq0njp3l";
-  };
 
   # Generates all the intermediate steps of the transformation
   cache = rec {
@@ -47,6 +25,8 @@ with {
     # definitions like "Bool" and "<" with explicitly defined versions.
     BENCHMARKS = runRacket "tip-benchmarks" [ env ] { repo = tip-repo; } ''
       (require lib/strip-native)
+  inherit (callPackage ./tip.nix    { inherit nix-config; })
+    patchedHaskellPackages tip-repo;
 
       (define source
         (mk-source (getenv "repo")))
