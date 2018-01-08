@@ -139,48 +139,37 @@ with rec {
       '';
   };
 
-  runTestScript = { full ? false }:
-    runCommand "run-test"
-      # Check contracts while testing; it's disabled by default for being too slow
-      ((if full then { PLT_TR_CONTRACTS = "1"; } else {}) // {
-        testScript = wrap {
-          name  = "test-runner";
-          paths = [ env fail ];
-          vars  = (cache // {
-            TEST_DATA         = ./test-data/nat-simple-raw.json;
-            TEST_LIST_EQS     = ./test-data/list-full-found.json;
-            TEST_LIST_TRUTH   = ./test-data/list-full-ground-truth.smt2;
-            BENCHMARKS_SOURCE = tip-repo + "/benchmarks";
-            script            = writeScript "run-tests.rkt" ''
-              #lang racket
-              (require (submod lib/impure       test))
-              (require (submod lib/compare      test))
-              (require (submod lib/lists        test))
-              (require (submod lib/sets         test))
-              (require (submod lib/defs         test))
-              (require (submod lib/util         test))
-              (require (submod lib/strip-native test))
-              (require (submod lib/replacements test))
-              (require (submod lib/tip          test))
-              (require (submod lib/normalise    test))
-              (require (submod lib/theorems     test))
-              (require (submod lib/sigs         test))
-              (require (submod lib/sampling     test))
-              (require (submod lib/conjectures  test))
-              (module+ test)
-            '';
-          });
-          script = ''
-            #!/usr/bin/env bash
-            set -e
-            raco test "$script" || fail "Tests failed"
-            mkdir "$out"
-          '';
-        };
-      })
+  runTestScript = { full ? false }: runCommand "run-test"
+    # Check contracts while testing; it's disabled by default for being too slow
+    ((if full then { PLT_TR_CONTRACTS = "1"; } else {}) // cache // {
+      TEST_DATA         = ./test-data/nat-simple-raw.json;
+      TEST_LIST_EQS     = ./test-data/list-full-found.json;
+      TEST_LIST_TRUTH   = ./test-data/list-full-ground-truth.smt2;
+      BENCHMARKS_SOURCE = tip-repo + "/benchmarks";
+      buildInputs       = [ env fail ];
+      testScript        = writeScript "run-tests.rkt" ''
+        #lang racket
+        (require (submod lib/impure       test))
+        (require (submod lib/compare      test))
+        (require (submod lib/lists        test))
+        (require (submod lib/sets         test))
+        (require (submod lib/defs         test))
+        (require (submod lib/util         test))
+        (require (submod lib/strip-native test))
+        (require (submod lib/replacements test))
+        (require (submod lib/tip          test))
+        (require (submod lib/normalise    test))
+        (require (submod lib/theorems     test))
+        (require (submod lib/sigs         test))
+        (require (submod lib/sampling     test))
+        (require (submod lib/conjectures  test))
+        (module+ test)
+      '';
+    })
     ''
       set -e
-      "$testScript"
+      raco test "$testScript" || fail "Tests failed"
+      mkdir "$out"
     '';
 
   env = buildEnv {
