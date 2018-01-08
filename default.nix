@@ -198,9 +198,6 @@ rec {
            then nix-config.asv-nix
            else asv-nix;
 
-  # Standalone to allow separate testing and to avoid requiring expensive caches
-  withTests = withDeps [ (runTestScript { full = false; }) ];
-
   # Standalone since it's too slow to use as a dependency of tools
   fullToolTest = runTestScript { full = true; };
 
