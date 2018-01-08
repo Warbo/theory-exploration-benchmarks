@@ -206,15 +206,14 @@ rec {
   # to run.
   tools = attrsToDirs {
     bin = genAttrs
-      ([
+      [
         "choose_sample" "conjectures_admitted_by_sample"
         "conjectures_for_sample" "decode" "eqs_to_json" "full_haskell_package"
-      ] ++ map (s: trace "FIXME ${s}" s) [
         "precision_recall_eqs"
-      ])
       (n: compileRacketScript n
             (cache // { testsPass = runTestScript { full = false; }; })
             (./scripts + "/${n}.rkt"));
+      ]
   };
 
   tip-benchmark-smtlib = runRacket "tip-benchmark-smtlib" [] cache ''
