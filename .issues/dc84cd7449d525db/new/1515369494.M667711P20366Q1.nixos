@@ -1,0 +1,8 @@
+From: Chris Warburton
+Date: Sun, 07 Jan 2018 23:57:52 +0000
+Subject: Re: Don't include destructors in samples
+Message-Id: <dc84cd7449d525db-9c78fa13344128c8-artemis@nixos>
+References: <dc84cd7449d525db-0-artemis@nixos>
+In-Reply-To: <dc84cd7449d525db-0-artemis@nixos>
+
+Made tests pass, and done some refactoring

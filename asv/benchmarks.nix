@@ -19,14 +19,7 @@ with rec {
     paths = [ env ];
     script = runner "${scripts}/${script}";
   };
-
-  deps = attrsToDirs { bin = { run_tests = testScript; }; };
 };
 attrsToDirs {
-  bin = {
-    python = wrap {
-      paths  = [ deps ];
-      script = runner "${python}/bin/python";
-    };
-  };
+  bin = { python = wrap { script = runner "${python}/bin/python"; }; };
 }

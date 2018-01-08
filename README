@@ -87,20 +87,18 @@ available in `PATH`.
 
 ## Testing ##
 
-Tests can also be run in many ways, e.g. via Dr Racket, but the simplest is to
-call the provided `scripts/test.sh` script. Alternatively, use Racket's `raco`
-command:
+Tests are invoked automatically during the build process, and can also be run
+manually via Dr Racket or by using Racket's `raco` command, e.g.
 
-    raco test scripts/test.rkt
-
-Tests will be run automatically during installation, which can be skipped by
-setting the `SKIP_TESTS` environment variable to `1`.
+    raco test scripts/lib/foo.rkt
 
 The Racket code makes heavy use of *contracts* to check pre- and post-conditions
 of functions. These slow down the tools considerably (a factor of 5 has been
 observed), so they are disabled by default. To force contract checking, set the
 environment variable `PLT_TR_CONTRACTS` to `1`. A separate test derivation is
 provided in default.nix, which tests all benchmark files with contracts enabled.
+Setting this variable will also cause tests to loop over all benchmarks,
+definitions, etc. (for speed, they default to testing a random subset).
 
 ## Benchmarking ##
 

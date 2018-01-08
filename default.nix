@@ -139,35 +139,48 @@ with rec {
       '';
   };
 
-  testScript = wrap {
-    vars   = {
-      TEST_DATA         = ./test-data/nat-simple-raw.json;
-      TEST_LIST_EQS     = ./test-data/list-full-found.json;
-      TEST_LIST_TRUTH   = ./test-data/list-full-ground-truth.smt2;
-      BENCHMARKS_SOURCE = tip-repo + "/benchmarks";
-    } // cache;
-    paths  = [ env ];
-    script = ''
-      #!/usr/bin/env bash
-      raco test "${./scripts}/test.rkt" || exit 1
-    '';
-  };
-
-  runTestScript = given: runCommand "run-test"
-    (given // {
-      inherit testScript;
-
-      # Allow testing to be skipped, as it can take a few minutes
-      doCheck = if getEnv "SKIP_TESTS" == "" then "true" else "false";
-    })
+  runTestScript = { full ? false }:
+    runCommand "run-test"
+      # Check contracts while testing; it's disabled by default for being too slow
+      ((if full then { PLT_TR_CONTRACTS = "1"; } else {}) // {
+        testScript = wrap {
+          name  = "test-runner";
+          paths = [ env fail ];
+          vars  = (cache // {
+            TEST_DATA         = ./test-data/nat-simple-raw.json;
+            TEST_LIST_EQS     = ./test-data/list-full-found.json;
+            TEST_LIST_TRUTH   = ./test-data/list-full-ground-truth.smt2;
+            BENCHMARKS_SOURCE = tip-repo + "/benchmarks";
+            script            = writeScript "run-tests.rkt" ''
+              #lang racket
+              (require (submod lib/impure       test))
+              (require (submod lib/compare      test))
+              (require (submod lib/lists        test))
+              (require (submod lib/sets         test))
+              (require (submod lib/defs         test))
+              (require (submod lib/util         test))
+              (require (submod lib/strip-native test))
+              (require (submod lib/replacements test))
+              (require (submod lib/tip          test))
+              (require (submod lib/normalise    test))
+              (require (submod lib/theorems     test))
+              (require (submod lib/sigs         test))
+              (require (submod lib/sampling     test))
+              (require (submod lib/conjectures  test))
+              (module+ test)
+            '';
+          });
+          script = ''
+            #!/usr/bin/env bash
+            set -e
+            raco test "$script" || fail "Tests failed"
+            mkdir "$out"
+          '';
+        };
+      })
     ''
-      if $doCheck
-      then
-        "$testScript" || exit 1
-        echo "passed" > "$out"
-      else
-        echo "skipped" > "$out"
-      fi
+      set -e
+      "$testScript"
     '';
 
   env = buildEnv {
@@ -189,7 +202,7 @@ with rec {
   };
 };
 rec {
-  inherit env patchedHaskellPackages nix-config testScript;
+  inherit env patchedHaskellPackages nix-config;
 
   # Used for benchmarking the benchmark generation (yo dawg)
   asv = if asv-nix == null
@@ -197,13 +210,10 @@ rec {
            else asv-nix;
 
   # Standalone to allow separate testing and to avoid requiring expensive caches
-  withTests = withDeps [ (runTestScript {}) ];
+  withTests = withDeps [ (runTestScript { full = false; }) ];
 
   # Standalone since it's too slow to use as a dependency of tools
-  fullToolTest = withTests (runTestScript {
-    # Check contracts while testing; it's disabled by default for being too slow
-    PLT_TR_CONTRACTS = "1";
-  });
+  fullToolTest = runTestScript { full = true; };
 
   # Installs tools for translating, sampling, etc. the benchmark. These tools
   # get cached data baked into them, which makes them slow to install but fast
@@ -217,7 +227,7 @@ rec {
         "precision_recall_eqs"
       ])
       (n: compileRacketScript n
-            (cache // { testsPass = runTestScript {}; })
+            (cache // { testsPass = runTestScript { full = false; }; })
             (./scripts + "/${n}.rkt"));
   };
 
