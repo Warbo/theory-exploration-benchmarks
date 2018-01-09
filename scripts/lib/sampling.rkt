@@ -10,7 +10,7 @@
 (require lib/lists)
 (require lib/util)
 
-(provide get-sampling-data sample-from-benchmarks strip-matching-prefix)
+(provide sample-from-benchmarks strip-matching-prefix)
 
 (module+ test
   (require lib/testing))
@@ -252,9 +252,6 @@
                             (check-equal? size (set-count s)))
                           (range 0 10)))
               (range 1 10))))
-
-(define (get-sampling-data)
-  (read-from-cache! "BENCHMARKS_CACHE"))
 
 (memo0 only-function-names (read-from-cache! "BENCHMARKS_ONLY_FUNCTION_NAMES"))
 

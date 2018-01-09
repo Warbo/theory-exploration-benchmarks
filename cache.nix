@@ -44,30 +44,6 @@
                             (all-theorem-deps))))
       '';
 
-    BENCHMARKS_CACHE = runRacket "benchmarks-cache" [ env ]
-      {
-        inherit BENCHMARKS BENCHMARKS_FINAL_BENCHMARK_DEFS
-                BENCHMARKS_NORMALISED_DEFINITIONS
-                BENCHMARKS_NORMALISED_THEOREMS;
-      }
-      ''
-        (require lib/conjectures)
-        (require lib/impure)
-        (require lib/normalise)
-        (require lib/sampling)
-        (require lib/theorems)
-
-        ;; Generates data about renaming, etc. which can be cached and re-used
-        ;; to make sampling and querying quicker.
-
-        (write-to-out
-          (format "~s"
-            `((all-canonical-function-names
-                ;; Theorem deps aren't hex encoded, so sample with
-                ;; decoded versions
-                ,(map decode-name (lowercase-benchmark-names))))))
-      '';
-
     BENCHMARKS_NORMALISED_THEOREMS = runRacket "normalised-theorems" [ env ]
       { inherit BENCHMARKS BENCHMARKS_NORMALISED_DEFINITIONS; }
       ''
@@ -151,28 +127,27 @@
 
     BENCHMARKS_ONLY_FUNCTION_NAMES = runRacket "function-names"
       [ env ]
-      { inherit BENCHMARKS BENCHMARKS_CACHE; }
+      { inherit BENCHMARKS BENCHMARKS_FINAL_BENCHMARK_DEFS; }
       ''
         (require lib/impure)
+        (require lib/conjectures)
         (require lib/lists)
+        (require lib/normalise)
         (require lib/sampling)
+        (require lib/theorems)
 
-        (define data (get-sampling-data))
-
-        ;; TODO: This name is deceptive, since it may include destructors. This
-        ;; cache is for stripping them out.
-        (define all-canonical-function-names
-          (assoc-get 'all-canonical-function-names data))
+        (define lowercase-names
+          (map decode-name (lowercase-benchmark-names)))
 
         (define all-constructors
-          (strip-matching-prefix all-canonical-function-names "constructor-"))
+          (strip-matching-prefix lowercase-names "constructor-"))
 
         (define all-destructors
-          (strip-matching-prefix all-canonical-function-names "destructor-"))
+          (strip-matching-prefix lowercase-names "destructor-"))
 
         (define only-function-names
           (remove* (append all-constructors all-destructors)
-                   all-canonical-function-names))
+                   lowercase-names))
 
         (write-to-out (format "~s" only-function-names))
       '';
