@@ -61,23 +61,6 @@ with rec {
       mkdir "$out"
     '';
 
-  env = buildEnv {
-    name  = "tip-bench-env";
-    paths = [
-      bash
-      patchedHaskellPackages.cabal-install
-      racketWithPkgs
-      (patchedHaskellPackages.ghcWithPackages (hs: [
-        hs.tip-lib
-        hs.geniplate
-        hs.QuickCheck
-        hs.quickspec
-        hs.testing-feat
-        hs.cereal
-        hs.murmur-hash
-      ]))
-    ];
-  };
 };
 rec {
   inherit env patchedHaskellPackages nix-config;
