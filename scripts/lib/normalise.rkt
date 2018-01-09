@@ -12,15 +12,12 @@
 (require lib/util)
 (require lib/strip-native)
 
-(provide all-constructor-function-replacements all-replacements-closure
-         decode-name
-         decode-string encode-lower-name final-benchmark-defs
-         gen-normed-and-replacements
-         lowercase-benchmark-names mk-final-defs
-         mk-final-defs-hash nn norm-name
-         normed-and-replacements-cached normed-qualified-theorem-files prepare
-         qual-hashes-theorem-files
-         replace-names unqualify)
+(provide all-replacements-closure constructor-function-replacements
+         decode-name decode-string encode-lower-name final-benchmark-defs
+         lowercase-benchmark-names mk-final-defs mk-final-defs-hash nn norm-name
+         normed-and-replacements normed-and-replacements-cached
+         normed-qualified-theorem-files prefix-locals prepare
+         qual-hashes-theorem-files replace-names unqualify)
 
 (module+ test
   (require lib/testing))
@@ -154,18 +151,6 @@
              'prefixed-locals?
              "Unprefixed locals in definition:\n~a\n"
              x))))
-
-(define (add-custom-defs x)
-  (append x
-          (map (match-lambda
-                 [(list def deps)
-                  (prefix-locals def)])
-               (list custom-bool custom-ite custom-not custom-and custom-or
-                     custom-=> custom-bool-converter custom-nat custom-int
-                     custom-plus custom-inc custom-dec custom-invert custom-abs
-                     custom-sign custom-+ custom-- custom-* custom-nat->
-                     custom-> custom-div custom-mod custom-< custom->=
-                     custom-<=))))
 
 ;; Prefix each name with the path of the file it came from, and combine all
 ;; definitions together into one long list (ordered lexicographically by path).
@@ -1108,14 +1093,6 @@
               (quick-or-full (take (shuffle test-replacements) 10)
                              test-replacements))))
 
-;; Do the actual normalisation, to populate the cache
-(define (gen-normed-and-replacements)
-  (when (getenv "BENCHMARKS_NORMALISED_DEFINITIONS")
-    (error (string-append "Shouldn't call gen-normed-and-replacements "
-                          "when BENCHMARK_NORMALISED_DEFINITIONS is set")))
-  (normed-and-replacements
-   (add-custom-defs (first (qual-hashes-theorem-files)))))
-
 ;; Removes redundant alpha-equivalent definitions from EXPRS, resulting in a
 ;; normalised form given as the first element of the result.
 ;; Also keeps track of the replacements it's made in the process, returning them
@@ -1180,9 +1157,7 @@
                (second x)))
 
 (define (normed-and-replacements-cached)
-  (read-from-cache! "BENCHMARKS_NORMALISED_DEFINITIONS"
-                    (lambda ()
-                      (error "No BENCHMARKS_NORMALISED_DEFINITIONS"))))
+  (read-from-cache! "BENCHMARKS_NORMALISED_DEFINITIONS"))
 
 (define (mk-final-defs)
   (list->lines (final-benchmark-defs)))
@@ -1232,9 +1207,7 @@
 
 ;; Normalised benchmark from given BENCHMARKS
 (memo0 final-benchmark-defs
-       (read-from-cache! "BENCHMARKS_FINAL_BENCHMARK_DEFS"
-                         (lambda ()
-                           (error "No BENCHMARKS_FINAL_BENCHMARK_DEFS"))))
+       (read-from-cache! "BENCHMARKS_FINAL_BENCHMARK_DEFS"))
 
 ;; All function names defined in given BENCHMARKS. NOTE: These will be
 ;; hex-encoded.
@@ -1779,10 +1752,6 @@
                              (prefix-name (unqualify (norm-name constructor))
                                           "constructor-")))
               all-constructors)))
-
-(define (all-constructor-function-replacements)
-  (constructor-function-replacements (first (qual-hashes-theorem-files))
-                                     (all-replacements-closure)))
 
 (module+ test
   (define/test-contract (constructor-function-replacements-from-hashes hashes)

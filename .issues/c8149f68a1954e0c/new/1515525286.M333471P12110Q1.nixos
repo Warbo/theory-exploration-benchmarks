@@ -1,0 +1,10 @@
+From: Chris Warburton
+Date: Tue, 09 Jan 2018 19:13:30 +0000
+State: resolved
+Subject: BENCHMARKS_CACHE just contains BENCHMARKS_NORMALISED_THEOREMS
+Message-Id: <c8149f68a1954e0c-0-artemis@nixos>
+resolution: fixed
+
+We should remove this unnecessary layer of indirection, and just use
+BENCHMARKS_NORMALISED_THEOREMS directly whenever the
+'normalised-theorems element of BENCHMARKS_CACHE is used.

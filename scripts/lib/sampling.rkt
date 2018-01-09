@@ -3,13 +3,14 @@
 (require grommet/crypto/hash/sha256)
 (require lib/compare)
 (require lib/impure)
+(require lib/memo)
 (require lib/normalise)
 (require lib/theorems)
 (require lib/tip)
 (require lib/lists)
 (require lib/util)
 
-(provide get-sampling-data make-sampling-data sample-from-benchmarks)
+(provide get-sampling-data sample-from-benchmarks strip-matching-prefix)
 
 (module+ test
   (require lib/testing))
@@ -258,52 +259,21 @@
   (assoc-contains? 'all-canonical-function-names
                    'theorem-deps))
 
-(define/test-contract (make-sampling-data)
-  (-> sampling-data?)
-  `((all-canonical-function-names
-     ;; Theorem deps aren't hex encoded, so sample with
-     ;; decoded versions
-     ,(map decode-name (lowercase-benchmark-names)))
-
-    ;; read/write doesn't work for sets :(
-    (theorem-deps
-     ,(map (lambda (t-d)
-             (list (first t-d) (set->list (second t-d))))
-           (all-theorem-deps)))
-
-    (normalised-theorems
-     ,(normalised-theorems))))
-
 (define/test-contract (get-sampling-data)
   (-> sampling-data?)
-  (read-from-cache! "BENCHMARKS_CACHE" make-sampling-data))
+  (read-from-cache! "BENCHMARKS_CACHE"))
+
+(memo0 only-function-names (read-from-cache! "BENCHMARKS_ONLY_FUNCTION_NAMES"))
 
 ;; Sample using the names and theorems from BENCHMARKS
 (define (sample-from-benchmarks size rep)
-  (define data (get-sampling-data))
-
-  (define-values (all-canonical-function-names theorem-deps)
-    (values (assoc-get 'all-canonical-function-names data)
-            (map (lambda (t-d)
-                   (list->set (second t-d)))
-                 (assoc-get 'theorem-deps data))))
-
-  (define all-constructors
-    (strip-matching-prefix all-canonical-function-names "constructor-"))
-
-  (define all-destructors
-    (strip-matching-prefix all-canonical-function-names "destructor-"))
-
-  ;; TODO: Rather than filtering out constructors and destructors, we shouldn't
-  ;; be including them in the first place. In particular, the naming is pretty
-  ;; deceptive.
-
-  (define only-function-names
-    (remove* (append all-constructors all-destructors)
-             all-canonical-function-names))
+  (define theorem-deps
+    (map (lambda (t-d)
+           (list->set (second t-d)))
+         (assoc-get 'theorem-deps (get-sampling-data))))
 
   (define sampled
-    (sample size rep only-function-names theorem-deps))
+    (sample size rep (only-function-names) theorem-deps))
 
   ;; Hex encode sample so it's usable with e.g. Haskell translation
   (map-set encode-lower-name sampled))

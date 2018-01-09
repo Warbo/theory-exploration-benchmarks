@@ -27,25 +27,74 @@
     BENCHMARKS_CACHE = runRacket "benchmarks-cache" [ env ]
       {
         inherit BENCHMARKS BENCHMARKS_FINAL_BENCHMARK_DEFS
-                BENCHMARKS_NORMALISED_DEFINITIONS;
+                BENCHMARKS_NORMALISED_DEFINITIONS
+                BENCHMARKS_NORMALISED_THEOREMS;
       }
       ''
+        (require lib/conjectures)
         (require lib/impure)
+        (require lib/normalise)
         (require lib/sampling)
+        (require lib/theorems)
 
         ;; Generates data about renaming, etc. which can be cached and re-used
         ;; to make sampling and querying quicker.
-        (write-to-out (format "~s" (make-sampling-data)))
+
+        (write-to-out
+          (format "~s"
+            `((all-canonical-function-names
+                ;; Theorem deps aren't hex encoded, so sample with
+                ;; decoded versions
+                ,(map decode-name (lowercase-benchmark-names)))
+
+              ;; read/write doesn't work for sets
+              (theorem-deps
+                ,(map (lambda (t-d)
+                        (list (first t-d) (set->list (second t-d))))
+                      (all-theorem-deps))))))
       '';
 
     BENCHMARKS_NORMALISED_THEOREMS = runRacket "normalised-theorems" [ env ]
-      { inherit BENCHMARKS_CACHE BENCHMARKS BENCHMARKS_NORMALISED_DEFINITIONS; }
+      { inherit BENCHMARKS BENCHMARKS_NORMALISED_DEFINITIONS; }
       ''
-        ;; Replaced (assoc-get 'normalised-theorems (get-sampling-data))
-        ;; Write normalised-theorems return value to BENCHMARKS_NORMALISED_THEOREMS
         (require lib/impure)
+        (require lib/lists)
+        (require lib/normalise)
+        (require lib/replacements)
         (require lib/theorems)
-        (write-to-out (format "~s" (normalised-theorems)))
+
+        ;; First get replacements used in definitions
+        (define replacements
+          (all-replacements-closure))
+
+        ;; Also replace constructors with constructor functions, skipping
+        ;; constructors which are redundant
+
+        (define constructor-replacements
+          (constructor-function-replacements (first (qual-hashes-theorem-files))
+                                             (all-replacements-closure)))
+
+        (define final-replacements
+          (finalise-replacements
+            (extend-replacements replacements constructor-replacements)))
+
+        (define (qual-thm id thm)
+          (replace-all (map (lambda (g)
+                              (list g
+                                    (string->symbol
+                                      (string-append id (symbol->string g)))))
+                            (theorem-globals thm))
+                       thm))
+
+        (write-to-out
+          (format "~s"
+            (make-immutable-hash
+              (hash-map (benchmark-theorems)
+                        (lambda (id thm)
+                          (cons id
+                                (unqualify
+                                  (replace final-replacements
+                                           (qual-thm id thm)))))))))
       '';
 
     BENCHMARKS_NORMALISED_DEFINITIONS = runRacket "normalised-definitions"
@@ -54,9 +103,24 @@
       ''
         (require lib/impure)
         (require lib/normalise)
+        (require lib/strip-native)
+
+        (define (add-custom-defs x)
+         (append x
+                 (map (match-lambda
+                        [(list def deps)
+                         (prefix-locals def)])
+                      (list custom-bool custom-ite custom-not custom-and
+                            custom-or custom-=> custom-bool-converter custom-nat
+                            custom-int custom-plus custom-inc custom-dec
+                            custom-invert custom-abs custom-sign custom-+
+                            custom-- custom-* custom-nat-> custom-> custom-div
+                            custom-mod custom-< custom->= custom-<=))))
+
         (write-to-out
           (format "~s"
-            (gen-normed-and-replacements)))
+            (normed-and-replacements
+              (add-custom-defs (first (qual-hashes-theorem-files))))))
       '';
 
     BENCHMARKS_FINAL_BENCHMARK_DEFS = runRacket "final-defs"
@@ -69,6 +133,34 @@
         (write-to-out
           (format "~s"
             (prepare (first (normed-and-replacements-cached)))))
+      '';
+
+    BENCHMARKS_ONLY_FUNCTION_NAMES = runRacket "function-names"
+      [ env ]
+      { inherit BENCHMARKS BENCHMARKS_CACHE; }
+      ''
+        (require lib/impure)
+        (require lib/lists)
+        (require lib/sampling)
+
+        (define data (get-sampling-data))
+
+        ;; TODO: This name is deceptive, since it may include destructors. This
+        ;; cache is for stripping them out.
+        (define all-canonical-function-names
+          (assoc-get 'all-canonical-function-names data))
+
+        (define all-constructors
+          (strip-matching-prefix all-canonical-function-names "constructor-"))
+
+        (define all-destructors
+          (strip-matching-prefix all-canonical-function-names "destructor-"))
+
+        (define only-function-names
+          (remove* (append all-constructors all-destructors)
+                   all-canonical-function-names))
+
+        (write-to-out (format "~s" only-function-names))
       '';
   };
 }

@@ -8,7 +8,8 @@
 (require lib/tip)
 (require lib/util)
 
-(provide all-theorem-deps normalised-theorems normed-theorem-of theorem-deps-of)
+(provide all-theorem-deps benchmark-theorems normalised-theorems
+         normed-theorem-of theorem-deps-of theorem-globals)
 
 (module+ test
   (require lib/testing))
@@ -96,14 +97,6 @@
 
     (remove* (thm-locals thm) (thm-names thm)))
 
-(define (qual-thm id thm)
-  (replace-all (map (lambda (g)
-                      (list g
-                            (string->symbol
-                             (string-append id (symbol->string g)))))
-                    (theorem-globals thm))
-               thm))
-
 (define (unwrap-custom-bool thm)
   (match thm
     [(list 'custom-bool-converter x) (unwrap-custom-bool x)]
@@ -112,35 +105,7 @@
     [x                               x]))
 
 (memo0 normalised-theorems
-  (if (member (getenv "BENCHMARKS_NORMALISED_THEOREMS") '(#f ""))
-      ;; No cache given, generate
-      (let ()
-        ;; First get replacements used in definitions
-        (define replacements
-          (all-replacements-closure))
-
-        ;; Also replace constructors with constructor functions, skipping
-        ;; constructors which are redundant
-
-        (define constructor-replacements
-          (all-constructor-function-replacements))
-
-        (define final-replacements
-          (finalise-replacements
-           (extend-replacements replacements constructor-replacements)))
-
-        (make-immutable-hash
-         (hash-map (benchmark-theorems)
-                   (lambda (id thm)
-                     (cons id
-                           (unqualify
-                            (replace final-replacements
-                                     (qual-thm id thm))))))))
-      ;; Otherwise return cached version
-      (let* ([f (open-input-file (getenv "BENCHMARKS_NORMALISED_THEOREMS"))]
-             [result (read f)])
-        (close-input-port f)
-        result)))
+  (read-from-cache! "BENCHMARKS_NORMALISED_THEOREMS"))
 
 (module+ test
   (def-test-case "Theorem names get normalised"

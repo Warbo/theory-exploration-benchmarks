@@ -109,7 +109,7 @@
 (define benchmark-files
   (curry map benchmark-file))
 
-(define (read-from-cache! cache fallback)
+(define (read-from-cache! cache)
   (define cache-path (getenv cache))
 
   (unless (and cache-path (file-exists? cache-path))
