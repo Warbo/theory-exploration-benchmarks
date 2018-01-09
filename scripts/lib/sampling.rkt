@@ -253,27 +253,20 @@
                           (range 0 10)))
               (range 1 10))))
 
-;; Cache data required for sampling in /tmp, so we can draw samples over and
-;; over from the same benchmarks without recalculating everything each time.
-(define sampling-data?
-  (assoc-contains? 'all-canonical-function-names
-                   'theorem-deps))
-
-(define/test-contract (get-sampling-data)
-  (-> sampling-data?)
+(define (get-sampling-data)
   (read-from-cache! "BENCHMARKS_CACHE"))
 
 (memo0 only-function-names (read-from-cache! "BENCHMARKS_ONLY_FUNCTION_NAMES"))
 
 ;; Sample using the names and theorems from BENCHMARKS
 (define (sample-from-benchmarks size rep)
-  (define theorem-deps
+  (define deps
     (map (lambda (t-d)
            (list->set (second t-d)))
-         (assoc-get 'theorem-deps (get-sampling-data))))
+         (theorem-deps)))
 
   (define sampled
-    (sample size rep (only-function-names) theorem-deps))
+    (sample size rep (only-function-names) deps))
 
   ;; Hex encode sample so it's usable with e.g. Haskell translation
   (map-set encode-lower-name sampled))

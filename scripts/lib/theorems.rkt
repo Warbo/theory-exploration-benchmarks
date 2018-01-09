@@ -9,7 +9,7 @@
 (require lib/util)
 
 (provide all-theorem-deps benchmark-theorems normalised-theorems
-         normed-theorem-of theorem-deps-of theorem-globals)
+         normed-theorem-of theorem-deps theorem-deps-of theorem-globals)
 
 (module+ test
   (require lib/testing))
@@ -271,3 +271,6 @@
 (memo0 all-theorem-deps
        (map (lambda (f) (list f (list->set (theorem-deps-of f))))
             (theorem-ids)))
+
+(memo0 theorem-deps
+  (read-from-cache! "BENCHMARKS_THEOREM_DEPS"))

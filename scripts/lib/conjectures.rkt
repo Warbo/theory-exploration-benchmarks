@@ -104,13 +104,10 @@
        files))
 
 (define (theorem-files-admitted-by sample)
-  (define theorem-deps
-    (assoc-get 'theorem-deps (get-sampling-data)))
-
   (map first
        (filter (lambda (t-d)
                  (subset? (second t-d) sample))
-               theorem-deps)))
+               (theorem-deps))))
 
 (define (conjectures-for-sample-wrapper)
   (define sample

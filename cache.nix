@@ -24,6 +24,26 @@
                 input-files)
     '';
 
+    BENCHMARKS_THEOREM_DEPS = runRacket "benchmarks-cache" [ env ]
+      {
+        inherit BENCHMARKS BENCHMARKS_FINAL_BENCHMARK_DEFS
+                BENCHMARKS_NORMALISED_DEFINITIONS
+                BENCHMARKS_NORMALISED_THEOREMS;
+      }
+      ''
+        (require lib/conjectures)
+        (require lib/impure)
+        (require lib/normalise)
+        (require lib/sampling)
+        (require lib/theorems)
+
+        ;; read/write doesn't work for sets, so convert to list
+        (write-to-out
+          (format "~s" (map (lambda (t-d)
+                              (list (first t-d) (set->list (second t-d))))
+                            (all-theorem-deps))))
+      '';
+
     BENCHMARKS_CACHE = runRacket "benchmarks-cache" [ env ]
       {
         inherit BENCHMARKS BENCHMARKS_FINAL_BENCHMARK_DEFS
@@ -45,13 +65,7 @@
             `((all-canonical-function-names
                 ;; Theorem deps aren't hex encoded, so sample with
                 ;; decoded versions
-                ,(map decode-name (lowercase-benchmark-names)))
-
-              ;; read/write doesn't work for sets
-              (theorem-deps
-                ,(map (lambda (t-d)
-                        (list (first t-d) (set->list (second t-d))))
-                      (all-theorem-deps))))))
+                ,(map decode-name (lowercase-benchmark-names))))))
       '';
 
     BENCHMARKS_NORMALISED_THEOREMS = runRacket "normalised-theorems" [ env ]
