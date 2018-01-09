@@ -1,6 +1,6 @@
 { nix-config-src ? null, pkgsArgs ? { config = {}; }, pkgsPath ? null }:
 
-rec {
+with rec {
   # Known-good version of nixpkgs
   repo1609 = (import <nixpkgs> {}).fetchFromGitHub {
     owner  = "NixOS";
@@ -32,4 +32,10 @@ rec {
   nix-config = pkgsWithArgs (pkgsArgs // {
                               config = import "${config-src}/config.nix";
                             });
+};
+
+# Expose the contents of pkgs, along with some other useful definitions
+pkgs // builtins // pkgs.lib // {
+  inherit nixpkgs1609 nix-config;
+  inherit (nix-config) attrsToDirs callPackage fail replace withDeps wrap;
 }
