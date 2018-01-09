@@ -2,25 +2,26 @@
 
 with builtins;
 with (import <nixpkgs> {}).lib;
-with rec {
-  forSys = system:
-    with rec {
-      pkgs = import <nixpkgs> { inherit system; };
 
-      # Add more versions to this list if we can get them to work
-      hsVersions = filterAttrs (n: _: elem n [ "ghc7103" "ghc801" "ghc802" ])
-                               pkgs.haskell.packages;
-
-      # Remove attributes added by 'callPackage'. Also avoid building the whole
-      # of 'patchedHaskellPackages', when we only care about tip-lib.
-      strip = x: removeAttrs x [ "override" "overrideDerivation" "nix-config"
-                                 "patchedHaskellPackages" ] //
-                 { inherit (x.patchedHaskellPackages) tip-lib; };
-   };
-   mapAttrs (_: haskellPackages: strip (pkgs.callPackage ./. {
-                                         inherit haskellPackages;
-                                         pkgsArgs = { inherit system; };
-                                       }))
-            hsVersions;
-};
-genAttrs supportedSystems forSys
+genAttrs
+  supportedSystems
+  (system:
+    with import ./pkgs.nix { pkgsArgs = { inherit system; }; };
+    with {
+      # Select the derivations we care about
+      parts = haskellPackages:
+        with callPackage ./. {
+          inherit haskellPackages;
+          pkgsArgs = { inherit system; };
+        };
+        {
+          inherit asv tip-benchmark-haskell tip-benchmark-smtlib tools;
+          inherit (patchedHaskellPackages) tip-lib;
+          quickTest = tests { full = false; };
+          fullTest  = tests { full = true;  };
+        };
+    };
+    # Add more versions to this list if we can get them to work
+    mapAttrs (_: parts)
+             (filterAttrs (n: _: elem n [ "ghc7103" "ghc801" "ghc802" ])
+                          haskell.packages))
