@@ -824,7 +824,7 @@
                                                (variable 0   "foo"))
                                         (constant bar "foo"))
                                    '(~= (apply (variable 0   "Int -> Bool")
-                                               (variable 0   "foo"))
+                                               (variable 1   "foo"))
                                         (constant bar "foo")))
                  "Different structures don't match")
 
