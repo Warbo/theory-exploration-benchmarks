@@ -7,7 +7,7 @@
 (require lib/tip)
 (require lib/util)
 
-(provide full-haskell-package full-haskell-package-s)
+(provide full-haskell-package-s)
 
 (module+ test
   (require lib/testing)
@@ -250,11 +250,6 @@ library
               ('stderr  (get-output-string stderr))
               ('message "Module imported successfully"))
              (check-false (string-contains? output "class Functor")))))))))
-
-;; Commandline wrapper around full-haskell-package-s using stdio and env vars
-(define (full-haskell-package)
-  (full-haskell-package-s (port->string (current-input-port))
-                          (getenv "OUT_DIR")))
 
 (module+ test
   (define sig (string-to-haskell mut))
