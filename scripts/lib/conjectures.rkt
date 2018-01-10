@@ -854,10 +854,10 @@
                       (constant bar "t1")))
                 "Encoded destructor-foo matches encoded foo")
 
-    (check-false (equations-match? '(~= (constant constructor-foo "t1")
-                                        (constant bar "t1"))
-                                   '(~= (constant baz "t1")
-                                        (constant bar "t1")))
+    (check-false (equations-match? '(~= (constant bar "t1")
+                                        (constant constructor-foo "t1"))
+                                   '(~= (constant bar "t1")
+                                        (constant baz "t1")))
                  "Constructor function names must still match")))
 
 (define/test-contract (expressions-match? x y)
