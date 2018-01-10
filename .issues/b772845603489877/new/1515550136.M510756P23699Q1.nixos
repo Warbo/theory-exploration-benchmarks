@@ -1,0 +1,8 @@
+From: Chris Warburton
+Date: Wed, 10 Jan 2018 02:08:44 +0000
+Subject: Re: Remove generating? cruft
+Message-Id: <b772845603489877-c4185a1bf060cc36-artemis@nixos>
+References: <b772845603489877-0-artemis@nixos>
+In-Reply-To: <b772845603489877-0-artemis@nixos>
+
+Seemed to be unused now, so I've removed it

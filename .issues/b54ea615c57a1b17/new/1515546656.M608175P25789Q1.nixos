@@ -1,0 +1,10 @@
+From: Chris Warburton
+Date: Wed, 10 Jan 2018 01:10:20 +0000
+Subject: Re: Dedupe replacement lists
+Message-Id: <b54ea615c57a1b17-cb56792852ef9e45-artemis@nixos>
+References: <b54ea615c57a1b17-0-artemis@nixos>
+In-Reply-To: <b54ea615c57a1b17-0-artemis@nixos>
+
+This no longer seems to be a problem. The deduping only takes a couple
+of minutes (thanks to much optimisation), and we cache a whole bunch of
+stuff now.

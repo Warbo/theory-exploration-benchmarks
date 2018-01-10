@@ -1,8 +1,9 @@
 From: Chris Warburton
 Date: Mon, 11 Dec 2017 17:20:35 +0000
-State: new
+State: resolved
 Subject: Remove some indirection layers
 Message-Id: <e44a266a45dd6ef0-0-artemis@nixos>
+resolution: fixed
 
 We've got Nix derivations whose build scripts are bash which only exists
 to execute a single racket script. These racket scripts are wrappers

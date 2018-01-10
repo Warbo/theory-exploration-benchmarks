@@ -1,0 +1,9 @@
+From: Chris Warburton
+Date: Tue, 09 Jan 2018 22:32:29 +0000
+Subject: Re: Don't include destructors in samples
+Message-Id: <dc84cd7449d525db-be33e9c27176356b-artemis@nixos>
+References: <dc84cd7449d525db-0-artemis@nixos>
+In-Reply-To: <dc84cd7449d525db-0-artemis@nixos>
+
+I think I'm finished refactoring now: we now only bother caching the
+function names, with destructors already removed.

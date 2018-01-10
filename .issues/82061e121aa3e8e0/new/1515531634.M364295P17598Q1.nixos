@@ -1,8 +1,9 @@
 From: Chris Warburton
 Date: Tue, 09 Jan 2018 20:58:46 +0000
-State: new
+State: resolved
 Subject: all-canonical-function-names in BENCHMARKS_CACHE is a lie
 Message-Id: <82061e121aa3e8e0-0-artemis@nixos>
+resolution: fixed
 
 It contains destructors as well as
 functions. BENCHMARKS_ONLY_FUNCTION_NAMES contains function names

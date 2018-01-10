@@ -1,0 +1,17 @@
+From: Chris Warburton
+Date: Wed, 10 Jan 2018 01:03:33 +0000
+Subject: Re: Only expose final results
+Message-Id: <d9b8bbe67a9e654d-de935af5c44068d2-artemis@nixos>
+References: <d9b8bbe67a9e654d-0-artemis@nixos>
+In-Reply-To: <d9b8bbe67a9e654d-0-artemis@nixos>
+
+We've now moved some of the cache-generation code out of
+pseudo-standalone scripts and into Nix builders (using our own
+'runRacket' function, rather than the bash-based 'runCommand').
+
+It doesn't seem to make sense having tests in these derivations, so
+instead we've just moved across anything that's *only* used by the data
+generation, and we leave behind things which are used elsewhere (either
+by other code, or by tests).
+
+There's still room for some more cleaning up, so I'll leave this open.

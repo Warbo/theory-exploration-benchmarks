@@ -1,0 +1,10 @@
+From: Chris Warburton
+Date: Wed, 10 Jan 2018 01:01:45 +0000
+Subject: Re: all-canonical-function-names in BENCHMARKS_CACHE is a lie
+Message-Id: <82061e121aa3e8e0-f925a0ea1da333d9-artemis@nixos>
+References: <82061e121aa3e8e0-0-artemis@nixos>
+In-Reply-To: <82061e121aa3e8e0-0-artemis@nixos>
+
+We've now got rid of BENCHMARKS_CACHE, since it was only being used to
+produce the all-function-names cache, so now we just produce that
+directly.

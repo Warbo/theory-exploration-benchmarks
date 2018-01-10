@@ -1,0 +1,17 @@
+From: Chris Warburton
+Date: Wed, 10 Jan 2018 02:09:27 +0000
+Subject: Re: Remove some indirection layers
+Message-Id: <e44a266a45dd6ef0-fa7d66ca90d51ccb-artemis@nixos>
+References: <e44a266a45dd6ef0-0-artemis@nixos>
+In-Reply-To: <e44a266a45dd6ef0-0-artemis@nixos>
+
+I've now done most of this refactoring. We have a 'runRacket' function
+in Nix, which replaces the bash one-liners; this runs build scripts
+written in Racket which replace the standalone scripts/*.rkt scripts, so
+that the only remaining scripts are things which we'll actually call
+from other projects (e.g. 'choose_sample').
+
+Internally, I've done some refactoring of the cached values and things,
+so that there should be less indirection.
+
+The Racket code is certainly not optimal though ;)

@@ -1,8 +1,9 @@
 From: Chris Warburton
 Date: Wed, 28 Jun 2017 17:53:28 +0100
-State: new
+State: resolved
 Subject: Dedupe replacement lists
 Message-Id: <b54ea615c57a1b17-0-artemis@nixos>
+resolution: fixed
 
 Our replacements are lists of lists. Each inner list represents a set of
 equivalent names; the first element is the "canonical" one to use, all
