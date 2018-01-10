@@ -828,30 +828,30 @@
                                         (constant bar "foo")))
                  "Different structures don't match")
 
-    (check-true (equations-match? '(~= (constant constructor-foo "t1")
-                                       (constant bar "t1"))
+    (check-true (equations-match? '(~= (constant bar "t1")
+                                       (constant constructor-foo "t1"))
                                   '(~= (constant bar "unknown")
                                        (constant foo "unknown")))
                 "Constructors match their expansions")
 
-    (check-true (equations-match? '(~= (constant destructor-foo "unknown")
-                                       (constant bar "t1"))
-                                  '(~= (constant foo "t1")
-                                       (constant bar "unknown")))
+    (check-true (equations-match? '(~= (constant bar "t1")
+                                       (constant destructor-foo "unknown"))
+                                  '(~= (constant bar "unknown")
+                                       (constant foo "t1")))
                 "Destructors match their expansions")
 
     (check-true (equations-match?
-                 '(~= (constant global636f6e7374727563746f722d666f6f "t1")
-                      (constant bar "t1"))
+                 '(~= (constant bar "t1")
+                      (constant global636f6e7374727563746f722d666f6f "t1"))
                  '(~= (constant Global666f6f "t1")
                       (constant bar "t1")))
                 "Encoded constructor-foo matches encoded foo")
 
     (check-true (equations-match?
-                 '(~= (constant global64657374727563746f722d666f6f "t1")
-                      (constant bar "t1"))
-                 '(~= (constant global666f6f "t1")
-                      (constant bar "t1")))
+                 '(~= (constant bar "t1")
+                      (constant global64657374727563746f722d666f6f "t1"))
+                 '(~= (constant bar "t1")
+                      (constant global666f6f "t1")))
                 "Encoded destructor-foo matches encoded foo")
 
     (check-false (equations-match? '(~= (constant bar "t1")
