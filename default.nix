@@ -15,7 +15,7 @@ with callPackage ./test.nix   { inherit cache env tip-repo;        };
 
 # The definitions we expose
 rec {
-  inherit allTests env patchedHaskellPackages nix-config tests;
+  inherit cache env patchedHaskellPackages nix-config tests;
 
   # Used for benchmarking the benchmark generation (yo dawg)
   asv = if asv-nix == null
