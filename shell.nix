@@ -14,7 +14,7 @@ with import ./. {};
       echo "NOTE: We don't check Racket contracts because it's slow."
       echo "To enable contract checking, set PLT_TR_CONTRACTS to 1"
 
-      echo "You can run tests with e.g. 'raco test scripts/test.rkt'"
+      echo "You can run tests with e.g. 'raco test scripts/lib/foo.rkt'"
       echo "Use PLT_TEST_REGEX env var to limit which test cases are run."
 
       echo "Log messages are suppressed during tests. Set DEBUG to see them."

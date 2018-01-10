@@ -17,8 +17,8 @@ genAttrs
         {
           inherit asv tip-benchmark-haskell tip-benchmark-smtlib tools;
           inherit (patchedHaskellPackages) tip-lib;
-          quickTest = tests { full = false; };
-          fullTest  = tests { full = true;  };
+          quickTests = tests { full = false; };
+          fullTests  = tests { full = true;  };
         };
     };
     # Add more versions to this list if we can get them to work

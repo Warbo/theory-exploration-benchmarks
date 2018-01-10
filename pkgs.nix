@@ -37,5 +37,6 @@ with rec {
 # Expose the contents of pkgs, along with some other useful definitions
 pkgs // builtins // pkgs.lib // {
   inherit nixpkgs1609 nix-config;
-  inherit (nix-config) attrsToDirs callPackage fail replace withDeps wrap;
+  inherit (nix-config) attrsToDirs callPackage fail nothing replace withDeps
+                       wrap;
 }
