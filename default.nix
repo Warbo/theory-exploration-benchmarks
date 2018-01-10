@@ -25,23 +25,34 @@ rec {
   # Installs tools for translating, sampling, etc. the benchmark. These tools
   # get cached data baked into them, which makes them slow to build but fast to
   # run.
-  tools = attrsToDirs {
-    bin = genAttrs
-      [
-        "choose_sample" "conjectures_admitted_by_sample"
-        "conjectures_for_sample" "decode" "eqs_to_json" "full_haskell_package"
-        "precision_recall_eqs"
-      ]
-      (n: compileRacketScript n (cache // {
-                                  # Put the test results in the environment, so
-                                  # the tests will run before we start compiling
-                                  # anything. If the test fail, we abort early.
-                                  testsPass = withDeps
-                                    (attrValues (tests { full = false; }))
-                                    nothing;
-                                })
-                                (./scripts + "/${n}.rkt"));
-  };
+  tools =
+    with rec {
+      compile = n: compileRacketScript n (cache // {
+          # Put the test results in the environment, so the tests will run
+          # before we start compiling anything. If the test fail, we abort early
+          testsPass = withDeps (attrValues (tests { full = false; }))
+                               nothing;
+        })
+        [ env ]
+        (./scripts + "/${n}.rkt");
+
+      scripts = attrsToDirs {
+        bin = genAttrs [ "choose_sample" "conjectures_admitted_by_sample"
+                         "conjectures_for_sample" "decode" "eqs_to_json"
+                         "full_haskell_package" "precision_recall_eqs" ]
+                       compile;
+      };
+
+      checks = runCommand "tool-checks" { buildInputs = [ fail scripts ]; } ''
+        set -e
+
+        OUT_DIR="$PWD" full_haskell_package < ${tip-benchmark-smtlib} ||
+          fail "Didn't make Haskell package"
+
+        mkdir "$out"
+      '';
+    };
+    withDeps [ checks ] scripts;
 
   # The resulting benchmark, in various forms
 

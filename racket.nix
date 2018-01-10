@@ -93,9 +93,9 @@ rec {
 
   compileRacketScript =
     with rec {
-      go = name: vars: script: wrap {
+      go = name: vars: paths: script: wrap {
         inherit name;
-        paths = [ racketWithPkgs ];
+        paths = [ racketWithPkgs ] ++ paths;
         vars  = {
           inherit PLTCOLLECTS;
           PLT_COMPILED_FILE_CHECK = "exists";
@@ -127,7 +127,8 @@ rec {
       compileTest = runCommand "compile-test"
         {
           buildInputs = [ fail ];
-          cmd = go "rkt-test" {} ''(display "Compiled Racket scripts work")'';
+          cmd = go "rkt-test" {} []
+                   ''(display "Compiled Racket scripts work")'';
         }
       ''
         set -e
@@ -136,7 +137,8 @@ rec {
         mkdir "$out"
       '';
     };
-    name: vars: script: withDeps [ compileTest ] (go name vars script);
+    name: vars: paths: script: withDeps [ compileTest ]
+                                        (go name vars paths script);
 
   # Like 'runCommand', but uses Racket code for the builder instead of bash
   runRacket = name: paths: vars: script: stdenv.mkDerivation {
