@@ -1,5 +1,5 @@
-{ fail, fetchFromGitHub, lib, makeWrapper, nixpkgs1609, pkgs, runCommand,
-  stdenv, writeScript, withDeps, wrap }:
+{ fail, fetchFromGitHub, lib, makeWrapper, nixListToBashArray, nixpkgs1609,
+  pkgs, runCommand, stdenv, writeScript, withDeps, wrap }:
 
 with builtins;
 with lib;
@@ -157,7 +157,7 @@ rec {
     with rec {
       go = name: vars: paths: script: wrap {
         inherit name;
-        paths = [ racketWithPkgs ] ++ paths;
+        paths = [ (racketWithPkgs PLTCOLLECTS) ] ++ paths;
         vars  = {
           inherit PLTCOLLECTS;
           PLT_COMPILED_FILE_CHECK = "exists";
@@ -165,7 +165,7 @@ rec {
         file = runCommand "compiled-${name}"
           ({
             inherit PLTCOLLECTS;
-            buildInputs = [ racketWithPkgs ];
+            buildInputs = [ (racketWithPkgs PLTCOLLECTS) ];
             fileName    = name;
             raw         = if typeOf script == "path" || hasPrefix "/" script
                              then script

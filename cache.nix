@@ -1,4 +1,4 @@
-{ env, runRacket, tip-repo }:
+{ env, mkPLTCOLLECTS, runRacket, tip-repo }:
 
 # Generates all the intermediate steps of the transformation, so that scripts
 # can mostly just perform look-ups.
