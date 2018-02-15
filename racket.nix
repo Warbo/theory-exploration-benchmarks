@@ -104,7 +104,53 @@ rec {
       })
     ];
 
-  # Env var so Racket can 'require' our scripts
+  # Put the given scripts in a directory and make them available to Racket. This
+  # is useful for depending on a sub-set of scripts, to prevent rebuilding all
+  # of the early stages when only the later stages have been edited.
+  mkPLTCOLLECTS = given:
+    assert isList given;
+    assert all isString given;
+    with rec {
+      scripts = racketScriptDeps given;
+
+      # Take care to make paths which point to the original files, so that only
+      # those files get added to the store. We want to avoid getting the whole
+      # ./scripts directory added to the store, since that would affect our
+      # hashes and cause rebuilds (the one thing we did not want to happen).
+      mkPath = f: ./scripts + "/${f}";
+
+      srcs   = map mkPath scripts;
+
+      sDests = nixListToBashArray { name = "SCRIPTDESTS"; args = scripts; };
+
+      sSrcs  = nixListToBashArray { name = "SCRIPTSRCS";  args = srcs;    };
+
+      dir    = runCommand "pltcollects-dir"
+        (sDests.env // sSrcs.env)
+        ''
+          ${sDests.code}
+          ${ sSrcs.code}
+
+          # Loop over each src/dest pair in our arrays (off-by-one cruft is due
+          # to seq preferring to count from 1)
+          mkdir -p "$out"
+          for NPLUSONE in $(seq 1 "''${#SCRIPTSRCS[@]}")
+          do
+            N=$(( NPLUSONE - 1 ))
+
+             SRC="''${SCRIPTSRCS[$N]}"
+            DEST="$out/''${SCRIPTDESTS[$N]}"
+
+            DEST_DIR=$(dirname "$DEST")
+            mkdir -p "$DEST_DIR"
+
+            ln -v -s "$SRC" "$DEST"
+          done
+        '';
+    };
+    ":${dir}";
+
+  # Contains all of our scripts for Racket to import
   PLTCOLLECTS = ":${./scripts}";
 
   compileRacketScript =
