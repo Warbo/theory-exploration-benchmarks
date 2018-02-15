@@ -219,4 +219,37 @@ rec {
       '';
     };
   };
+
+  # Find deps between scripts/lib files by looking at their 'require' statements
+  racketScriptDeps =
+    with rec {
+      immediate =  mapAttrs' (name: _: {
+          name  = "lib/" + name;
+          value = import (runCommand "racket-deps-of-${name}"
+                    { f = ./scripts/lib + "/${name}"; }
+                    ''
+                      echo '[' > "$out"
+                        while read -r DEP
+                        do
+                          echo "\"lib/$DEP.rkt\""
+                        done < <(grep '(require lib/' < "$f" |
+                                 sed -e 's@(require lib/@@g' |
+                                 tr -d ' ()') >> "$out"
+                      echo ']' >> "$out"
+                    '');
+        })
+        (readDir ./scripts/lib);
+
+      depsOf  = f: if hasAttr f immediate then getAttr f immediate else [];
+
+      step    = f: [f] ++ depsOf f;
+
+      allDeps = known: with { next = collapse (concatMap step known); };
+                       if known == next
+                          then known
+                          else allDeps next;
+
+      collapse = l: unique (sort (x: y: x < y) l);
+    };
+    given: allDeps given;
 }
