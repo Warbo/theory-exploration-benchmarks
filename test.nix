@@ -26,8 +26,8 @@ rec {
 
   tests = { full ? false }: genAttrs (map (removeSuffix ".rkt")
                                           (attrNames (readDir ./scripts/lib)))
-                                     (f: runTest {
+                                     (name: runTest {
                                        inherit full;
-                                       file = ./scripts/lib + "/${f}.rkt";
+                                       file = ./scripts/lib + "/${name}.rkt";
                                      });
 }
