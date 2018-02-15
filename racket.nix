@@ -12,10 +12,28 @@ rec {
        else trace "WARNING: Broken 'racket'; falling back to 16.09"
             nixpkgs1609.racket;
 
-  racketWithPkgs =
+  # Wrap each Racket binary in an env where PLTCOLLECTS is set
+  racketWithPkgs = PLTCOLLECTS: runCommand "racket-with-deps"
+    {
+      inherit PLTCOLLECTS;
+      base        = racketWithPkgsBase;
+      buildInputs = [ makeWrapper ];
+    }
+    ''
+      mkdir -p "$out/bin"
+      for PROG in "$base"/bin/*
+      do
+        NAME=$(basename "$PROG")
+        makeWrapper "$PROG" "$out/bin/$NAME"     \
+                    --set HOME        "$out/etc" \
+                    --set PLTCOLLECTS "$PLTCOLLECTS"
+      done
+    '';
+
+  racketWithPkgsBase =
     with rec {
       racketWithDeps = deps: stdenv.mkDerivation {
-        name = "racket-with-deps";
+        name = "racket-with-deps-base";
 
         buildInputs = [ makeWrapper workingRacket ];
 
@@ -50,14 +68,12 @@ rec {
           # Compile registered packages
           raco setup --avoid-main -x -D
 
-          # Provide Racket binaries patched to use our modified HOME and scripts
+          # Provide Racket binaries patched to use our modified HOME
           mkdir -p "$out/bin"
           for PROG in "${workingRacket}"/bin/*
           do
             NAME=$(basename "$PROG")
-            makeWrapper "$PROG" "$out/bin/$NAME"     \
-                        --set HOME        "$out/etc" \
-                        --set PLTCOLLECTS "${PLTCOLLECTS}"
+            makeWrapper "$PROG" "$out/bin/$NAME" --set HOME "$out/etc"
           done
         '';
       };
