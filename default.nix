@@ -33,7 +33,7 @@ rec {
           testsPass = withDeps (attrValues (tests { full = false; }))
                                nothing;
         })
-        [ env ]
+        [ (env {}) ]
         (./scripts + "/${n}.rkt");
 
       scripts = attrsToDirs {
@@ -56,14 +56,14 @@ rec {
 
   # The resulting benchmark, in various forms
 
-  tip-benchmark-smtlib = runRacket "tip-benchmark-smtlib" [] cache ''
+  tip-benchmark-smtlib = runRacket "tip-benchmark-smtlib" env cache ''
     (require lib/normalise)
     (require lib/impure)
 
     (write-to-out (mk-final-defs))
   '';
 
-  tip-benchmark-haskell = runRacket "tip-benchmark-haskell" [ env ] cache ''
+  tip-benchmark-haskell = runRacket "tip-benchmark-haskell" env cache ''
     (require lib/impure)
     (require lib/normalise)
     (require lib/sigs)

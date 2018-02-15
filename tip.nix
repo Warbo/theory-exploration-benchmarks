@@ -1,6 +1,6 @@
 # Tons of Inductive Problems: benchmarks, tools, dependencies, etc.
-{ bash, buildEnv, fetchFromGitHub, haskellPackages, lib, nix-config, pkgs,
-  racketWithPkgs }:
+{ bash, buildEnv, fetchFromGitHub, haskellPackages, lib, PLTCOLLECTS,
+  nix-config, pkgs, racketWithPkgs }:
 
 with lib;
 rec {
@@ -28,12 +28,12 @@ rec {
     sha256 = "08zm9a8dlwqm6bnd5z8714j5365pklwh4lkgcnhq0ns1lq0njp3l";
   };
 
-  env = buildEnv {
+  env = with { default = PLTCOLLECTS; }; { PLTCOLLECTS ? default }: buildEnv {
     name  = "tip-bench-env";
     paths = [
       bash
       patchedHaskellPackages.cabal-install
-      racketWithPkgs
+      (racketWithPkgs PLTCOLLECTS)
       (patchedHaskellPackages.ghcWithPackages (hs: [
         hs.tip-lib
         hs.geniplate

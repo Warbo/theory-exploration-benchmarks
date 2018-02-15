@@ -16,7 +16,7 @@ rec {
       TEST_LIST_TRUTH   = ./test-data/list-full-ground-truth.smt2;
       BENCHMARKS_SOURCE = tip-repo + "/benchmarks";
 
-      buildInputs       = [ env fail ];
+      buildInputs       = [ (env {}) fail ];
     })
     ''
       set -e

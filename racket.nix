@@ -203,12 +203,15 @@ rec {
                                         (go name vars paths script);
 
   # Like 'runCommand', but uses Racket code for the builder instead of bash
-  runRacket = name: paths: vars: script: stdenv.mkDerivation {
+  runRacket = name: env: vars: script: stdenv.mkDerivation {
     inherit name;
     builder = wrap {
       name   = "${name}.rkt";
-      paths  = [ racketWithPkgs ] ++ paths;
-      vars   = { inherit PLTCOLLECTS; } // vars;
+      paths  = [ racketWithPkgsBase
+                 (env { PLTCOLLECTS = vars.PLTCOLLECTS or PLTCOLLECTS; }) ];
+      vars   = vars // (if vars ? PLTCOLLECTS
+                           then {}
+                           else { inherit PLTCOLLECTS; });
       script = ''
         #!/usr/bin/env racket
         #lang racket

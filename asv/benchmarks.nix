@@ -16,7 +16,7 @@ with rec {
 
   profileWith = vars: script: wrap {
     inherit vars;
-    paths = [ env ];
+    paths = [ (env {}) ];
     script = runner "${scripts}/${script}";
   };
 };

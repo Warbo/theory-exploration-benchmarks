@@ -1,7 +1,7 @@
 with import ./. {};
 (import <nixpkgs> {}).stdenv.mkDerivation {
   name         = "te-benchmark-env";
-  buildInputs  = [ env ];
+  buildInputs  = [ (env {}) ];
   buildCommand = "exit 1";
   shellHook    = ''
     {
