@@ -1,0 +1,18 @@
+From: Chris Warburton
+Date: Thu, 15 Feb 2018 16:07:18 +0000
+Subject: Re: Only expose final results
+Message-Id: <d9b8bbe67a9e654d-e60e79e40e3be44b-artemis@nixos>
+References: <d9b8bbe67a9e654d-0-artemis@nixos>
+In-Reply-To: <d9b8bbe67a9e654d-0-artemis@nixos>
+
+Closing as this seems to be mostly OK now. The 'really bad' stuff is in
+impure.rkt, whilst we use Nix to take care of caching.
+
+Also note that it's been useful to expose more and more intermediate
+helpers, for use in e.g. haskell-te and isaplanner-tip. We certainly
+don't want to just provide e.g. a single file of generated s-expressions
+and no way to access the functionality that produced it.
+
+Rather, we want to expose intermediate steps (e.g. the original
+benchmarks, the normalised benchmarks, etc.) and utility functions for
+querying and manipulating these data.

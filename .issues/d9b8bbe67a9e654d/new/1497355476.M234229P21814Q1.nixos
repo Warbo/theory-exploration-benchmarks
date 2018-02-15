@@ -1,8 +1,9 @@
 From: Chris Warburton
 Date: Tue, 13 Jun 2017 13:00:20 +0100
-State: new
+State: resolved
 Subject: Only expose final results
 Message-Id: <d9b8bbe67a9e654d-0-artemis@nixos>
+resolution: fixed
 
 Currently, we have a bunch of modules which intermingle utility
 functions and data (i.e. memoised thunks).

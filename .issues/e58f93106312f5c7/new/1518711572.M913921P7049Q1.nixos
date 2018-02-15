@@ -1,0 +1,29 @@
+From: Chris Warburton
+Date: Thu, 15 Feb 2018 16:11:15 +0000
+State: new
+Subject: Support lambda functions in JSON and comparisons
+Message-Id: <e58f93106312f5c7-0-artemis@nixos>
+
+It turns out that IsaCoSy can generate lambda functions in its
+output. We can't just ignore these, since there are 14 ground truth
+theorems which they may match.
+
+Previously, we've been assuming that theorems containing lambdas cannot
+ever match a set of conjectures, since conjectures can't contain
+lambdas. That's true for QuickSpec (v1, at least), but not true for
+IsaCoSy.
+
+We need to consider the following:
+
+ - We assume that all expressions are well typed, so we don't need to
+   keep track of or compare argument or return types.
+ - We want to stick as close to the original syntax as possible. For
+   example, some theorems contain lambdas which are just eta-expansions,
+   for example '(lambda ((x (Pair Type1 Type2))) (fst x))' which is
+   eta-equivalent to 'fst'. In these cases, we want to keep the lambda
+   notation: it's how a human chose to write the theorem, so that's what
+   we should look for in a system's output.
+ - There are some TIP-specific quirks like '(@ f x)' which we
+   specifically *don't* want to preserve (in this case we want '(f x)').
+   Make sure whatever changes we make do not prevent these things from
+   getting stripped.
