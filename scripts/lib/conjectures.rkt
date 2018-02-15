@@ -352,6 +352,33 @@
                                                       (second lst))
                                                 (rest (rest lst))))]))
 
+(define (curry-lambda expr)
+  expr)
+
+(module+ test
+  (def-test-case "Can curry lambdas"
+    (let ((expr '(variable 42 "t")))
+      (check-equal? (curry-lambda expr) expr "Variables don't get curried"))
+
+    (let ((expr '(constant foo "t")))
+      (check-equal? (curry-lambda expr) expr "Constants don't get curried"))
+
+    (let ((expr '(apply (constant bar "unknown") (variable 0 "x"))))
+      (check-equal? (curry-lambda expr) expr "Apply doesn't get curried"))
+
+    (let* ((body '(variable 5 "t"))
+           (expr `(lambda () ,body)))
+      (check-equal? (curry-lambda expr) body "Nullary gets unwrapped"))
+
+    (let* ((body '(variable 0 "t"))
+           (expr `(lambda ((x "t1") (y "t2") (z "t3")) ,body)))
+      (check-equal? (curry-lambda expr)
+                    `(lambda ((x "t1"))
+                       (lambda ((y "t2"))
+                         (lambda ((z "t3"))
+                           ,body)))
+                    "Multi-arg functions get curried"))))
+
 ;; Converts a TIP expression into one suitable for use in an equation
 (define (to-expression x)
   ;; Turns a list '((a) (b) (c) ...) into '((a b c ...)). If any of the lists is
@@ -367,10 +394,23 @@
 
   (match x
     [(list '=        _ _) '()     ]
-    [(list 'lambda   _ _) '()     ]
     [(list 'variable _ _) (list x)]
     [(list 'constant _ _) (list x)]
     [(list 'apply    _ _) (list x)]
+    [(list 'lambda   _)   (list x)]  ;; Only has a body, so already de Bruijn
+
+    ;; We do a couple of things to (lambda args body): we turn occurrences of
+    ;; 'args' in 'body' into '(variable ...)' using de Bruijn indices, and we
+    ;; curry functions to take one argument at a time.
+    [(list 'lambda   args body) (match (length args)
+                                  ;; Unary functions are already curried
+                                  [1 (match (to-expression body)
+                                       ['()      '()]
+                                       [(list y) `((lambda
+                                                       (bind-args args y)))])]
+
+                                  ;; Non-unary functions require currying first
+                                  [n (to-expression (curry-lambda x))])]
 
     ;; (@ f x) is equivalent to (f x), so avoid the indirection. If any
     ;; 2-lisps need such indirection, like Common Lisp's funcall, they can
@@ -395,9 +435,10 @@
       '(lambda ((x a)) (bind (@ f x) g)))
 
     (check-equal? (to-expression expr)
-                  '((lambda (apply (apply bind
-                                          (apply f (variable 'bound 0 "a")))
-                                   g)))))
+                  '((lambda (apply (apply (constant bind "unknown")
+                                          (apply (constant f "unknown")
+                                                 (variable 'bound 0 "a")))
+                                   (constant g "unknown"))))))
 
   (def-test-case "Check expression @s"
     (define expr
