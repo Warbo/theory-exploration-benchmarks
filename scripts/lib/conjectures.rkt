@@ -394,7 +394,10 @@
     (define expr
       '(lambda ((x a)) (bind (@ f x) g)))
 
-    (check-equal? (to-expression expr) '()))
+    (check-equal? (to-expression expr)
+                  '((lambda (apply (apply bind
+                                          (apply f (variable 'bound 0 "a")))
+                                   g)))))
 
   (def-test-case "Check expression @s"
     (define expr
