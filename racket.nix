@@ -204,13 +204,17 @@ rec {
 
   # Like 'runCommand', but uses Racket code for the builder instead of bash
   runRacket = name: env: vars: script:
-    with { PLTCOLLECTS = mkPLTCOLLECTS (libDepsOfString script); };
+    with rec {
+      deps     = libDepsOfString script;
+      depCheck = vars.depCheck or (deps: true);
+      extra    = assert depCheck deps; { PLTCOLLECTS = mkPLTCOLLECTS deps; };
+    };
     stdenv.mkDerivation {
       inherit name;
       builder = wrap {
         name   = "${name}.rkt";
-        paths  = [ racketWithPkgsBase (env { inherit PLTCOLLECTS; }) ];
-        vars   = vars // { inherit PLTCOLLECTS; };
+        paths  = [ racketWithPkgsBase (env extra) ];
+        vars   = removeAttrs (vars // extra) [ "depCheck" ];
         script = ''
           #!/usr/bin/env racket
           #lang racket
@@ -255,5 +259,7 @@ rec {
 
       collapse = l: unique (sort (x: y: x < y) l);
     };
-    given: allDeps given;
+    given: with { result = allDeps given; };
+           assert all (x: elem x result) given;
+           result;
 }
