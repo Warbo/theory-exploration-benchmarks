@@ -698,7 +698,11 @@
     (match (get-key obj 'role)
       ["application" `(apply ,(json-to-expr (get-key obj 'lhs))
                              ,(json-to-expr (get-key obj 'rhs)))]
-      ["variable"    `(variable ,(get-key obj 'id)
+      ["variable"    `(variable ,(if (and (hash-has-key obj 'bound)
+                                          (get-key obj 'bound))
+                                     'bound
+                                     'free)
+                                ,(get-key obj 'id)
                                 ,(get-key obj 'type))]
       ["constant"    `(constant ,(string->symbol (get-key obj 'symbol))
                                 ,(get-key obj 'type))]
@@ -787,15 +791,16 @@
 (define (equation-to-jsexpr eq)
   (define (expression-to-jsexpr x)
     (make-hash (match x
-      [(list 'variable id type)  `((role   . "variable")
-                                   (id     . ,id)
-                                   (type   . ,type))]
-      [(list 'constant sym type) `((role   . "constant")
-                                   (symbol . ,(symbol->string sym))
-                                   (type   . ,type))]
-      [(list 'apply lhs rhs)     `((role   . "application")
-                                   (lhs    . ,(expression-to-jsexpr lhs))
-                                   (rhs    . ,(expression-to-jsexpr rhs)))])))
+      [(list 'variable kind id type) `((role   . "variable")
+                                       (id     . ,id)
+                                       (type   . ,type)
+                                       (bound  . ,(equal? kind 'bound)))]
+      [(list 'constant sym type)     `((role   . "constant")
+                                       (symbol . ,(symbol->string sym))
+                                       (type   . ,type))]
+      [(list 'apply lhs rhs)         `((role   . "application")
+                                       (lhs    . ,(expression-to-jsexpr lhs))
+                                       (rhs    . ,(expression-to-jsexpr rhs)))])))
 
   (match eq
     [(list '~= lhs rhs)
@@ -1042,8 +1047,8 @@
     (begin
       (define want-eq2
         '(~= (apply (constant f "Int -> Bool")
-                    (variable 0 "Int"))
-             (variable 1 "Bool")))
+                    (variable free 0 "Int"))
+             (variable free 1 "Bool")))
 
       (define found-eq2
         (first (parse-json-equation
