@@ -10,7 +10,7 @@ with import ./pkgs.nix { inherit nix-config-src pkgsArgs pkgsPath; };
 # Bring in bespoke definitions needed for this project
 with callPackage ./racket.nix { inherit pkgs nixpkgs1609;                      };
 with callPackage ./tip.nix    { inherit nix-config PLTCOLLECTS racketWithPkgs; };
-with callPackage ./cache.nix  { inherit env mkPLTCOLLECTS runRacket tip-repo;  };
+with callPackage ./cache.nix  { inherit env runRacket tip-repo;                };
 with callPackage ./test.nix   { inherit cache env tip-repo;                    };
 
 # The definitions we expose
