@@ -923,20 +923,21 @@
   (-> expression? expression? boolean?)
 
   (match (list x y)
-    ;; Variable types should be consistent within an expression, so we can
-    ;; number them consistently, but may differ between expressions (e.g. if
+    ;; Variable types should be consistent within an expression (so we can
+    ;; number them consistently) but may differ between expressions (e.g. if
     ;; they come from different systems, which may have rewritten or processed
     ;; the types). Hence we ignore the types when matching, and only compare the
-    ;; indices. This is fine, since we're assuming expressions are type-correct,
-    ;; and hence cannot differ *only* by variable type (as at least one would be
-    ;; ill typed; or else we're applying one variable to another, in which case
-    ;; we can hand-wave it away by saying "polymorphism").
-    ;; Note that we must still compare indices, since different variables of the
-    ;; same type can lead to different semantics; e.g. (= (plus x y) (plus y x))
-    ;; is different to (= (plus x x) (plus x x))
-    [(list (list 'variable index1 type1)
-           (list 'variable index2 type2))
-     (equal? index1 index2)]
+    ;; indices and kind (bound/free). This is fine, since we're assuming
+    ;; expressions are type-correct, and hence cannot differ *only* by variable
+    ;; type (as at least one would be ill typed; or else we're applying one
+    ;; variable to another, in which case we can hand-wave it away by saying
+    ;; "polymorphism").  Note that we must still compare indices, since
+    ;; different variables of the same type can lead to different semantics;
+    ;; e.g. (= (plus x y) (plus y x)) is different to (= (plus x x) (plus x x))
+    [(list (list 'variable kind1 index1 type1)
+           (list 'variable kind2 index2 type2))
+     (and (equal kind1 kind2)
+          (equal? index1 index2))]
 
     ;; We don't currently infer types for TIP constants, so many will be
     ;; "unknown"; since overloading isn't allowed, we can rely on the names
