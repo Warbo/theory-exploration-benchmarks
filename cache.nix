@@ -7,27 +7,22 @@
   cache = rec {
     # Take benchmarks from git, but transform them to replace "built-in"
     # definitions like "Bool" and "<" with explicitly defined versions.
-    BENCHMARKS = runRacket "tip-benchmarks" env
-      {
-        PLTCOLLECTS = mkPLTCOLLECTS [ "lib/strip-native.rkt" ];
-        repo        = tip-repo;
-      }
-      ''
-        (require lib/strip-native)
+    BENCHMARKS = runRacket "tip-benchmarks" env { repo = tip-repo; } ''
+      (require lib/strip-native)
 
-        (define source
-          (mk-source (getenv "repo")))
+      (define source
+        (mk-source (getenv "repo")))
 
-        (define destination
-          (getenv "out"))
+      (define destination
+        (getenv "out"))
 
-        (define input-files
-          (tip-files-in source))
+      (define input-files
+        (tip-files-in source))
 
-        ;; Generate actual output
-        (for-each (process-tip-file! source destination)
-                  input-files)
-      '';
+      ;; Generate actual output
+      (for-each (process-tip-file! source destination)
+                input-files)
+    '';
 
     BENCHMARKS_THEOREM_DEPS = runRacket "benchmarks-cache" env
       {
