@@ -1,0 +1,10 @@
+From: Chris Warburton
+Date: Thu, 15 Feb 2018 20:14:51 +0000
+Subject: Re: Narrow down cache dependencies
+Message-Id: <fe837c4c74a4fd70-aac1f8c8eb5d0293-artemis@nixos>
+References: <fe837c4c74a4fd70-0-artemis@nixos>
+In-Reply-To: <fe837c4c74a4fd70-0-artemis@nixos>
+
+Thinking about it, we could do this automatically: we're already
+scanning the script/lib/*.rkt files for '(require lib/' lines; we could
+do the same for 'runRacket' scripts!

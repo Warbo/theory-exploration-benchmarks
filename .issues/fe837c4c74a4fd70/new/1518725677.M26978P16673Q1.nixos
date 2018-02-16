@@ -1,0 +1,13 @@
+From: Chris Warburton
+Date: Thu, 15 Feb 2018 20:13:21 +0000
+State: resolved
+Subject: Narrow down cache dependencies
+Message-Id: <fe837c4c74a4fd70-0-artemis@nixos>
+resolution: fixed
+
+The racket scripts in cache.nix can now be restricted to only depend on
+the scripts/lib files they need. This prevents us having to rebuild
+things unnecessarily (e.g. during a testing/debugging feedback loop).
+
+So far only 'BENCHMARKS' takes advantage of this. We should check the
+others.

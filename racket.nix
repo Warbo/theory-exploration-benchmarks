@@ -203,46 +203,50 @@ rec {
                                         (go name vars paths script);
 
   # Like 'runCommand', but uses Racket code for the builder instead of bash
-  runRacket = name: env: vars: script: stdenv.mkDerivation {
-    inherit name;
-    builder = wrap {
-      name   = "${name}.rkt";
-      paths  = [ racketWithPkgsBase
-                 (env { PLTCOLLECTS = vars.PLTCOLLECTS or PLTCOLLECTS; }) ];
-      vars   = vars // (if vars ? PLTCOLLECTS
-                           then {}
-                           else { inherit PLTCOLLECTS; });
-      script = ''
-        #!/usr/bin/env racket
-        #lang racket
-        ${script}
-      '';
+  runRacket = name: env: vars: script:
+    with { PLTCOLLECTS = mkPLTCOLLECTS (libDepsOfString script); };
+    stdenv.mkDerivation {
+      inherit name;
+      builder = wrap {
+        name   = "${name}.rkt";
+        paths  = [ racketWithPkgsBase (env { inherit PLTCOLLECTS; }) ];
+        vars   = vars // { inherit PLTCOLLECTS; };
+        script = ''
+          #!/usr/bin/env racket
+          #lang racket
+          ${script}
+        '';
+      };
     };
-  };
 
   # Find deps between scripts/lib files by looking at their 'require' statements
+  libDepsOfString =
+    with rec {
+      trimFromLeft = pre:  s: concatStringsSep pre (tail (splitString pre s));
+
+      takeUntil    = post: s: head (splitString post s);
+
+      partsAfter   = pre:  s: tail (splitString pre s);
+    };
+    s: racketScriptDeps (map (x: "lib/" + (takeUntil ")" x) + ".rkt")
+                             (partsAfter "(require lib/" s));
+
+  libDepsOfFile = f: import (runCommand "racket-deps-of-${baseNameOf f}"
+    { f = ./scripts + "/${f}"; }
+    ''
+      echo '[' > "$out"
+        while read -r DEP
+        do
+          echo "\"lib/$DEP.rkt\""
+        done < <(grep '(require lib/' < "$f" |
+                 sed -e 's@(require lib/@@g' |
+                 tr -d ' ()') >> "$out"
+      echo ']' >> "$out"
+    '');
+
   racketScriptDeps =
     with rec {
-      immediate =  mapAttrs' (name: _: {
-          name  = "lib/" + name;
-          value = import (runCommand "racket-deps-of-${name}"
-                    { f = ./scripts/lib + "/${name}"; }
-                    ''
-                      echo '[' > "$out"
-                        while read -r DEP
-                        do
-                          echo "\"lib/$DEP.rkt\""
-                        done < <(grep '(require lib/' < "$f" |
-                                 sed -e 's@(require lib/@@g' |
-                                 tr -d ' ()') >> "$out"
-                      echo ']' >> "$out"
-                    '');
-        })
-        (readDir ./scripts/lib);
-
-      depsOf  = f: if hasAttr f immediate then getAttr f immediate else [];
-
-      step    = f: [f] ++ depsOf f;
+      step    = f: [f] ++ libDepsOfFile f;
 
       allDeps = known: with { next = collapse (concatMap step known); };
                        if known == next
