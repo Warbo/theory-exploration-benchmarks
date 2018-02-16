@@ -389,6 +389,34 @@
                            ,body)))
                     "Multi-arg functions get curried"))))
 
+(define (lookup-env env symbol)
+  (define (go n remaining)
+    (match remaining
+      ['()                          '()]
+      [(cons (list name type) rest) (if (equal? name symbol)
+                                        (list n type)
+                                        (go (+ 1 n) rest))]))
+
+  (go 0 env))
+
+(module+ test
+  (def-test-case "Can lookup bound variables from environment"
+    (check-equal? (lookup-env '() 'foo)
+                  '()
+                  "No result for empty env")
+
+    (check-equal? (lookup-env '((bar "type1")) 'foo)
+                  '()
+                  "No result for missing var")
+
+    (check-equal? (lookup-env '((foo "type1")) 'foo)
+                  '(0 "type1")
+                  "Find singleton var")
+
+    (check-equal? (lookup-env '((foo "type1") (bar "type2") (baz "type3")) 'bar)
+                  '(1 "type2")
+                  "Find buried var")))
+
 ;; Converts a TIP expression into one suitable for use in an equation
 (define (to-expression x)
   ;; Turns a list '((a) (b) (c) ...) into '((a b c ...)). If any of the lists is
