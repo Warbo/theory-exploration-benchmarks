@@ -204,35 +204,6 @@
                                          (free-variables-in rhs))]
      [_                          '()])))
 
-;; All variable indices of the given type which occur in the given equation, in
-;; post-order of their first occurrence
-(define (indices-of eq type)
-  (match eq
-    [(list ~= lhs rhs) (remove-duplicates
-                        (append (all-indices-of lhs type)
-                                (all-indices-of rhs type)))]))
-
-;; All variable indices of the given type which occur in an expression
-(define (all-indices-of expr type)
-  (match expr
-    [(list 'variable 'free index t) (if (equal? t type)
-                                        (list index)
-                                        '())]
-    [(list 'apply lhs rhs)    (append (all-indices-of lhs type)
-                                      (all-indices-of rhs type))]
-    [(cons x y)               (append (all-indices-of x   type)
-                                      (all-indices-of y   type))]
-    [_                        '()]))
-
-;; All of the types which have variables in the given expression
-(define (all-variable-types-of expr)
-  (remove-duplicates
-   (match expr
-     [(list 'variable 'free _ type) (list type)]
-     [(list 'apply lhs rhs)         (append (all-variable-types-of lhs)
-                                            (all-variable-types-of rhs))]
-     [_                             '()])))
-
 ;; Check if a Racket expression encodes an expression (as used in equations)
 (define (expression? expr)
   (match expr
