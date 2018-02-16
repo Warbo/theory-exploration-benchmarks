@@ -533,7 +533,7 @@
              (next-var-index body))
 
            (replace-in (first var)
-                       (list 'variable free idx type)
+                       (list 'variable 'free idx type)
                        body))
          body
          vars))
@@ -760,7 +760,7 @@
     (match (get-key obj 'role)
       ["application" `(apply ,(json-to-expr (get-key obj 'lhs))
                              ,(json-to-expr (get-key obj 'rhs)))]
-      ["variable"    `(variable ,(if (and (hash-has-key obj 'bound)
+      ["variable"    `(variable ,(if (and (hash-has-key? obj 'bound)
                                           (get-key obj 'bound))
                                      'bound
                                      'free)
@@ -998,7 +998,7 @@
     ;; e.g. (= (plus x y) (plus y x)) is different to (= (plus x x) (plus x x))
     [(list (list 'variable kind1 index1 type1)
            (list 'variable kind2 index2 type2))
-     (and (equal kind1 kind2)
+     (and (equal? kind1  kind2)
           (equal? index1 index2))]
 
     ;; We don't currently infer types for TIP constants, so many will be
