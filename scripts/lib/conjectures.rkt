@@ -480,7 +480,7 @@
                   "Variables taken from env")))
 
 ;; Converts a TIP expression into one suitable for use in an equation
-(define (to-expression x)
+(define (to-expression expr)
   ;; Turns a list '((a) (b) (c) ...) into '((a b c ...)). If any of the lists is
   ;; empty, we return an empty list as a result. Lets us use empty/singleton
   ;; lists like optional values.
@@ -492,42 +492,43 @@
             (concat-first-elements (append acc (first lst))
                                    (rest lst)))))
 
-  (match x
-    [(list '=        _ _) '()     ]
-    [(list 'variable _ _) (list x)]
-    [(list 'constant _ _) (list x)]
-    [(list 'apply    _ _) (list x)]
-    [(list 'lambda   _)   (list x)]  ;; Only has a body, so already de Bruijn
+  (define (go x)
+    (match x
+      [(list '=        _ _)   '()     ]
+      [(list 'variable _ _ _) (list x)]
+      [(list 'constant _ _)   (list x)]
+      [(list 'apply    _ _)   (list x)]
 
-    ;; We do a couple of things to (lambda args body): we turn occurrences of
-    ;; 'args' in 'body' into '(variable ...)' using de Bruijn indices, and we
-    ;; curry functions to take one argument at a time.
-    [(list 'lambda   args body) (match (length args)
-                                  ;; Unary functions are already curried
-                                  [1 (match (to-expression body)
-                                       ['()      '()]
-                                       [(list y) `((lambda
-                                                       (bind-args args y)))])]
+      ;; We should have already curried and bound lambdas, but their bodies still
+      ;; need converting to expressions.
+      [(list 'lambda body) (map (curry cons 'lambda) (go body))]
 
-                                  ;; Non-unary functions require currying first
-                                  [n (to-expression (curry-lambda x))])]
+      ;; If we find a lambda with an argument list, that means we've not
+      ;; pre-processed the lambdas correctly
+      [(list 'lambda args body)
+       (error "Hit unprocessed lambda; bug in currying/binding?")]
 
-    ;; (@ f x) is equivalent to (f x), so avoid the indirection. If any
-    ;; 2-lisps need such indirection, like Common Lisp's funcall, they can
-    ;; infer it as needed by e.g. spotting when the lhs of an apply is a
-    ;; variable.
-    [(list '@ a b) (to-expression (list a b))]
+      ;; (@ f x) is equivalent to (f x), so avoid the indirection. If any
+      ;; 2-lisps need such indirection, like Common Lisp's funcall, they can
+      ;; infer it as needed by e.g. spotting when the lhs of an apply is a
+      ;; variable.
+      [(list '@ a b) (go (list a b))]
 
-    ;; Assume that any other symbol is a constant. We don't handle types yet,
-    ;; so no need to bother inferring one.
-    [(? symbol?) (list (list 'constant x "unknown"))]
+      ;; Assume that any other symbol is a constant. We don't handle types yet,
+      ;; so no need to bother inferring one.
+      [(? symbol?) (list (list 'constant x "unknown"))]
 
-    ;; Catch-all for lists; try to convert all elements into expressions, if
-    ;; that succeeds then collect up the results and insert-applies.
-    [(? list?) (match (concat-first-elements
-                       '() (map to-expression x))
-                 ['() '()]
-                 [(list exprs) (list (insert-applies exprs))])]))
+      ;; Catch-all for lists; try to convert all elements into expressions, if
+      ;; that succeeds then collect up the results and insert-applies.
+      [(? list?) (match (concat-first-elements
+                         '() (map go x))
+                   ['() '()]
+                   [(list exprs) (list (insert-applies exprs))])]
+
+      ;; Catch all, for things like numbers
+      [_ x]))
+
+  (go (bind-vars '() (curry-lambdas expr))))
 
 (module+ test
   (def-test-case "Check expression lambdas"
