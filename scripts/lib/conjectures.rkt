@@ -359,11 +359,11 @@
   (match expr
     [(list 'lambda args body)
      (match args
-       [(list)          body]
-       [(list arg)      expr]
+       [(list)          (curry-lambdas body)]
        [(cons arg rest) `(lambda (,arg)
-                           ,(curry-lambda `(lambda ,rest ,body)))])]
-    [_ expr]))
+                           ,(curry-lambdas `(lambda ,rest ,body)))])]
+    [(cons x y) (cons (curry-lambdas x) (curry-lambdas y))]
+    [_          expr]))
 
 (module+ test
   (def-test-case "Can curry lambdas"
