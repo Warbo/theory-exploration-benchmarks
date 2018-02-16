@@ -353,7 +353,14 @@
                                                 (rest (rest lst))))]))
 
 (define (curry-lambda expr)
-  expr)
+  (match expr
+    [(list 'lambda args body)
+     (match args
+       [(list)          body]
+       [(list arg)      expr]
+       [(cons arg rest) `(lambda (,arg)
+                           ,(curry-lambda `(lambda ,rest ,body)))])]
+    [_ expr]))
 
 (module+ test
   (def-test-case "Can curry lambdas"
