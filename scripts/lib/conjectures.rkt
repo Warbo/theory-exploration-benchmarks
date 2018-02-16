@@ -175,11 +175,11 @@
 (define (canonical-variables? eq)
   (match eq
     [(list '~= lhs rhs)
-     (let* ((vars        (remove-duplicates (append (all-variables-in lhs)
-                                                    (all-variables-in rhs))))
+     (let* ((vars        (remove-duplicates (append (free-variables-in lhs)
+                                                    (free-variables-in rhs))))
             (types-match (foldl (lambda (var so-far)
                                   (match (list var so-far)
-                                    [(list (list 'variable index type)
+                                    [(list (list 'variable 'free index type)
                                            (list ok types))
                                      (let ((found (hash-ref types index type)))
                                        (list (and ok (equal? type found))
@@ -188,21 +188,21 @@
                                 vars))
             (in-order    (equal? (map (lambda (var)
                                         (match var
-                                          [(list 'variable index _) index]))
+                                          [(list 'variable 'free index _) index]))
                                       vars)
                                  (range 0 (length vars)))))
        (and in-order
             (first types-match)))]))
 
-(define (all-variables-in expr)
+(define (free-variables-in expr)
   (remove-duplicates
    (match expr
-     [(list 'variable _ _)  (list expr)]
-     [(list 'apply lhs rhs) (append (all-variables-in lhs)
-                                    (all-variables-in rhs))]
-     [(list '~= lhs rhs)    (append (all-variables-in lhs)
-                                    (all-variables-in rhs))]
-     [_                     '()])))
+     [(list 'variable 'free _ _) (list expr)]
+     [(list 'apply lhs rhs)      (append (free-variables-in lhs)
+                                         (free-variables-in rhs))]
+     [(list '~= lhs rhs)         (append (free-variables-in lhs)
+                                         (free-variables-in rhs))]
+     [_                          '()])))
 
 ;; All variable indices of the given type which occur in the given equation, in
 ;; post-order of their first occurrence
@@ -215,9 +215,9 @@
 ;; All variable indices of the given type which occur in an expression
 (define (all-indices-of expr type)
   (match expr
-    [(list 'variable index t) (if (equal? t type)
-                                  (list index)
-                                  '())]
+    [(list 'variable 'free index t) (if (equal? t type)
+                                        (list index)
+                                        '())]
     [(list 'apply lhs rhs)    (append (all-indices-of lhs type)
                                       (all-indices-of rhs type))]
     [(cons x y)               (append (all-indices-of x   type)
@@ -228,22 +228,23 @@
 (define (all-variable-types-of expr)
   (remove-duplicates
    (match expr
-     [(list 'variable _ type) (list type)]
-     [(list 'apply lhs rhs)   (append (all-variable-types-of lhs)
-                                      (all-variable-types-of rhs))]
-     [_                       '()])))
+     [(list 'variable 'free _ type) (list type)]
+     [(list 'apply lhs rhs)         (append (all-variable-types-of lhs)
+                                            (all-variable-types-of rhs))]
+     [_                             '()])))
 
 ;; Check if a Racket expression encodes an expression (as used in equations)
 (define (expression? expr)
   (match expr
-    [(list 'constant name type)  (and (symbol? name)
-                                      (string? type))]
-    [(list 'variable index type) (and (integer? index)
-                                      (>= index 0)
-                                      (string? type))]
-    [(list 'apply lhs rhs)       (and (expression? lhs)
-                                      (expression? rhs))]
-    [_                           #f]))
+    [(list 'constant name type)       (and (symbol? name)
+                                           (string? type))]
+    [(list 'variable kind index type) (and (member kind '(free bound))
+                                           (integer? index)
+                                           (>= index 0)
+                                           (string? type))]
+    [(list 'apply lhs rhs)            (and (expression? lhs)
+                                           (expression? rhs))]
+    [_                                #f]))
 
 ;; Try to convert the normalised theorem from the given file into an equation.
 ;; Returns a list of results, i.e. containing a single element upon success or
@@ -272,21 +273,21 @@
                                    (apply (apply (constant ,(nn 'isaplanner/prop_44.smt2zip) "unknown")
                                                  (apply (apply (constant ,(nn 'isaplanner/prop_01.smt2take) "unknown")
                                                                (apply (constant ,(nn 'isaplanner/prop_15.smt2len) "unknown")
-                                                                      (variable 0 "(grammars/packrat_unambigPackrat.smt2list b)")))
-                                                        (variable 1 "(grammars/packrat_unambigPackrat.smt2list a)")))
-                                          (variable 0 "(grammars/packrat_unambigPackrat.smt2list b)")))
+                                                                      (variable free 0 "(grammars/packrat_unambigPackrat.smt2list b)")))
+                                                        (variable free 1 "(grammars/packrat_unambigPackrat.smt2list a)")))
+                                          (variable free 0 "(grammars/packrat_unambigPackrat.smt2list b)")))
                             (apply (apply (constant ,(nn 'isaplanner/prop_44.smt2zip) "unknown")
                                           (apply (apply (constant ,(nn 'isaplanner/prop_01.smt2drop) "unknown")
                                                         (apply (constant ,(nn 'isaplanner/prop_15.smt2len) "unknown")
-                                                               (variable 0 "(grammars/packrat_unambigPackrat.smt2list b)")))
-                                                 (variable 1 "(grammars/packrat_unambigPackrat.smt2list a)")))
-                                   (variable 2 "(grammars/packrat_unambigPackrat.smt2list b)")))
+                                                               (variable free 0 "(grammars/packrat_unambigPackrat.smt2list b)")))
+                                                 (variable free 1 "(grammars/packrat_unambigPackrat.smt2list a)")))
+                                   (variable free 2 "(grammars/packrat_unambigPackrat.smt2list b)")))
 
                      (apply (apply (constant ,(nn 'isaplanner/prop_44.smt2zip) "unknown")
-                                   (variable 1 "(grammars/packrat_unambigPackrat.smt2list a)"))
+                                   (variable free 1 "(grammars/packrat_unambigPackrat.smt2list a)"))
                             (apply (apply (constant ,(nn 'grammars/packrat_unambigPackrat.smt2append) "unknown")
-                                          (variable 0 "(grammars/packrat_unambigPackrat.smt2list b)"))
-                                   (variable 2 "(grammars/packrat_unambigPackrat.smt2list b)")))))
+                                          (variable free 0 "(grammars/packrat_unambigPackrat.smt2list b)"))
+                                   (variable free 2 "(grammars/packrat_unambigPackrat.smt2list b)")))))
 
                   "Theorem which is equation gets converted")
 
@@ -341,18 +342,20 @@
 ;; '(apply (apply f x) y)
 (define (insert-applies lst)
   (match lst
-    [(list 'variable _ _) lst]
-    [(list 'constant _ _) lst]
-    [(list 'apply    _ _) lst]
-    ['()                  lst]
-    [(list x)             (list x)]
-    [(cons x '())         (list x)]
-    [(list f x)           (list 'apply f x)]
-    [(? list?)            (insert-applies (cons (list 'apply (first lst)
-                                                      (second lst))
-                                                (rest (rest lst))))]))
+    [(list 'variable _ _ _) lst]
+    [(list 'constant _ _)   lst]
+    [(list 'apply    _ _)   lst]
+    ['()                    lst]
+    [(list x)               (list x)]
+    [(cons x '())           (list x)]
+    [(list f x)             (list 'apply f x)]
+    [(? list?)              (insert-applies (cons (list 'apply (first lst)
+                                                        (second lst))
+                                                  (rest (rest lst))))]))
 
-(define (curry-lambda expr)
+;; Replace (lambda ((arg1 "type1") (arg2 "type2") ...) body) with
+;; (lambda ((arg1 "type1")) (lambda ((arg2 "type2")) (... body)))
+(define (curry-lambdas expr)
   (match expr
     [(list 'lambda args body)
      (match args
@@ -364,22 +367,22 @@
 
 (module+ test
   (def-test-case "Can curry lambdas"
-    (let ((expr '(variable 42 "t")))
-      (check-equal? (curry-lambda expr) expr "Variables don't get curried"))
+    (let ((expr '(variable free 42 "t")))
+      (check-equal? (curry-lambdas expr) expr "Variables don't get curried"))
 
     (let ((expr '(constant foo "t")))
-      (check-equal? (curry-lambda expr) expr "Constants don't get curried"))
+      (check-equal? (curry-lambdas expr) expr "Constants don't get curried"))
 
-    (let ((expr '(apply (constant bar "unknown") (variable 0 "x"))))
-      (check-equal? (curry-lambda expr) expr "Apply doesn't get curried"))
+    (let ((expr '(apply (constant bar "unknown") (variable bound 0 "x"))))
+      (check-equal? (curry-lambdas expr) expr "Apply doesn't get curried"))
 
-    (let* ((body '(variable 5 "t"))
+    (let* ((body '(variable free 5 "t"))
            (expr `(lambda () ,body)))
-      (check-equal? (curry-lambda expr) body "Nullary gets unwrapped"))
+      (check-equal? (curry-lambdas expr) body "Nullary gets unwrapped"))
 
-    (let* ((body '(variable 0 "t"))
+    (let* ((body '(variable free 0 "t"))
            (expr `(lambda ((x "t1") (y "t2") (z "t3")) ,body)))
-      (check-equal? (curry-lambda expr)
+      (check-equal? (curry-lambdas expr)
                     `(lambda ((x "t1"))
                        (lambda ((y "t2"))
                          (lambda ((z "t3"))
@@ -444,7 +447,7 @@
     (check-equal? (to-expression expr)
                   '((lambda (apply (apply (constant bind "unknown")
                                           (apply (constant f "unknown")
-                                                 (variable 'bound 0 "a")))
+                                                 (variable bound 0 "a")))
                                    (constant g "unknown"))))))
 
   (def-test-case "Check expression @s"
@@ -454,8 +457,8 @@
 
     (check-equal? (to-expression expr)
                   '((apply (constant foo "unknown")
-                           (apply (variable 1 "(=> a (list b))")
-                                  (variable 0 "a")))))))
+                           (apply (variable free 1 "(=> a (list b))")
+                                  (variable free 0 "a")))))))
 
 ;; Replaces occurrences of the variables VARS in BODY with variables suitable
 ;; for use in an equation
@@ -468,21 +471,21 @@
              (next-var-index body))
 
            (replace-in (first var)
-                       (list 'variable idx type)
+                       (list 'variable free idx type)
                        body))
          body
          vars))
 
 (define (next-var-index expr)
   (match expr
-    [(list '~=    lhs rhs) (max (next-var-index lhs)
-                                (next-var-index rhs))]
-    [(list 'apply lhs rhs) (max (next-var-index lhs)
-                                (next-var-index rhs))]
-    [(list 'variable i _)  (+ 1 i)]
-    [(cons x y)            (max (next-var-index x)
-                                (next-var-index y))]
-    [_                     0]))
+    [(list '~=    lhs rhs)     (max (next-var-index lhs)
+                                    (next-var-index rhs))]
+    [(list 'apply lhs rhs)     (max (next-var-index lhs)
+                                    (next-var-index rhs))]
+    [(list 'variable free i _) (+ 1 i)]
+    [(cons x y)                (max (next-var-index x)
+                                    (next-var-index y))]
+    [_                         0]))
 
 ;; Try to convert the given theorem expression into an equation. Returns an
 ;; empty list on failure, or a single-element list on success.
@@ -557,22 +560,22 @@
     (check-equal? (theorem-to-equation thm)
                   '((~= (apply (apply (constant bind "unknown")
                                       (apply (constant return "unknown")
-                                             (variable 0 "a")))
-                               (variable 1 "(=> a (list b))"))
-                        (apply (variable 1 "(=> a (list b))")
-                               (variable 0 "a"))))))
+                                             (variable free 0 "a")))
+                               (variable free 1 "(=> a (list b))"))
+                        (apply (variable free 1 "(=> a (list b))")
+                               (variable free 0 "a"))))))
 
   (def-test-case "Check theorem sorting"
     (check-equal? (theorem-to-equation '(assert-not
                                          (forall ((x t1) (y t2)) (= x y))))
-                  '((~= (variable 0 "t1")
-                        (variable 1 "t2")))
+                  '((~= (variable free 0 "t1")
+                        (variable free 1 "t2")))
                   "Renumbered variables ordered by type")
 
     (check-equal? (theorem-to-equation '(assert-not
                                          (forall ((x t2) (y t1)) (= x y))))
-                  '((~= (variable 0 "t1")
-                        (variable 1 "t2")))
+                  '((~= (variable free 0 "t1")
+                        (variable free 1 "t2")))
                   "Sides switched into order and variables renumbered")))
 
 ;; Try to parse the given string as a JSON representation of an equation, e.g.
@@ -639,11 +642,11 @@
     ;; We switch the lhs and rhs, so they're in lexicographic order
     (define expected
       '(~= (apply (apply (constant plus "Nat -> Nat -> Nat")
-                         (variable 0 "Nat"))
-                  (variable 1 "Nat"))
+                         (variable free 0 "Nat"))
+                  (variable free 1 "Nat"))
            (apply (apply (constant plus "Nat -> Nat -> Nat")
-                         (variable 1 "Nat"))
-                  (variable 0 "Nat"))))
+                         (variable free 1 "Nat"))
+                  (variable free 0 "Nat"))))
 
     (with-check-info
       (('expected expected)
@@ -721,31 +724,31 @@
 
     (list (make-normal-equation lhs rhs))))
 
-;; Re-numbers the variables in an equation to count 0, 1, 2, ...
+;; Re-numbers the free variables in an equation to count 0, 1, 2, ...
 (define (renumber eq)
-  ;; Replace all variables with temporary values, to avoid having mixtures of
+  ;; Replace free variables with temporary values, to avoid having mixtures of
   ;; old and new indices
   (define temp
     (foldl (lambda (var eq)
              (match var
-               [(list 'variable index type)
+               [(list 'variable 'free index type)
                 (replace-in var
-                            (list 'variable (format "temp-~a" index) type)
+                            (list 'variable 'free (format "temp-~a" index) type)
                             eq)]))
            eq
-           (remove-duplicates (all-variables-in eq))))
+           (remove-duplicates (free-variables-in eq))))
 
   ;; Replace temporary values with sequential numbers
   (first (foldl (lambda (temp-var result)
                   (match (list temp-var result)
-                    [(list (list 'variable index type)
+                    [(list (list 'variable 'free index type)
                            (list eq next))
                      (list (replace-in temp-var
-                                       (list 'variable next type)
+                                       (list 'variable 'free next type)
                                        eq)
                            (+ 1 next))]))
                 (list temp 0)
-                (remove-duplicates (all-variables-in temp)))))
+                (remove-duplicates (free-variables-in temp)))))
 
 (define (make-normal-equation lhs rhs)
   (define renumbered-1
@@ -760,12 +763,12 @@
 
 (module+ test
   (def-test-case "Normalised equations"
-    (check-equal? (make-normal-equation '(variable 3 "Bool")
+    (check-equal? (make-normal-equation '(variable free 3 "Bool")
                                         '(apply (constant foo "unknown")
-                                                (variable 2 "Int")))
+                                                (variable free 2 "Int")))
                   '(~= (apply (constant foo "unknown")
-                              (variable 0 "Int"))
-                       (variable 1 "Bool")))))
+                              (variable free 0 "Int"))
+                       (variable free 1 "Bool")))))
 
 (define (parse-json-equations str)
   (with-handlers ([exn:fail:read? (lambda (e) '())])
@@ -818,13 +821,13 @@
 
 (define (cons-des-funcs-to-raw expr)
   (match expr
-    [(list '~= lhs rhs)   (map cons-des-funcs-to-raw expr)]
-    [(list 'constant f t) (list 'constant (strip-cons-des-prefix f) t)]
-    [(list 'variable _ _) expr]
-    [(list 'apply f x)    (map cons-des-funcs-to-raw expr)]
-    [(cons x y)           (cons (cons-des-funcs-to-raw x)
-                                (cons-des-funcs-to-raw y))]
-    [_                    expr]))
+    [(list '~= lhs rhs)     (map cons-des-funcs-to-raw expr)]
+    [(list 'constant f t)   (list 'constant (strip-cons-des-prefix f) t)]
+    [(list 'variable _ _ _) expr]
+    [(list 'apply f x)      (map cons-des-funcs-to-raw expr)]
+    [(cons x y)             (cons (cons-des-funcs-to-raw x)
+                                  (cons-des-funcs-to-raw y))]
+    [_                      expr]))
 
 (define/test-contract (equations-match? x y)
   (-> equation? equation? boolean?)
@@ -843,39 +846,39 @@
 
 (module+ test
   (def-test-case "Equation matching"
-    (check-true (equations-match? '(~= (constant bar "foo")
-                                       (variable 0   "foo"))
-                                  '(~= (constant bar "foo")
-                                       (variable 0   "foo")))
+    (check-true (equations-match? '(~= (constant bar    "foo")
+                                       (variable free 0 "foo"))
+                                  '(~= (constant bar    "foo")
+                                       (variable free 0 "foo")))
                 "Identical equations match")
 
-    (check-true (equations-match? '(~= (apply (constant func "unknown")
-                                              (variable 0    "foo"))
+    (check-true (equations-match? '(~= (apply (constant func   "unknown")
+                                              (variable free 0 "foo"))
                                        (constant bar "foo"))
-                                  '(~= (apply (constant func "baz")
-                                              (variable 0    "foo"))
+                                  '(~= (apply (constant func   "baz")
+                                              (variable free 0 "foo"))
                                        (constant bar "foo")))
                 "Constant types don't affect match")
 
-    (check-false (equations-match? '(~= (apply (constant bar "foo")
-                                               (variable 0   "baz"))
-                                        (variable 0   "baz"))
-                                   '(~= (apply (constant bar "foo")
-                                               (variable 0   "baz"))
-                                        (variable 1   "baz")))
+    (check-false (equations-match? '(~= (apply (constant bar    "foo")
+                                               (variable free 0 "baz"))
+                                        (variable free 0 "baz"))
+                                   '(~= (apply (constant bar    "foo")
+                                               (variable free 0 "baz"))
+                                        (variable free 1 "baz")))
                  "Different indices don't match")
 
-    (check-false (equations-match? '(~= (constant bar "foo")
-                                        (variable 0   "foo"))
-                                   '(~= (constant baz "foo")
-                                        (variable 0   "foo")))
+    (check-false (equations-match? '(~= (constant bar    "foo")
+                                        (variable free 0 "foo"))
+                                   '(~= (constant baz    "foo")
+                                        (variable free 0 "foo")))
                  "Different constant names don't match")
 
-    (check-false (equations-match? '(~= (apply (constant baz "unknown")
-                                               (variable 0   "foo"))
+    (check-false (equations-match? '(~= (apply (constant baz    "unknown")
+                                               (variable free 0 "foo"))
                                         (constant bar "foo"))
-                                   '(~= (apply (variable 0   "Int -> Bool")
-                                               (variable 1   "foo"))
+                                   '(~= (apply (variable free 0 "Int -> Bool")
+                                               (variable free 1 "foo"))
                                         (constant bar "foo")))
                  "Different structures don't match")
 
