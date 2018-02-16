@@ -417,6 +417,68 @@
                   '(1 "type2")
                   "Find buried var")))
 
+(define (bind-vars env expr)
+  ;; Recurse down an expression tree, replacing occurrences of anything in env
+  ;; with bound, de Bruijn variables. We extend env when walking under lambdas.
+  (match expr
+    ;; We only work with single-argument (curried) functions
+    [(list 'lambda (list arg) body) `(lambda ,(bind-vars (cons arg env) body))]
+
+    [(list 'lambda '() body) (error "Nullary function; currying problem?")]
+    [(list 'lambda _   body) (error "N-ary function; currying problem?")]
+
+    ;; Look up symbols in env
+    [(? symbol?) (match (lookup-env env expr)
+                   ;; Not found, use as-is
+                   ['() expr]
+
+                   ;; Found, replace with a bound variable
+                   [(list n type) `(variable bound ,n ,type)])]
+
+    [(cons x y) (cons (bind-vars env x) (bind-vars env y))]
+    [_          expr]))
+
+(module+ test
+  (def-test-case "Bind lambda args"
+    (check-equal? (bind-vars '() '(lambda ((arg1 "type1"))
+                                    (foo (cons arg1 nil))))
+                  '(lambda
+                       (foo (cons (variable bound 0 "type1") nil)))
+                  "Bind single lambda arg")
+
+    (check-equal? (bind-vars '() '(lambda ((arg1 "type1"))
+                                    (foo arg1 (lambda ((arg2 "type2"))
+                                                (bar arg1 arg2)))))
+                  '(lambda
+                       (foo (variable bound 0 "type1")
+                            (lambda
+                                (bar (variable bound 1 "type1")
+                                     (variable bound 0 "type2")))))
+                  "de Bruijn indices match up")
+
+    (check-equal? (bind-vars '() '(lambda ((arg1 "type1"))
+                                    (foo arg1
+                                         (lambda ((arg1 "type2"))
+                                           (bar arg1 arg1 (lambda ((arg1 "type1"))
+                                                            (baz arg1))))
+                                         arg1)))
+                  '(lambda
+                       (foo (variable bound 0 "type1")
+                            (lambda
+                                (bar (variable bound 0 "type2")
+                                     (variable bound 0 "type2")
+                                     (lambda
+                                         (baz (variable bound 0 "type1")))))
+                            (variable bound 0 "type1")))
+                  "Shadowing gets correct indices")
+
+    (check-equal? (bind-vars '((arg1 "type1")) '(lambda ((arg2 "type2"))
+                                                  (foo arg2 arg1)))
+                  '(lambda
+                       (foo (variable bound 0 "type2")
+                            (variable bound 1 "type1")))
+                  "Variables taken from env")))
+
 ;; Converts a TIP expression into one suitable for use in an equation
 (define (to-expression x)
   ;; Turns a list '((a) (b) (c) ...) into '((a b c ...)). If any of the lists is
