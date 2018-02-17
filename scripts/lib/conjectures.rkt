@@ -517,7 +517,7 @@
 
       ;; We should have already curried and bound lambdas, but their bodies still
       ;; need converting to expressions.
-      [(list 'lambda body) (map (curry cons 'lambda) (go body))]
+      [(list 'lambda body) (map (lambda (x) `(lambda ,x)) (go body))]
 
       ;; If we find a lambda with an argument list, that means we've not
       ;; pre-processed the lambdas correctly
