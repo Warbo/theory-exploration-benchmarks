@@ -285,9 +285,6 @@
                     ;; Equations must contain =
                     [(not (member '= (flatten thm))) #f]
 
-                    ;; Lambdas aren't vars, (named) constants or applications
-                    [(member 'lambda (flatten thm))  #f]
-
                     ;; If we see a '=> before a '= then *either* the equation is
                     ;; conditional, *or* there's a function type somewhere in
                     ;; the arguments. We strip off arguments functions to
