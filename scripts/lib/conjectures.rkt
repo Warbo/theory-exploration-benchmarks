@@ -275,7 +275,6 @@
                 (define (strip-args expr)
                   (match expr
                     [(list 'forall vars body) body]
-                    [(list 'lambda vars body) body]
                     [(cons x y)               (cons (strip-args x)
                                                     (strip-args y))]
                     [x                        x]))
