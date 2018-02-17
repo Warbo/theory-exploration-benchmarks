@@ -640,21 +640,42 @@
 
 (module+ test
   (def-test-case "Check theorem lambdas"
-    (define thm1
-      '(assert-not
-        (par (a b c)
-             (forall ((m (list a)) (f (=> a (list b))) (g (=> b (list c))))
-                     (= (bind (bind m f) g)
-                        (bind m (lambda ((x a)) (bind (@ f x) g))))))))
+    (check-equal? (theorem-to-equation
+                   '(assert-not
+                     (par (a b c)
+                          (forall ((m (list a))
+                                   (f (=> a (list b)))
+                                   (g (=> b (list c))))
+                                  (= (bind (bind m f) g)
+                                     (bind m (lambda ((x a))
+                                               (bind (@ f x) g))))))))
 
-    (define thm2
-      '(assert-not
-        (par (a)
-             (forall ((xs (list a)))
-                     (= (dropWhile (lambda ((x a)) false) xs) xs)))))
+                  (let ((bind '(constant bind    "unknown"      ))
+                        (m    '(variable free  0 "(list a)"       ))
+                        (f    '(variable free  1 "(=> a (list b))"))
+                        (g    '(variable free  2 "(=> b (list c))"))
+                        (x    '(variable bound 0 "a")))
+                    `((~= (apply (apply ,bind
+                                        (apply (apply ,bind ,m) ,f))
+                                 ,g)
+                          (apply (apply ,bind ,m)
+                                 (lambda
+                                     (apply (apply ,bind (apply ,f ,x))
+                                            ,g)))))))
 
-    (check-equal? (theorem-to-equation thm1) '())
-    (check-equal? (theorem-to-equation thm2) '()))
+    (check-equal? (theorem-to-equation
+                   '(assert-not
+                     (par (a)
+                          (forall ((xs (list a)))
+                                  (= (dropWhile (lambda ((x a)) false) xs)
+                                     xs)))))
+                  (let ((dropWhile '(constant dropWhile "unknown"))
+                        (false     '(constant false     "unknown"))
+                        (xs        '(variable free 0    "(list a)")))
+                    `((~= (apply (apply ,dropWhile
+                                        (lambda ,false))
+                                 ,xs)
+                          ,xs)))))
 
   (def-test-case "Check theorem @s"
     (define thm
