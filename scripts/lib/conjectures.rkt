@@ -309,16 +309,65 @@
 ;; '(apply (apply f x) y)
 (define (insert-applies lst)
   (match lst
-    [(list 'variable _ _ _) lst]
-    [(list 'constant _ _)   lst]
-    [(list 'apply    _ _)   lst]
-    ['()                    lst]
-    [(list x)               (list x)]
-    [(cons x '())           (list x)]
-    [(list f x)             (list 'apply f x)]
-    [(? list?)              (insert-applies (cons (list 'apply (first lst)
-                                                        (second lst))
-                                                  (rest (rest lst))))]))
+    ;; These are base cases of our recursion
+    ['()                     lst]
+    [(list 'variable _ _ _)  lst]
+    [(list 'constant _ _)    lst]
+    [(? (compose not list?)) lst]
+
+    ;; Recurse into singleton lists
+    [(list x)     (list (insert-applies x))]
+    [(cons x '()) (cons (insert-applies x) '())]
+
+    ;; Recurse into the arguments of existing 'apply' nodes
+    [(list 'apply x y) (list 'apply (insert-applies x) (insert-applies y))]
+
+    ;; Recurse into the body of lambdas
+    [(list 'lambda body) (list 'lambda (insert-applies body))]
+
+    [(cons 'lambda xs)  (error (format "Unexpected lambda ~a" xs))]
+
+    ;; Pairs become an 'apply' node with no further wrapping
+    [(cons x (cons y '())) (insert-applies (list 'apply x y))]
+
+    ;; Any other list gets an 'apply' node and we recurse
+    [(cons x (cons y zs)) (insert-applies (cons (list 'apply x y) zs))]))
+
+(module+ test
+  (def-test-case "Turn applications into 'apply' nodes"
+    (check-equal? (insert-applies '(variable free 0 "unknown"))
+                  '(variable free 0 "unknown")
+                  "No 'apply' inserted for raw variable")
+
+    (check-equal? (insert-applies '((variable free 0 "unknown")
+                                    (constant foo    "unknown")))
+                  '(apply (variable free 0 "unknown")
+                          (constant foo    "unknown"))
+                  "'apply' inserted for application")
+
+    (check-equal? (insert-applies '((constant foo     "unknown")
+                                    (constant bar     "unknown")
+                                    (variable bound 0 "unknown")))
+                  '(apply (apply (constant foo "unknown")
+                                 (constant bar "unknown"))
+                          (variable bound 0 "unknown"))
+                  "Insert 'apply' for one argument at a time")
+
+    (check-equal? (insert-applies '(lambda ((constant foo "unknown")
+                                            (constant bar "unknown"))))
+                  '(lambda (apply (constant foo "unknown")
+                                  (constant bar "unknown")))
+                  "Insert 'apply' inside lambda")
+
+    (check-equal? (insert-applies '((constant foo "unknown")
+                                    ((variable free 0 "unknown")
+                                     (constant bar "unknown"))
+                                    (variable bound 1 "unknown")))
+                  '(apply (apply (constant foo "unknown")
+                                 (apply (variable free 0 "unknown")
+                                        (constant bar "unknown")))
+                          (variable bound 1 "unknown"))
+                  "Insert 'apply' in nested applications")))
 
 ;; Replace (lambda ((arg1 "type1") (arg2 "type2") ...) body) with
 ;; (lambda ((arg1 "type1")) (lambda ((arg2 "type2")) (... body)))
