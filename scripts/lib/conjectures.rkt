@@ -410,7 +410,7 @@
     (match remaining
       ['()                          '()]
       [(cons (list name type) rest) (if (equal? name symbol)
-                                        (list n type)
+                                        (list n (~a type))
                                         (go (+ 1 n) rest))]))
 
   (go 0 env))
