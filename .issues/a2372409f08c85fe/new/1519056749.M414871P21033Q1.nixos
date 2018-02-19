@@ -1,0 +1,14 @@
+From: Chris Warburton
+Date: Mon, 19 Feb 2018 16:10:04 +0000
+State: new
+Subject: Verify that we get 100% precision and recall for equations
+Message-Id: <a2372409f08c85fe-0-artemis@nixos>
+
+Let's say we extract all theorems from the TIP benchmarks and discard
+those which aren't equations; call the resulting equations 'eqs'. We
+should be able to convert eqs into JSON, and feed it into the
+precision/recall checker with eqs as the ground truth, resulting in 100%
+precision and recall.
+
+I've added a test for this in conjectures.rkt, but it currently only
+gives 97% precision....

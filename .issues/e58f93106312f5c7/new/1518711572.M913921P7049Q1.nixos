@@ -1,8 +1,9 @@
 From: Chris Warburton
 Date: Thu, 15 Feb 2018 16:11:15 +0000
-State: new
+State: resolved
 Subject: Support lambda functions in JSON and comparisons
 Message-Id: <e58f93106312f5c7-0-artemis@nixos>
+resolution: fixed
 
 It turns out that IsaCoSy can generate lambda functions in its
 output. We can't just ignore these, since there are 14 ground truth

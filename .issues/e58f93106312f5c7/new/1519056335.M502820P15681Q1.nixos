@@ -1,0 +1,8 @@
+From: Chris Warburton
+Date: Mon, 19 Feb 2018 16:05:08 +0000
+Subject: Re: Support lambda functions in JSON and comparisons
+Message-Id: <e58f93106312f5c7-f1617c5d96fa54dd-artemis@nixos>
+References: <e58f93106312f5c7-0-artemis@nixos>
+In-Reply-To: <e58f93106312f5c7-0-artemis@nixos>
+
+Added lambda support to JSON parsing, JSON printing, etc.

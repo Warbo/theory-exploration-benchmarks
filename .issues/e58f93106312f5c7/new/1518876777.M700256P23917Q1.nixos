@@ -1,0 +1,8 @@
+From: Chris Warburton
+Date: Sat, 17 Feb 2018 14:12:44 +0000
+Subject: Re: Support lambda functions in JSON and comparisons
+Message-Id: <e58f93106312f5c7-da42c10040845fc7-artemis@nixos>
+References: <e58f93106312f5c7-0-artemis@nixos>
+In-Reply-To: <e58f93106312f5c7-0-artemis@nixos>
+
+Added a bunch of support to conjectures.rkt

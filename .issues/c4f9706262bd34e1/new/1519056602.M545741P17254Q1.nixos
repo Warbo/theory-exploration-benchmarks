@@ -1,0 +1,19 @@
+From: Chris Warburton
+Date: Mon, 19 Feb 2018 16:06:31 +0000
+State: new
+Subject: Unwrap 'as' constructs
+Message-Id: <c4f9706262bd34e1-0-artemis@nixos>
+
+The TIP format allows type annotations, presumably to help tools which
+struggle with inference. It's used like like:
+
+  (as nil (list int))
+
+This is the value 'nil', but annotated with the type '(list
+int)'. Presumably this is useful because 'nil' is polymorphic: it works
+for any element type, whereas this expression might appear in a location
+which requires a list with element type 'int'.
+
+In any case, we do not expect our theory exploration tools to sprinkle
+type annotations around their conjectures, so we should strip these out
+before comparing.

@@ -1,0 +1,10 @@
+From: Chris Warburton
+Date: Mon, 19 Feb 2018 16:05:52 +0000
+Subject: Re: Support lambda functions in JSON and comparisons
+Message-Id: <e58f93106312f5c7-8bd318353b7c3373-artemis@nixos>
+References: <e58f93106312f5c7-0-artemis@nixos>
+In-Reply-To: <e58f93106312f5c7-0-artemis@nixos>
+
+I think lambda support is finished. There seem to be some discrepancies,
+but those may have been lingering from before, so I'll handle them as
+separate issues.
