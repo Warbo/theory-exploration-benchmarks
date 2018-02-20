@@ -1239,8 +1239,8 @@
     (check-true (equations-match?
                  '(~= (lambda (variable bound 0 "t1"))
                       (variable free 0 "t2"))
-                 '(~= (variable free 0 "t2")
-                      (lambda (variable bound 0 "t1"))))
+                 '(~= (lambda (variable bound 0 "t1"))
+                      (variable free 0 "t2")))
                 "Equations with lambda functions match")
 
     (check-false (equations-match?
