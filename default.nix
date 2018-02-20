@@ -12,6 +12,7 @@ with callPackage ./racket.nix { inherit pkgs nixpkgs1609;                      }
 with callPackage ./tip.nix    { inherit nix-config PLTCOLLECTS racketWithPkgs; };
 with callPackage ./cache.nix  { inherit env runRacket tip-repo;                };
 with callPackage ./test.nix   { inherit cache env tip-repo;                    };
+with { envFunc = env; env = env {}; };
 
 # The definitions we expose
 rec {
@@ -36,7 +37,7 @@ rec {
           testsPass = withDeps (attrValues (tests { full = false; }))
                                nothing;
         })
-        [ (env {}) ]
+        [ env ]
         (./scripts + "/${n}.rkt");
 
       scripts = attrsToDirs {
@@ -59,14 +60,14 @@ rec {
 
   # The resulting benchmark, in various forms
 
-  tip-benchmark-smtlib = runRacket "tip-benchmark-smtlib" env cache ''
+  tip-benchmark-smtlib = runRacket "tip-benchmark-smtlib" envFunc cache ''
     (require lib/normalise)
     (require lib/impure)
 
     (write-to-out (mk-final-defs))
   '';
 
-  tip-benchmark-haskell = runRacket "tip-benchmark-haskell" env cache ''
+  tip-benchmark-haskell = runRacket "tip-benchmark-haskell" envFunc cache ''
     (require lib/impure)
     (require lib/normalise)
     (require lib/sigs)
