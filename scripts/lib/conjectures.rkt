@@ -1191,7 +1191,21 @@
                                         (constant constructor-foo "t1"))
                                    '(~= (constant bar "t1")
                                         (constant baz "t1")))
-                 "Constructor function names must still match")))
+                 "Constructor function names must still match")
+
+    (check-true (equations-match?
+                 '(~= (lambda (variable bound 0 "t1"))
+                      (variable free 0 "t2"))
+                 '(~= (variable free 0 "t2")
+                      (lambda (variable bound 0 "t1"))))
+                "Equations with lambda functions match")
+
+    (check-false (equations-match?
+                  '(~= (lambda (variable bound 0 "t1"))
+                       (lambda (variable bound 0 "t1")))
+                  '(~= (lambda (variable free  0 "t1"))
+                       (lambda (variable free  0 "t1"))))
+                 "Free variables and bound variables are distinct")))
 
 (define/test-contract (expressions-match? x y)
   (-> expression? expression? boolean?)
