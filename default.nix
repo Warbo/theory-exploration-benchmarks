@@ -19,7 +19,7 @@ rec {
   inherit cache env patchedHaskellPackages nix-config tests;
 
   # Useful for those wanting to import our libraries
-  scripts = "${./scripts}";
+  scripts = copyPathToStore ./scripts;
 
   # Used for benchmarking the benchmark generation (yo dawg)
   asv = if asv-nix == null
