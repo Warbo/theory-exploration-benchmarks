@@ -1251,21 +1251,18 @@
                          (find-eqs-intersection-raw from-json ground-truth))))
 
 (module+ test
-  (def-test-case "Find matches in example data"
-    (begin
-      ;; These two should be found to match
+  (def-test-case "Append/map example matches"
+    (define want-eq
+      (first (theorem-to-equation
+              '(assert-not
+                (par (i o) (forall ((a (=> i o)) (b (List i)) (c (List i)))
+                                   (= (append (map a b) (map a c))
+                                      (map a (append b c)))))))))
 
-      (define want-eq
-        (first (theorem-to-equation
-                '(assert-not
-                  (par (i o) (forall ((a (=> i o)) (b (List i)) (c (List i)))
-                                     (= (append (map a b) (map a c))
-                                        (map a (append b c)))))))))
-
-      (define found-eq
-        (first
-         (parse-json-equation
-          "{ \"relation\": \"~=\",
+    (define found-eq
+      (first
+       (parse-json-equation
+        "{ \"relation\": \"~=\",
              \"lhs\": { \"role\": \"application\",
                         \"lhs\": { \"role\": \"application\",
                                    \"lhs\": { \"role\": \"constant\",
@@ -1313,21 +1310,21 @@
                                               \"type\": \"List Integer\",
                                               \"id\": 4 } } } }")))
 
-      (with-check-info
-        (('want-eq  want-eq)
-         ('found-eq found-eq))
-        (check-true (equations-match? want-eq found-eq)
-                    "Found expected equation")))
+    (with-check-info
+      (('want-eq  want-eq)
+       ('found-eq found-eq))
+      (check-true (equations-match? want-eq found-eq)
+                  "Found expected equation")))
 
-    (begin
-      (define want-eq2
-        '(~= (apply (constant f "Int -> Bool")
-                    (variable free 0 "Int"))
-             (variable free 1 "Bool")))
+  (def-test-case "Artificial equation matches"
+    (define want-eq2
+      '(~= (apply (constant f "Int -> Bool")
+                  (variable free 0 "Int"))
+           (variable free 1 "Bool")))
 
-      (define found-eq2
-        (first (parse-json-equation
-                "{\"relation\": \"~=\",
+    (define found-eq2
+      (first (parse-json-equation
+              "{\"relation\": \"~=\",
                   \"lhs\": {
                      \"role\": \"application\",
                      \"lhs\":  {
@@ -1343,27 +1340,130 @@
                     \"id\":   0,
                     \"type\": \"Bool\"}}")))
 
-      (with-check-info
-        (('want-eq  want-eq2)
-         ('found-eq found-eq2))
-        (check-true (equations-match? want-eq2 found-eq2)
-                    "Parsed vars distinct if types differ, even if ids don't")))
+    (with-check-info
+      (('want-eq  want-eq2)
+       ('found-eq found-eq2))
+      (check-true (equations-match? want-eq2 found-eq2)
+                  "Parsed vars distinct if types differ, even if ids don't")))
 
-    (begin
-      (define result
-        (precision-recall-eqs-wrapper
-         (file->string (getenv "TEST_LIST_EQS"))
-         (getenv "TEST_LIST_TRUTH")
-         (file->string (getenv "TEST_LIST_TRUTH"))))
+  (def-test-case "TEST_LIST example matches"
+    (define result
+      (precision-recall-eqs-wrapper
+       (file->string (getenv "TEST_LIST_EQS"))
+       (getenv "TEST_LIST_TRUTH")
+       (file->string (getenv "TEST_LIST_TRUTH"))))
 
-      (define prec (hash-ref result 'precision))
-      (define rec  (hash-ref result 'recall))
+    (define prec (hash-ref result 'precision))
+    (define rec  (hash-ref result 'recall))
 
-      (with-check-info
-        (('prec prec)
-         ('rec  rec))
-        (check-true (> prec 0) "Nonzero precision")
-        (check-true (> rec  0) "Nonzero recall")))))
+    (with-check-info
+      (('prec prec)
+       ('rec  rec))
+      (check-true (> prec 0) "Nonzero precision")
+      (check-true (> rec  0) "Nonzero recall")))
+
+  (define eqs-or-not
+    (foldl (lambda (thm so-far)
+             (match (theorem-to-equation (hash-ref (normalised-theorems) thm))
+               ['()       (list (first so-far) (cons thm (second so-far)))]
+               [(list eq) (list (cons thm (first so-far)) (second so-far))]))
+           '(() ())
+           (hash-keys (normalised-theorems))))
+
+  (define theorem-names-which-are-eqs     (first  eqs-or-not))
+  (define theorem-names-which-are-not-eqs (second eqs-or-not))
+
+  (def-test-case "100% precision/recall for ground truth equations"
+    (check-false (empty? theorem-names-which-are-eqs)
+                 "Some theorems are equations")
+
+    ;; Check individually
+    (for-each (lambda (thm)
+                (define eq
+                  (hash-ref (normalised-theorems) thm))
+
+                (define json-eq
+                  (equations-from-list (list eq)))
+
+                (define rendered-eq
+                  (jsexpr->string json-eq))
+
+                (define result
+                  (precision-recall-eqs-wrapper
+                   rendered-eq
+                   (string-append "Single theorem " thm)
+                   (~s eq)))
+
+                (define not-found
+                  (filter (lambda (x) (not (hash-ref x 'found)))
+                          (hash-ref result 'wanted)))
+
+                (with-check-info
+                  (('thm       thm)
+                   ('eq        eq)
+                   ('not-found not-found)
+                   ('rendered  rendered-eq))
+                  (check-equal? not-found '() "No equations were missed")
+                  (check-equal? (hash-ref result 'precision) 1.0
+                                "Full precision")
+                  (check-equal? (hash-ref result 'recall)    1.0
+                                "Full recall")))
+              theorem-names-which-are-eqs)
+
+    ;; Then check all together
+    (define theorems
+      (map (curry hash-ref (normalised-theorems))
+           theorem-names-which-are-eqs))
+
+    (define json-eqs
+      (equations-from-list theorems))
+
+    (check-false (empty? json-eqs) "Got JSON eqs")
+
+    (check-equal? (length theorem-names-which-are-eqs)
+                  (length json-eqs)
+                  "Each equational theorem gets a JSON expression")
+
+    (define rendered-eqs
+      (jsexpr->string json-eqs))
+
+    (define result
+      (precision-recall-eqs-wrapper
+       rendered-eqs
+       "Test"
+       (string-join (map ~s theorems) "\n")))
+
+    (define not-found
+      (filter (lambda (x) (not (hash-ref x 'found)))
+              (hash-ref result 'wanted)))
+
+    (check-equal? not-found '() "No equations were missed")
+
+    (with-check-info
+      (('not-found not-found)
+       ('rendered  (string-append (substring rendered-eqs 0 100) "...")))
+      (check-equal? (hash-ref result 'precision) 1.0 "Full precision")
+      (check-equal? (hash-ref result 'recall)    1.0 "Full recall")))
+
+  (def-test-case "0% precision/recall for ground truth non-equations"
+    (define theorems
+      (map (curry hash-ref (normalised-theorems))
+           theorem-names-which-are-not-eqs))
+
+    (define non-eqs
+      (append-map theorem-to-equation theorems))
+
+    (define json-non-eqs
+      (equations-from-list non-eqs))
+
+    (define result
+      (precision-recall-eqs-wrapper
+       (jsexpr->string json-non-eqs)
+       "Test"
+       (apply string-append (map ~a theorems))))
+
+    (check-equal? (hash-ref result 'precision) '() "Zero precision")
+    (check-equal? (hash-ref result 'recall)    0.0 "Zero recall")))
 
 (define (fix-json-for-output jsexpr)
   (hash-update jsexpr
