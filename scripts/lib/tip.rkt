@@ -293,7 +293,7 @@
                      (case (Pair2 ys zs) (append ys (stoogesort2 zs))))))
                '(stooge2sort2 stoogesort2 stooge2sort1)))
 
-    (def-test-case "Symbol lookup"
+  (def-test-case "Symbol lookup"
     (define (symbols-from-file f)
       (names-in (file->list f)))
 

@@ -1,0 +1,11 @@
+From: Chris Warburton
+Date: Tue, 20 Feb 2018 15:52:20 +0000
+State: new
+Subject: Test whether or not destructors appear in any expression
+Message-Id: <9edd1b318c453d9a-0-artemis@nixos>
+
+If no destructors appear in any expression, then we shouldn't include
+them in samples, since they're not really being treated like functions
+(despite the fact that they're included in the same namespace, since TIP
+will complain if e.g. a variable is given the same name as a
+destructor).
