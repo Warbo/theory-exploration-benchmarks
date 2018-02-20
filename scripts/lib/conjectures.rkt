@@ -126,6 +126,21 @@
             (not (empty? (theorem-to-equation thm))))
           (conjectures-admitted-by sample)))
 
+(define (enough-lambdas? n expr)
+  (match expr
+    ;; Bump our nesting level when looking under a lambda
+    [(list 'lambda x) (enough-lambdas? (+ n 1) x)]
+
+    ;; Ensure bound variables have enough depth for their index
+    [(list 'variable 'bound i _) (<= i n)]
+
+    ;; Recurse into applications
+    [(list 'apply lhs rhs) (and (enough-lambdas? n lhs)
+                                (enough-lambdas? n rhs))]
+
+    ;; Everything else (free variables, constants) is fine
+    [_ #t]))
+
 ;; Check if an expression represents an equation in normal form. Normal form
 ;; requires the equal expressions to be in lexicographic order, and for the
 ;; variable indices of both, when arranged in post-order of their first
