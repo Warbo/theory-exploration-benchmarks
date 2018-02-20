@@ -1,8 +1,9 @@
 From: Chris Warburton
 Date: Mon, 19 Feb 2018 16:10:04 +0000
-State: new
+State: resolved
 Subject: Verify that we get 100% precision and recall for equations
 Message-Id: <a2372409f08c85fe-0-artemis@nixos>
+resolution: fixed
 
 Let's say we extract all theorems from the TIP benchmarks and discard
 those which aren't equations; call the resulting equations 'eqs'. We

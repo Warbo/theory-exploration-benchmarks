@@ -1,0 +1,8 @@
+From: Chris Warburton
+Date: Tue, 20 Feb 2018 13:22:39 +0000
+Subject: Re: Unwrap 'as' constructs
+Message-Id: <c4f9706262bd34e1-a0ee2d665a9d8205-artemis@nixos>
+References: <c4f9706262bd34e1-0-artemis@nixos>
+In-Reply-To: <c4f9706262bd34e1-0-artemis@nixos>
+
+to-expression now unwraps '(as x t)' into 'x'

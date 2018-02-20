@@ -515,8 +515,8 @@
       [(list 'constant _ _)   (list x)]
       [(list 'apply    _ _)   (list x)]
 
-      ;; We should have already curried and bound lambdas, but their bodies still
-      ;; need converting to expressions.
+      ;; We should have already curried and bound lambdas, but their bodies
+      ;; still need converting to expressions.
       [(list 'lambda body) (map (lambda (x) `(lambda ,x)) (go body))]
 
       ;; If we find a lambda with an argument list, that means we've not
@@ -529,6 +529,11 @@
       ;; infer it as needed by e.g. spotting when the lhs of an apply is a
       ;; variable.
       [(list '@ a b) (go (list a b))]
+
+      ;; (as x t) is equivalent to x, but annotated with the type t. Since we
+      ;; assume that expressions are type correct (and since we're comparing
+      ;; against a ground-truth corpus anyway), we can drop these annotations.
+      [(list 'as x t) (go x)]
 
       ;; Assume that any other symbol is a constant. We don't handle types yet,
       ;; so no need to bother inferring one.
@@ -565,7 +570,16 @@
     (check-equal? (to-expression expr)
                   '((apply (constant foo "unknown")
                            (apply (variable free 1 "(=> a (list b))")
-                                  (variable free 0 "a")))))))
+                                  (variable free 0 "a"))))))
+
+  (def-test-case "Check expressions 'as's"
+    (define expr
+      '(foo (as nil (list Nat))))
+
+    (check-equal? (to-expression expr)
+                  '((apply (constant foo "unknown")
+                           (constant nil "unknown")))
+                  "'as' gets unwrapped")))
 
 ;; Replaces occurrences of the variables VARS in BODY with variables suitable
 ;; for use in an equation

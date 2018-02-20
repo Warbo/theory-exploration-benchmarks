@@ -1,0 +1,9 @@
+From: Chris Warburton
+Date: Tue, 20 Feb 2018 12:59:18 +0000
+Subject: Re: Verify that we get 100% precision and recall for equations
+Message-Id: <a2372409f08c85fe-ad879c2a9cebbb09-artemis@nixos>
+References: <a2372409f08c85fe-0-artemis@nixos>
+In-Reply-To: <a2372409f08c85fe-0-artemis@nixos>
+
+Fixed. Looks like we weren't matching lambdas when checking for matching
+equations.

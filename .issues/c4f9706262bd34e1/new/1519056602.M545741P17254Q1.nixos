@@ -1,8 +1,9 @@
 From: Chris Warburton
 Date: Mon, 19 Feb 2018 16:06:31 +0000
-State: new
+State: resolved
 Subject: Unwrap 'as' constructs
 Message-Id: <c4f9706262bd34e1-0-artemis@nixos>
+resolution: fixed
 
 The TIP format allows type annotations, presumably to help tools which
 struggle with inference. It's used like like:
