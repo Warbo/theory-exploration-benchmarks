@@ -891,6 +891,34 @@
 
     (list (make-normal-equation lhs rhs))))
 
+(module+ test
+  (def-test-case "JSON parsing"
+    (define id-func
+      (hasheq 'role "lambda"
+              'arg  (json-null)
+              'body (hasheq 'role  "variable"
+                            'type  "unknown"
+                            'bound #t
+                            'id    0)))
+
+    (define x-var
+      (hasheq 'role "variable"
+              'id   0
+              'type "unknown"))
+
+    (define eq
+      (parse-equation
+       (hasheq 'relation "~="
+               'lhs      x-var
+               'rhs      (hasheq 'role "application"
+                                 'lhs  id-func
+                                 'rhs  x-var))))
+
+    (check-equal? eq '((~= (apply (lambda (variable bound 0 "unknown"))
+                                  (variable free 0 "unknown"))
+                           (variable free 0 "unknown")))
+                  "Can parse equation from jsonexpr")))
+
 ;; Re-numbers the free variables in an equation to count 0, 1, 2, ...
 (define (renumber eq)
   ;; Replace free variables with temporary values, to avoid having mixtures of
