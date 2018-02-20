@@ -1227,8 +1227,11 @@
 (define (equations-from-list lst)
   (map (lambda (thm)
          (equation-to-jsexpr
-          (first
-           (theorem-to-equation thm))))
+          (match (theorem-to-equation thm)
+            [(list x) x]
+            ['()      (error (~a `((function "equations-from-list")
+                                   (error    "Got no equation from thm")
+                                   (thm      ,thm))))])))
        lst))
 
 (define (eqs-to-json-wrapper)
