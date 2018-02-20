@@ -617,6 +617,9 @@
                            [(list (list x) (list y))
                             (list (make-normal-equation x y))]))]
 
+    ;; Unwrap any shims we've added
+    [(list 'custom-bool-converter x) (theorem-to-equation x)]
+
     ;; Non-equations; some of these could be solved by, e.g., an SMT solver
 
     ;; Implications/conditional statements
