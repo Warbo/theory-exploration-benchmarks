@@ -223,6 +223,7 @@
   (remove-duplicates
    (match expr
      [(list 'variable 'free _ _) (list expr)]
+     [(list 'lambda body)        (free-variables-in body)]
      [(list 'apply lhs rhs)      (append (free-variables-in lhs)
                                          (free-variables-in rhs))]
      [(list '~= lhs rhs)         (append (free-variables-in lhs)
@@ -240,6 +241,7 @@
                                            (string? type))]
     [(list 'apply lhs rhs)            (and (expression? lhs)
                                            (expression? rhs))]
+    [(list 'lambda body)              (expression? body)]
     [_                                #f]))
 
 ;; Try to convert the normalised theorem from the given file into an equation.
@@ -628,6 +630,7 @@
                                     (next-var-index rhs))]
     [(list 'apply lhs rhs)     (max (next-var-index lhs)
                                     (next-var-index rhs))]
+    [(list 'lambda body)       (next-var-index body)]
     [(list 'variable free i _) (+ 1 i)]
     [(cons x y)                (max (next-var-index x)
                                     (next-var-index y))]
@@ -1142,6 +1145,7 @@
     [(list '~= lhs rhs)     (map cons-des-funcs-to-raw expr)]
     [(list 'constant f t)   (list 'constant (strip-cons-des-prefix f) t)]
     [(list 'variable _ _ _) expr]
+    [(list 'lambda body)    (list 'lambda (cons-des-funcs-to-raw body))]
     [(list 'apply f x)      (map cons-des-funcs-to-raw expr)]
     [(cons x y)             (cons (cons-des-funcs-to-raw x)
                                   (cons-des-funcs-to-raw y))]
