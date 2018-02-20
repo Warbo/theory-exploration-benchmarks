@@ -17,6 +17,9 @@ with callPackage ./test.nix   { inherit cache env tip-repo;                    }
 rec {
   inherit cache env patchedHaskellPackages nix-config tests;
 
+  # Useful for those wanting to import our libraries
+  scripts = ./scripts;
+
   # Used for benchmarking the benchmark generation (yo dawg)
   asv = if asv-nix == null
            then nix-config.asv-nix
