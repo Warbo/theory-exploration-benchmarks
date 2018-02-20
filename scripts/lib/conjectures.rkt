@@ -799,54 +799,89 @@
                 (check-pred equation? obj))
               (parse-json-equations test-eqs))))
 
+;; Cause a read error, which we'll turn into an empty result
+(define (json-parse-fail msg . args)
+  (define str
+    (if (empty? args)
+        msg
+        (apply format (cons msg args))))
+
+  (raise (exn:fail:read str
+                        (current-continuation-marks)
+                        '())))
+
+;; Look up the value of K in hash table OBJ, or else fail
+(define (json-get-key obj k)
+  (unless (and (hash? obj)
+               (hash-has-key? obj k))
+    (json-parse-fail "Couldn't find key ~s" k))
+  (hash-ref obj k (lambda () (json-parse-fail "Error getting key ~s" k))))
+
+;; Parse JSON structure to match s-expression equations
+(define (json-to-expr obj)
+  (match (json-get-key obj 'role)
+    ["application" `(apply ,(json-to-expr (json-get-key obj 'lhs))
+                           ,(json-to-expr (json-get-key obj 'rhs)))]
+    ["variable"    (let ((bound (and (hash-has-key? obj 'bound)
+                                     (json-get-key  obj 'bound))))
+                     `(variable ,(if bound 'bound 'free)
+                                ,(json-get-key obj 'id)
+                                ,(json-get-key obj 'type)))]
+    ["constant"    `(constant ,(string->symbol (json-get-key obj 'symbol))
+                              ,(json-get-key obj 'type))]
+    ["lambda"      (if (equal? (json-get-key obj 'arg) (json-null))
+                       `(lambda ,(json-to-expr (json-get-key obj 'body)))
+                       (json-parse-fail "Lambdas must be de Bruijn ~a" obj))]
+    [x             (json-parse-fail "Unknown role ~s" x)]))
+
+(module+ test
+  (def-test-case "JSON-to-expr"
+    (define id-func
+      (hasheq 'role "lambda"
+              'arg  (json-null)
+              'body (hasheq 'role  "variable"
+                            'type  "unknown"
+                            'bound #t
+                            'id    0)))
+
+    (check-equal? (json-to-expr id-func)
+                  '(lambda (variable bound 0 "unknown"))
+                  "Can parse JSON lambda")
+
+    (define x-var
+      (hasheq 'role "variable"
+              'id   0
+              'type "unknown"))
+
+    (check-equal? (json-to-expr x-var)
+                  '(variable free 0 "unknown")
+                  "Can parse JSON free variable")
+
+    (define app
+      (hasheq 'role "application"
+              'lhs  id-func
+              'rhs  x-var))
+
+    (check-equal? (json-to-expr app)
+                  '(apply (lambda (variable bound 0 "unknown"))
+                          (variable free 0 "unknown"))
+                  "Can parse JSON application")))
+
 (define/test-contract (parse-equation raw-eq)
   (-> jsexpr? (or/c (list/c equation?)
                     empty?))
 
-  ;; Cause a read error, which we'll turn into an empty result
-  (define (fail msg . args)
-    (define str
-      (if (empty? args)
-          msg
-          (apply format (cons msg args))))
-
-    (raise (exn:fail:read str
-                          (current-continuation-marks)
-                          '())))
-
-  ;; Look up the value of K in hash table OBJ, or else fail
-  (define (get-key obj k)
-    (unless (and (hash? obj)
-                 (hash-has-key? obj k))
-      (fail "Couldn't find key ~s" k))
-    (hash-ref obj k (lambda () (fail "Error getting key ~s" k))))
-
-  ;; Parse JSON structure to match s-expression equations
-  (define (json-to-expr obj)
-    (match (get-key obj 'role)
-      ["application" `(apply ,(json-to-expr (get-key obj 'lhs))
-                             ,(json-to-expr (get-key obj 'rhs)))]
-      ["variable"    `(variable ,(if (and (hash-has-key? obj 'bound)
-                                          (get-key obj 'bound))
-                                     'bound
-                                     'free)
-                                ,(get-key obj 'id)
-                                ,(get-key obj 'type))]
-      ["constant"    `(constant ,(string->symbol (get-key obj 'symbol))
-                                ,(get-key obj 'type))]
-      [x             (fail "Unknown role ~s" x)]))
-
   ;; Catch read exceptions from string->jsexpr, but also lets us short-circuit
   ;; when we find a problem with the input.
   (with-handlers ([exn:fail:read? (lambda (e) '())])
-    (unless (equal? (get-key raw-eq 'relation) "~=")
-      (fail "Not an equation object"))
+    (unless (equal? (json-get-key raw-eq 'relation) "~=")
+      (json-parse-fail "Not an equation object"))
 
     (define raw-lhs
-      (get-key raw-eq 'lhs))
+      (json-get-key raw-eq 'lhs))
 
     (define raw-rhs
-      (get-key raw-eq 'rhs))
+      (json-get-key raw-eq 'rhs))
 
     (define lhs
       (json-to-expr raw-lhs))
