@@ -94,6 +94,8 @@
                     "Sample ~a isn't a superset of any ~a"
                     result given-constraints)))])
 
+  (msg "Sampling ~a names from a total of ~a" size (length names))
+
   ;; We get "deterministic randomness" by using this hash function. Before
   ;; hashing, we prefix the given value with the given SIZE and REP, so
   ;; different sample parameters will produce different outputs, but the same
@@ -255,6 +257,13 @@
 
 (memo0 only-function-names (read-from-cache! "BENCHMARKS_ONLY_FUNCTION_NAMES"))
 
+(memo0 names-to-sample
+       (let ((in-thms (remove-duplicates
+                       (symbols-in (hash-values (normalised-theorems))))))
+         (filter (lambda (name)
+                   (any->bool (member name in-thms)))
+                 (only-function-names))))
+
 ;; Sample using the names and theorems from BENCHMARKS
 (define (sample-from-benchmarks size rep)
   (define deps
@@ -263,7 +272,7 @@
          (theorem-deps)))
 
   (define sampled
-    (sample size rep (only-function-names) deps))
+    (sample size rep (names-to-sample) deps))
 
   ;; Hex encode sample so it's usable with e.g. Haskell translation
   (map-set encode-lower-name sampled))
@@ -359,4 +368,35 @@
                           ;; We want a whole bunch of names, so we pick 50
                           (set->list
                            (sample-from-benchmarks (quick-or-full 5 50) rep))))
-              (range 0 (quick-or-full 5 100)))))
+              (range 0 (quick-or-full 5 100))))
+
+  (def-test-case "No artificial names in samples"
+    (for-each (lambda (artificial)
+                (define found
+                  (any->bool (member artificial (names-to-sample))))
+
+                (with-check-info
+                  (('name  artificial)
+                   ('found found))
+                  (check-false found "Artificial name shouldn't be sampled")))
+              '(+ - * div mod < > <= >= Int ite and or not
+                  custom-bool-converter Bool true false True False = distinct)))
+
+  (def-test-case "Sampled names appear in TIP expressions"
+    (define theorem-expressions
+      (hash-values (normalised-theorems)))
+
+    ;; Look up all of the names used in all theorems
+    (define names-in-tip-thms
+      (remove-duplicates
+       (symbols-in theorem-expressions)))
+
+    (define sampled-not-in-thm
+      (remove* names-in-tip-thms (names-to-sample)))
+
+    (with-check-info
+      (('sampled-not-in-thm  sampled-not-in-thm)
+       ('theorem-examples    (take theorem-expressions 3))
+       ('name-examples       (take names-in-tip-thms   10)))
+      (check-equal? sampled-not-in-thm '()
+                    "Sampled names appear in TIP theorems"))))

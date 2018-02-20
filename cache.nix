@@ -145,8 +145,14 @@
         (define all-destructors
           (strip-matching-prefix lowercase-names "destructor-"))
 
+        (define artificial
+          '(custom-bool-converter))
+
+        (define unused
+          '(grammars/packrat_unambigPackrat.smt2linA))
+
         (define only-function-names
-          (remove* (append all-constructors all-destructors)
+          (remove* (append all-constructors all-destructors artificial)
                    lowercase-names))
 
         (write-to-out (format "~s" only-function-names))
