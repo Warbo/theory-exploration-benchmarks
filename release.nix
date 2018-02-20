@@ -15,8 +15,14 @@ genAttrs
           pkgsArgs = { inherit system; };
         };
         {
-          inherit asv tip-benchmark-haskell tip-benchmark-smtlib tools;
+          # Useful infrastructure
+          inherit asv env scripts tools;
           inherit (patchedHaskellPackages) tip-lib;
+
+          # Benchmark data
+          inherit tip-benchmark-haskell tip-benchmark-smtlib;
+
+          # Tests
           quickTests = tests { full = false; };
           fullTests  = tests { full = true;  };
         };
