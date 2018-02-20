@@ -150,7 +150,9 @@
     [(list '~= lhs rhs) (and (expression? lhs)
                              (expression? rhs)
                              (lex<=? lhs rhs)
-                             (canonical-variables? expr))]
+                             (canonical-variables? expr)
+                             (enough-lambdas? -1 lhs)
+                             (enough-lambdas? -1 rhs))]
     [_ #f]))
 
 (module+ test
