@@ -1239,6 +1239,10 @@
      (and (expressions-match? f1 f2)
           (expressions-match? x1 x2))]
 
+    [(list (list 'lambda b1)
+           (list 'lambda b2))
+     (expressions-match? b1 b2)]
+
     [_ #f]))
 
 (define (equations-from-list lst)
