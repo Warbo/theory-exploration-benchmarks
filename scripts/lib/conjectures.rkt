@@ -990,22 +990,94 @@
 (define (equation-to-jsexpr eq)
   (define (expression-to-jsexpr x)
     (make-hash (match x
-      [(list 'variable kind id type) `((role   . "variable")
-                                       (id     . ,id)
-                                       (type   . ,type)
-                                       (bound  . ,(equal? kind 'bound)))]
-      [(list 'constant sym type)     `((role   . "constant")
-                                       (symbol . ,(symbol->string sym))
-                                       (type   . ,type))]
-      [(list 'apply lhs rhs)         `((role   . "application")
-                                       (lhs    . ,(expression-to-jsexpr lhs))
-                                       (rhs    . ,(expression-to-jsexpr rhs)))])))
+      [(list 'variable bf id type) `((role   . "variable")
+                                     (id     . ,id)
+                                     (type   . ,type)
+                                     (bound  . ,(equal? bf 'bound)))]
+      [(list 'constant sym type)   `((role   . "constant")
+                                     (symbol . ,(symbol->string sym))
+                                     (type   . ,type))]
+      [(list 'lambda body)         `((role   . "lambda")
+                                     (arg    . ,(json-null))
+                                     (body   . ,(expression-to-jsexpr body)))]
+      [(list 'apply lhs rhs)       `((role   . "application")
+                                     (lhs    . ,(expression-to-jsexpr lhs))
+                                     (rhs    . ,(expression-to-jsexpr rhs)))])))
 
   (match eq
     [(list '~= lhs rhs)
      (make-hash `((relation . "~=")
                   (lhs      . ,(expression-to-jsexpr lhs))
                   (rhs      . ,(expression-to-jsexpr rhs))))]))
+
+(module+ test
+  (def-test-case "JSON rendering"
+    (define forall-expr
+      '(forall ((m (list a)) (f (=> a (list b))) (g (=> b (list c))))
+               (custom-bool-converter
+                (= (bind (bind m f) g)
+                   (bind m (lambda ((x a)) (bind (@ f x) g)))))))
+
+    (define thm
+      `(assert-not
+        (par (a b c) ,forall-expr)))
+
+    (let ((with-vars (make-variables (second forall-expr)
+                                     (third  forall-expr)))
+          (m         '(variable free 0 "(list a)"))
+          (f         '(variable free 1 "(=> a (list b))"))
+          (g         '(variable free 2 "(=> b (list c))")))
+      (check-equal? with-vars
+                    `(custom-bool-converter
+                      (= (bind (bind ,m ,f) ,g)
+                         (bind ,m (lambda ((x a)) (bind (@ ,f x) ,g)))))
+                    "Universally quantified variables get expanded"))
+
+    (define eqs
+      (theorem-to-equation thm))
+
+    (with-check-info
+      (('thm thm)
+       ('eqs eqs))
+      (check-false (empty? eqs) "Got equation from theorem")
+      (check-false (equal? eqs '(())) "Got actual TIP equation"))
+
+    (define json-eq
+      (equation-to-jsexpr (first eqs)))
+
+    (define rendered-eqs
+      (jsexpr->string (list json-eq)))
+
+    (define eqs-from-json
+      (parse-json-equations rendered-eqs))
+
+    (with-check-info
+      (('rendered-eqs  rendered-eqs)
+       ('eqs-from-json eqs-from-json))
+      (check-false (equal? '(()) eqs-from-json) "Got actual JSON equation")
+      (check-equal? eqs-from-json eqs "JSON equation roundtrip"))
+
+    (with-check-info
+      (('eqs-from-json eqs-from-json))
+      (check-equal? (length eqs-from-json) 1 "Read back the JSON equation")
+      (check-equal? eqs eqs-from-json
+                    "Parsing s-expr equation matches JSON"))
+
+    (define result
+      (precision-recall-eqs-wrapper
+       rendered-eqs
+       "JSON parsing test"
+       (~s thm)))
+
+    (with-check-info
+      (('result    result)
+       ('eqs       eqs)
+       ('rendered  rendered-eqs)
+       ('from-json eqs-from-json))
+      (check-equal? (hash-ref result 'precision) 1.0 "JSON matched (prec)")
+      (check-equal? (hash-ref result 'recall)    1.0 "JSON matched (rec)")
+      (check-true   (hash-ref (first (hash-ref result 'wanted)) 'found)
+                    "JSON eq marked as found"))))
 
 (define (strip-cons-des-prefix s)
   (define (strip-prefix upper? pre str)
