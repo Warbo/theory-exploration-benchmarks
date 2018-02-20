@@ -186,7 +186,15 @@
                                         (variable free 0 "Int"))
                                  (apply (constant g      "Int -> Bool")
                                         (variable free 0 "Int"))))
-                 "Reject variables in the wrong order")))
+                 "Reject variables in the wrong order")
+
+    (check-true (equation? '(~= (lambda (variable bound 0 "unknown"))
+                                (lambda (variable free  0 "unknown"))))
+                "Accept equations with lambdas")
+
+    (check-false (equation? '(~= (lambda (variable bound 0 "unknown"))
+                                 (lambda (variable bound 1 "unknown"))))
+                 "Reject de Bruijn indices without enough lambdas")))
 
 ;; Check if an equation's variable indices are in canonical order
 (define (canonical-variables? eq)
