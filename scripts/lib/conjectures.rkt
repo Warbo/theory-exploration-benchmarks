@@ -945,6 +945,14 @@
                 (list temp 0)
                 (remove-duplicates (free-variables-in temp)))))
 
+(module+ test
+  (def-test-case "Renumbering variables"
+    (check-equal? (renumber '(~= (variable free 2 "unknown")
+                                 (lambda (variable bound 0 "unknown"))))
+                  '(~= (variable free 0 "unknown")
+                       (lambda (variable bound 0 "unknown")))
+                  "Free var numbers don't affect bound vars")))
+
 (define (make-normal-equation lhs rhs)
   (define renumbered-1
     (renumber `(~= ,lhs ,rhs)))
