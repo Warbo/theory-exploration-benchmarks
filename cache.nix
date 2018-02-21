@@ -52,13 +52,10 @@
         (require lib/normalise)
         (require lib/replacements)
         (require lib/theorems)
+        (require lib/util)
 
-        ;; First get replacements used in definitions
-        (define replacements
-          (all-replacements-closure))
-
-        ;; Also replace constructors with constructor functions, skipping
-        ;; constructors which are redundant
+        ;; Extend function replacements with replacement of constructors by
+        ;; constructor functions
 
         (define constructor-replacements
           (constructor-function-replacements (first (qual-hashes-theorem-files))
@@ -66,25 +63,49 @@
 
         (define final-replacements
           (finalise-replacements
-            (extend-replacements replacements constructor-replacements)))
+            (extend-replacements (all-replacements-closure)
+                                 constructor-replacements)))
 
+        (define (prefix-custom-constructors x)
+          (replace-all (map (lambda (name)
+                              (list name (prefix-name name "constructor-")))
+                            '(CustomTrue CustomFalse CustomZ CustomS CustomNeg
+                              CustomZero CustomPos))
+                       x))
+
+         (define (prefix-custom-destructors x)
+           (replace-all (map (lambda (name)
+                               (list name (prefix-name name "destructor-")))
+                             '(custom-p custom-pred custom-succ))
+                        x))
+
+        ;; This should have been unwrapped already
+        (define (assert-no-convert x)
+          (match x
+            ['custom-bool-converter (error "Lingering custom-bool-converter")]
+            [(cons a b)             (cons (assert-no-convert a)
+                                          (assert-no-convert b))]
+            [_                      x]))
+
+        ;; Qualifies all names in thm with the theorem id (AKA the file name).
+        ;; This way, the names will appear in all-replacements-closure.
         (define (qual-thm id thm)
-          (replace-all (map (lambda (g)
-                              (list g
-                                    (string->symbol
-                                      (string-append id (symbol->string g)))))
-                            (theorem-globals thm))
-                       thm))
+           (replace-all (map (lambda (g)
+                               (list g (prefix-name g id)))
+                             (theorem-globals thm))
+                        (assert-no-convert thm)))
 
         (write-to-out
           (format "~s"
             (make-immutable-hash
-              (hash-map (benchmark-theorems)
-                        (lambda (id thm)
-                          (cons id
-                                (unqualify
-                                  (replace final-replacements
-                                           (qual-thm id thm)))))))))
+              (hash-map
+                (benchmark-theorems)
+                (lambda (id thm)
+                  (cons id
+                        (prefix-custom-destructors
+                          (prefix-custom-constructors
+                            (replace final-replacements
+                                     (unqualify (qual-thm id thm)))))))))))
       '';
 
     BENCHMARKS_NORMALISED_DEFINITIONS = runRacket "normalised-definitions"
