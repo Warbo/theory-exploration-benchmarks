@@ -177,22 +177,15 @@
   (memo1 (lambda (f)
            (define normed (normed-theorem-of f))
 
-           (define constructors
-             (expression-constructors (normed-qualified-theorem-files)))
-
            ;; Remove types
            (define raw-names
              (remove* (theorem-types normed) (theorem-globals normed)))
 
-           (remove-duplicates
-            (foldl (lambda (name existing)
-                     ;; Prefix constructors, so we use the function instead
-                     (cons (if (member name constructors)
-                               (prefix-name name "constructor-")
-                               name)
-                           existing))
-                   '()
-                   raw-names)))))
+           ;; custom-bool-converter only exists for type system compatibility
+           (define no-converter
+             (remove 'custom-bool-converter raw-names))
+
+           (remove-duplicates no-converter))))
 
 (module+ test
   (def-test-case "Expected dependencies"
@@ -274,3 +267,26 @@
 
 (memo0 theorem-deps
   (read-from-cache! "BENCHMARKS_THEOREM_DEPS"))
+
+(module+ test
+  (def-test-case "Theorem deps"
+    (define all-constructors
+      (expression-constructors (normed-qualified-theorem-files)))
+
+    (define all-destructors
+      (expression-destructors  (normed-qualified-theorem-files)))
+
+    (define all-deps
+      (remove-duplicates (append-map (compose set->list second)
+                                     (all-theorem-deps))))
+
+    (define dep-constructors
+      (filter (lambda (dep) (any->bool (member dep all-constructors)))
+              all-deps))
+
+    (define dep-destructors
+      (filter (lambda (dep) (any->bool (member dep all-destructors)))
+              all-deps))
+
+    (check-equal? dep-constructors '() "No raw constructors are theorem deps")
+    (check-equal? dep-destructors  '() "No raw destructors  are theorem deps")))

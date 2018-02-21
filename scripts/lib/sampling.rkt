@@ -94,7 +94,7 @@
                     "Sample ~a isn't a superset of any ~a"
                     result given-constraints)))])
 
-  (msg "Sampling ~a names from a total of ~a" size (length names))
+  (msg "Sampling ~a names from a total of ~a\n" size (length names))
 
   ;; We get "deterministic randomness" by using this hash function. Before
   ;; hashing, we prefix the given value with the given SIZE and REP, so
@@ -258,8 +258,8 @@
 (memo0 only-function-names (read-from-cache! "BENCHMARKS_ONLY_FUNCTION_NAMES"))
 
 (memo0 names-to-sample
-       (let ((in-thms (remove-duplicates
-                       (symbols-in (hash-values (normalised-theorems))))))
+       (let ((in-thms (remove-duplicates (append-map (compose set->list second)
+                                                     (all-theorem-deps)))))
          (filter (lambda (name)
                    (any->bool (member name in-thms)))
                  (only-function-names))))
@@ -346,7 +346,7 @@
                                ('name              name)
                                ('some-constructors (take all-constructors 5)))
                               (check-false
-                               (member name all-constructors)
+                               (any->bool (member name all-constructors))
                                "Shouldn't sample constructors"))
 
                             (with-check-info
@@ -354,7 +354,7 @@
                                ('name              name)
                                ('some-destructors (take all-destructors 5)))
                               (check-false
-                               (member name all-destructors)
+                               (any->bool (member name all-destructors))
                                "Shouldn't sample destructors"))
 
                             (with-check-info
@@ -389,7 +389,7 @@
     ;; Look up all of the names used in all theorems
     (define names-in-tip-thms
       (remove-duplicates
-       (symbols-in theorem-expressions)))
+       (symbols-in (list theorem-expressions))))
 
     (define sampled-not-in-thm
       (remove* names-in-tip-thms (names-to-sample)))
