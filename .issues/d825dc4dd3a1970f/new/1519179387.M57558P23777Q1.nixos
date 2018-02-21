@@ -1,8 +1,9 @@
 From: Chris Warburton
 Date: Wed, 21 Feb 2018 02:13:07 +0000
-State: new
+State: resolved
 Subject: Normalise theorems to use constructor/destructor functions
 Message-Id: <d825dc4dd3a1970f-0-artemis@nixos>
+resolution: fixed
 
 We're currently postponing the replacement of constructors and
 destructors (if any) until matching time. We should do this sooner, at

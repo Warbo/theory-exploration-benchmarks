@@ -1,0 +1,9 @@
+From: Chris Warburton
+Date: Wed, 21 Feb 2018 06:31:17 +0000
+Subject: Re: Normalise theorems to use constructor/destructor functions
+Message-Id: <d825dc4dd3a1970f-c0422ad051bfbd89-artemis@nixos>
+References: <d825dc4dd3a1970f-0-artemis@nixos>
+In-Reply-To: <d825dc4dd3a1970f-0-artemis@nixos>
+
+We only use names which appear in theorems, and theorems now use
+constructor/destructor functions instead of constructors/destructors
