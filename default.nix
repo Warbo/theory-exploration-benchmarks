@@ -42,14 +42,14 @@ rec {
         [ env ]
         (./scripts + "/${n}.rkt");
 
-      scripts = attrsToDirs {
+      files = attrsToDirs {
         bin = genAttrs [ "choose_sample" "conjectures_admitted_by_sample"
                          "conjectures_for_sample" "decode" "eqs_to_json"
                          "full_haskell_package" "precision_recall_eqs" ]
                        compile;
       };
 
-      checks = runCommand "tool-checks" { buildInputs = [ fail scripts ]; } ''
+      checks = runCommand "tool-checks" { buildInputs = [ fail files ]; } ''
         set -e
 
         OUT_DIR="$PWD" full_haskell_package < ${tip-benchmark-smtlib} ||
@@ -58,7 +58,7 @@ rec {
         mkdir "$out"
       '';
     };
-    withDeps [ checks ] scripts;
+    withDeps [ checks ] files;
 
   # The resulting benchmark, in various forms
 
