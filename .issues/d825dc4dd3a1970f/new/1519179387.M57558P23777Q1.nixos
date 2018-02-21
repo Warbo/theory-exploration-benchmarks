@@ -1,0 +1,13 @@
+From: Chris Warburton
+Date: Wed, 21 Feb 2018 02:13:07 +0000
+State: new
+Subject: Normalise theorems to use constructor/destructor functions
+Message-Id: <d825dc4dd3a1970f-0-artemis@nixos>
+
+We're currently postponing the replacement of constructors and
+destructors (if any) until matching time. We should do this sooner, at
+normalising time, since:
+
+ - We're messing with the theorems anyway, by replacing names.
+ - This will ensure that "theorem deps" are representative of the names
+   we want to sample.

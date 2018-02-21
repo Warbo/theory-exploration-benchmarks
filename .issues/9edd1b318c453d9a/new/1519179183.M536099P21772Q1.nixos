@@ -1,0 +1,13 @@
+From: Chris Warburton
+Date: Wed, 21 Feb 2018 02:11:03 +0000
+Subject: Re: Test whether or not destructors appear in any expression
+Message-Id: <9edd1b318c453d9a-865776bf6bccf402-artemis@nixos>
+References: <9edd1b318c453d9a-0-artemis@nixos>
+In-Reply-To: <9edd1b318c453d9a-0-artemis@nixos>
+
+I've decided to only sample names which appear as theorem dependencies.
+
+This clears up the destructor/destructor-function issue (i.e. whether
+they count as "real" TIP expressions, or whether destructors aren't
+valid and we were just misinterpreting some sort of strict/sanity check)
+and it also clears up whether we should include custom-*, etc.
