@@ -1,5 +1,5 @@
-{ fail, fetchFromGitHub, lib, makeWrapper, nixListToBashArray, nixpkgs1609,
-  pkgs, runCommand, stdenv, writeScript, withDeps, wrap }:
+{ fail, fetchFromGitHub, fetchgit, lib, makeWrapper, nixListToBashArray,
+  nixpkgs1609, pkgs, runCommand, stdenv, writeScript, withDeps, wrap }:
 
 with builtins;
 with lib;
@@ -80,17 +80,15 @@ rec {
     };
     racketWithDeps [
       # Dependency of grommet
-      (fetchFromGitHub {
-        owner  = "RayRacine";
-        repo   = "grip";
+      (fetchgit {
+        url    = https://gitlab.com/RayRacine/grip.git;
         rev    = "ec498f6";
         sha256 = "06ax30r70sz2hq0dzyassczcdkpmcd4p62zx0jwgc2zp3v0wl89l";
       })
 
       # Hashing
-      (fetchFromGitHub {
-        owner  = "RayRacine";
-        repo   = "grommet";
+      (fetchgit {
+        url    = https://gitlab.com/RayRacine/grommet.git;
         rev    = "50f1b6a";
         sha256 = "1rb7i8jx7gg2rm5flnql0hja4ph11p7i38ryxd04yqw50l0xj59v";
       })
