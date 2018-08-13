@@ -24,9 +24,19 @@ rec {
   '';
 
   # Used for benchmarking the benchmark generation (yo dawg)
-  asv = if asv-nix == null
-           then nix-config.asv-nix
-           else asv-nix;
+  asv =
+    with {
+      asv-src = fetchgit {
+        url    = "http://chriswarbo.net/git/asv-nix.git";
+        rev    = "54d2a89";
+        sha256 = "0hh56xk8z1bzv2v1j2vxmmap8bww8wkjkfqx4cf43jgigalw5miz";
+      };
+    };
+    if asv-nix == null
+       then (import nix-config.repo1709 {
+              overlays = [ (import "${asv-src}/overlay.nix") ];
+            }).asv-nix
+       else asv-nix;
 
   # Installs tools for translating, sampling, etc. the benchmark. These tools
   # get cached data baked into them, which makes them slow to build but fast to
