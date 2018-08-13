@@ -4,7 +4,7 @@ with import ./pkgs.nix {};
 with {
   # Select the derivations we care about
   parts = haskellPackages:
-    with callPackage ./. { inherit haskellPackages; };
+    with import ./. { inherit haskellPackages; };
     {
       # Useful infrastructure
       inherit asv env scripts tools;
